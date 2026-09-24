@@ -5,6 +5,7 @@
 //! wasm or embedded build supplies its own. Approval policy lives in the
 //! engine, not here.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -57,14 +58,58 @@ pub trait Tools {
 /// Output larger than this is truncated before it reaches the model.
 const MAX_TOOL_OUTPUT: usize = 30_000;
 
+/// Tool definitions shared by every surface, minus the ones a surface
+/// cannot offer.
+pub(crate) fn schemas_for(shell: bool) -> Vec<Value> {
+    let object = |properties: Value, required: Value| json!({"type": "object", "properties": properties, "required": required});
+    let mut schemas = vec![
+        json!({
+            "name": "read",
+            "description": "Read a file. Returns its full contents.",
+            "input_schema": object(json!({"path": {"type": "string"}}), json!(["path"])),
+        }),
+        json!({
+            "name": "write",
+            "description": "Create or overwrite a file with the given contents.",
+            "input_schema": object(
+                json!({"path": {"type": "string"}, "content": {"type": "string"}}),
+                json!(["path", "content"]),
+            ),
+        }),
+        json!({
+            "name": "edit",
+            "description": "Replace an exact string in a file. `old` must occur exactly once; include surrounding lines to disambiguate.",
+            "input_schema": object(
+                json!({"path": {"type": "string"}, "old": {"type": "string"}, "new": {"type": "string"}}),
+                json!(["path", "old", "new"]),
+            ),
+        }),
+        json!({
+            "name": "ls",
+            "description": "List a directory. Defaults to the workspace root.",
+            "input_schema": object(json!({"path": {"type": "string"}}), json!([])),
+        }),
+    ];
+    if shell {
+        schemas.push(json!({
+            "name": "bash",
+            "description": "Run a shell command in the workspace root and return its output. The user approves each command.",
+            "input_schema": object(json!({"command": {"type": "string"}}), json!(["command"])),
+        }));
+    }
+    schemas
+}
+
 /// Filesystem and shell tools rooted at one directory.
 ///
 /// File tools refuse paths that resolve outside the root. `bash` runs
 /// through `sh -c` in the root and always needs approval.
+#[cfg(not(target_arch = "wasm32"))]
 pub struct NativeTools {
     root: PathBuf,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl NativeTools {
     pub fn new(root: PathBuf) -> Self {
         Self { root }
@@ -118,7 +163,7 @@ impl NativeTools {
     }
 }
 
-fn truncated(mut text: String) -> String {
+pub(crate) fn truncated(mut text: String) -> String {
     if text.len() > MAX_TOOL_OUTPUT {
         let mut cut = MAX_TOOL_OUTPUT;
         while !text.is_char_boundary(cut) {
@@ -130,42 +175,10 @@ fn truncated(mut text: String) -> String {
     text
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Tools for NativeTools {
     fn schemas(&self) -> Vec<Value> {
-        let object = |properties: Value, required: Value| json!({"type": "object", "properties": properties, "required": required});
-        vec![
-            json!({
-                "name": "read",
-                "description": "Read a file. Returns its full contents.",
-                "input_schema": object(json!({"path": {"type": "string"}}), json!(["path"])),
-            }),
-            json!({
-                "name": "write",
-                "description": "Create or overwrite a file with the given contents.",
-                "input_schema": object(
-                    json!({"path": {"type": "string"}, "content": {"type": "string"}}),
-                    json!(["path", "content"]),
-                ),
-            }),
-            json!({
-                "name": "edit",
-                "description": "Replace an exact string in a file. `old` must occur exactly once; include surrounding lines to disambiguate.",
-                "input_schema": object(
-                    json!({"path": {"type": "string"}, "old": {"type": "string"}, "new": {"type": "string"}}),
-                    json!(["path", "old", "new"]),
-                ),
-            }),
-            json!({
-                "name": "ls",
-                "description": "List a directory. Defaults to the workspace root.",
-                "input_schema": object(json!({"path": {"type": "string"}}), json!([])),
-            }),
-            json!({
-                "name": "bash",
-                "description": "Run a shell command in the workspace root and return its output. The user approves each command.",
-                "input_schema": object(json!({"command": {"type": "string"}}), json!(["command"])),
-            }),
-        ]
+        schemas_for(true)
     }
 
     fn needs_approval(&self, name: &str, _input: &Value) -> bool {

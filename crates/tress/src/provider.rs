@@ -2,6 +2,7 @@
 //! streaming; the [`Provider`] trait keeps the engine testable and open to
 //! other backends.
 
+#[cfg(not(target_arch = "wasm32"))]
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 
@@ -53,7 +54,26 @@ pub trait Provider {
     ) -> impl std::future::Future<Output = Result<Turn, ProviderError>>;
 }
 
-/// Anthropic's Messages API.
+/// The request body for one Messages API turn, shared by every transport.
+pub fn request_body(
+    model: &str,
+    max_tokens: u32,
+    system: &str,
+    messages: &[Value],
+    tools: &[Value],
+) -> Value {
+    json!({
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": messages,
+        "tools": tools,
+        "stream": true,
+    })
+}
+
+/// Anthropic's Messages API over HTTP.
+#[cfg(not(target_arch = "wasm32"))]
 pub struct Anthropic {
     client: reqwest::Client,
     base_url: String,
@@ -62,6 +82,7 @@ pub struct Anthropic {
     pub max_tokens: u32,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Anthropic {
     pub fn new(api_key: String, model: String) -> Self {
         Self {
@@ -78,6 +99,7 @@ impl Anthropic {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Provider for Anthropic {
     async fn turn(
         &self,
@@ -86,14 +108,7 @@ impl Provider for Anthropic {
         tools: &[Value],
         on_delta: &mut dyn FnMut(Delta),
     ) -> Result<Turn, ProviderError> {
-        let body = json!({
-            "model": self.model,
-            "max_tokens": self.max_tokens,
-            "system": system,
-            "messages": messages,
-            "tools": tools,
-            "stream": true,
-        });
+        let body = request_body(&self.model, self.max_tokens, system, messages, tools);
         let response = self
             .client
             .post(format!("{}/v1/messages", self.base_url))
@@ -113,7 +128,7 @@ impl Provider for Anthropic {
 
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
-        let mut accumulator = Accumulator::default();
+        let mut accumulator = MessageAccumulator::default();
         while let Some(chunk) = stream.next().await {
             let bytes = chunk.map_err(|error| ProviderError::Http(error.to_string()))?;
             buffer.push_str(&String::from_utf8_lossy(&bytes));
@@ -136,16 +151,20 @@ impl Provider for Anthropic {
     }
 }
 
-/// Rebuilds the assistant message from SSE events.
+/// Rebuilds the assistant message from Messages API stream events.
+///
+/// Transports differ in how they read bytes; every one of them feeds the
+/// decoded events through here, so message assembly has one implementation.
 #[derive(Default)]
-struct Accumulator {
+pub struct MessageAccumulator {
     blocks: Vec<Value>,
     partial_json: Vec<String>,
     stop_reason: Option<String>,
 }
 
-impl Accumulator {
-    fn event(
+impl MessageAccumulator {
+    /// Applies one event. Returns the finished turn on `message_stop`.
+    pub fn event(
         &mut self,
         event: &Value,
         on_delta: &mut dyn FnMut(Delta),
@@ -242,7 +261,7 @@ mod tests {
     use super::*;
 
     fn feed(events: &[Value]) -> (Turn, Vec<Delta>) {
-        let mut accumulator = Accumulator::default();
+        let mut accumulator = MessageAccumulator::default();
         let mut deltas = Vec::new();
         let mut turn = None;
         for event in events {
@@ -293,7 +312,7 @@ mod tests {
 
     #[test]
     fn stream_error_events_surface() {
-        let mut accumulator = Accumulator::default();
+        let mut accumulator = MessageAccumulator::default();
         let result = accumulator.event(
             &json!({"type": "error", "error": {"message": "overloaded"}}),
             &mut |_| {},
