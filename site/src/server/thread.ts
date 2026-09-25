@@ -22,14 +22,14 @@ import { createPresenceTracker } from "./presence";
 
 const newId = () => Math.random().toString(36).slice(2, 10);
 
-const createThreadElement = (presence: ReturnType<typeof createPresenceTracker>) => {
-  const config = workspaceConfig();
+const createThreadElement = (presence: ReturnType<typeof createPresenceTracker>, scope?: string) => {
+  const config = workspaceConfig(scope);
   let session: Agent | undefined;
   let workspace: Promise<Workspace> | undefined;
   let initialized = false;
   let previewRevision = 0;
   const getWorkspace = () =>
-    (workspace ??= openWorkspace().catch((error) => {
+    (workspace ??= openWorkspace(scope).catch((error) => {
       workspace = undefined;
       throw error;
     }));
@@ -145,17 +145,22 @@ type ThreadBackend = {
   host: ReturnType<typeof StatewireSocketHost>;
   presence: ReturnType<typeof createPresenceTracker>;
 };
-type Holder = { backend?: ThreadBackend };
+type Holder = { backend?: ThreadBackend; backends?: Map<string, ThreadBackend> };
 const holder = ((globalThis as Record<symbol, unknown>)[globalKey] ??=
   {}) as Holder;
 
-const createThreadBackend = (): ThreadBackend => {
+const createThreadBackend = (scope?: string): ThreadBackend => {
   const presence = createPresenceTracker();
   return {
-    host: StatewireSocketHost(createThreadElement(presence)),
+    host: StatewireSocketHost(createThreadElement(presence, scope)),
     presence,
   };
 };
 
-export const threadBackend = (holder.backend ??= createThreadBackend());
-export const threadHost = threadBackend.host;
+export const localThreadBackend = (scope?: string) => {
+  if (!scope) return holder.backend ??= createThreadBackend();
+  const backends = holder.backends ??= new Map();
+  let backend = backends.get(scope);
+  if (!backend) backends.set(scope, backend = createThreadBackend(scope));
+  return backend;
+};

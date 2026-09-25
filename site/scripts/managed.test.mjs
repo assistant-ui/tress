@@ -19,7 +19,7 @@ await build({
   platform: "node",
   format: "esm",
 });
-const { createManagedGateway } = await import(output.href);
+const { createManagedGateway, managedGateway } = await import(output.href);
 const { Harness } = await import("harness-sdk");
 const { HARNESS_HOST_PROTOCOL } = await import("harness-sdk/host");
 const { useUIMessageTransport } = await import("harness-sdk/ui-transport");
@@ -68,9 +68,7 @@ const config = {
 };
 
 // The cloud is a real Harness protocol host; only the model stream is scripted.
-test("managed gateway shares, resumes and rotates persisted threads in development strict mode", async () => {
-  const hosts = new Map();
-  const histories = [];
+const scriptedFactory = (hosts, histories) => {
   const factory = (threadId) => {
     if (!hosts.has(threadId)) {
       const open = async ({ history }) => {
@@ -113,6 +111,13 @@ test("managed gateway shares, resumes and rotates persisted threads in developme
     }
     return new Harness({ transport: transport(hosts.get(threadId)) });
   };
+  return factory;
+};
+
+test("managed gateway shares, resumes and rotates persisted threads in development strict mode", async () => {
+  const hosts = new Map();
+  const histories = [];
+  const factory = scriptedFactory(hosts, histories);
   let gateway;
   const clients = [];
   const attach = async () => {
@@ -202,5 +207,96 @@ test("managed authentication errors are visible and never fall back to a local r
   } finally {
     client.dispose();
     gateway.dispose();
+  }
+});
+
+test("hot reload replaces an incompatible cached gateway once and retains its thread", async () => {
+  const holder = globalThis[Symbol.for("tress.managed.gateway")];
+  let disposed = 0;
+  let release;
+  holder.version = undefined;
+  holder.gateway = new Promise((resolve) => (release = resolve));
+  const migrationConfig = {
+    ...config,
+    origin: "http://managed.invalid",
+    initialThreadId: "reload-thread",
+  };
+  const first = managedGateway(migrationConfig);
+  const second = managedGateway(migrationConfig);
+  assert.equal(first, second, "concurrent reconnects share a single migration");
+  release({ dispose: () => disposed++ }); // A pre-presence gateway.
+  const gateway = await first;
+  try {
+    assert.equal(disposed, 1, "the old host and tunnel are retired once");
+    assert.equal(gateway.info().threadId, "reload-thread");
+    assert.equal(typeof gateway.presence.connect, "function");
+    assert.equal(await managedGateway(migrationConfig), gateway);
+
+    // A newly loaded module must reuse the compatible host and its tunnel.
+    const reloaded = await import(`${output.href}?reload`);
+    assert.equal(await reloaded.managedGateway(migrationConfig), gateway);
+  } finally {
+    gateway.dispose();
+    holder.gateway = undefined;
+  }
+});
+
+test("isolated managed sessions rotate only their own stored thread and resume it", async () => {
+  const hosts = new Map();
+  const factory = scriptedFactory(hosts, []);
+  const records = new Map([
+    ["a", "visitor-a"],
+    ["b", "visitor-b"],
+  ]);
+  const session = (scope) => ({
+    scope,
+    threadId: records.get(scope),
+    selectThread: async (id) => {
+      records.set(scope, id);
+    },
+  });
+  const clients = [];
+  const gateways = [];
+  const attach = async (scope) => {
+    const gateway = await createManagedGateway(config, factory, session(scope));
+    gateways.push(gateway);
+    const client = new StatewireClient({ transport: transport(gateway.host) });
+    clients.push(client);
+    await wait(
+      () => client.state?.harness?.connection === "connected",
+      "session connection",
+    );
+    return client;
+  };
+  try {
+    const first = await attach("a");
+    const second = await attach("b");
+    await first.commands.send("Only visitor A sees this");
+    await wait(
+      () => first.state.runs === 1 && first.state.status === "idle",
+      "A reply",
+    );
+    assert.equal(second.state.entries.length, 0);
+    assert.equal(second.state.harness.threadId, "visitor-b");
+    await first.commands.reset();
+    await wait(
+      () =>
+        first.state.harness.threadId !== "visitor-a" &&
+        first.state.harness.connection === "connected",
+      "A rotation",
+    );
+    const selected = records.get("a");
+    assert.equal(first.state.harness.threadId, selected);
+    assert.equal(records.get("b"), "visitor-b");
+    first.dispose();
+    gateways[0].dispose();
+    const resumed = await attach("a");
+    assert.equal(resumed.state.harness.threadId, selected);
+    assert.equal(resumed.state.entries.length, 0);
+    assert.equal(hosts.size, 3, "old A history remains alongside new A and B");
+  } finally {
+    clients.forEach((client) => client.dispose());
+    gateways.forEach((gateway) => gateway.dispose());
+    hosts.forEach((host) => host.dispose());
   }
 });

@@ -13,6 +13,8 @@ import type { ThreadCommands, ThreadState } from "../lib/thread";
 import { observeDemoConfig, type DemoConfig } from "../lib/demo-config";
 import { CopyButton } from "./CopyButton";
 import { SourcePane } from "./SourcePane";
+import { Markdown } from "./Markdown";
+import { ModelBadge } from "./ModelBadge";
 
 const EMPTY: ThreadState = {
   entries: [],
@@ -119,22 +121,29 @@ export function Thread() {
 
   useEffect(() => {
     setOrigin(window.location.origin);
-    const request = observeDemoConfig((result) => {
-      setConfigLoading(result.status === "loading");
-      if (result.status === "error") setConfigFailed(true);
-      if (result.status === "ready") {
-        setConfig(result.config);
-        setConfigFailed(false);
-        if (
-          !workspaceInitialized.current &&
-          result.config.workspace?.localDemo
-        ) {
-          setShowFiles(true);
-          setOpen("notes.md");
+    const session = new URL(window.location.href).searchParams.get("session");
+    const request = observeDemoConfig(
+      (result) => {
+        setConfigLoading(result.status === "loading");
+        if (result.status === "error") setConfigFailed(true);
+        if (result.status === "ready") {
+          setConfig(result.config);
+          setConfigFailed(false);
+          if (
+            !workspaceInitialized.current &&
+            result.config.workspace?.localDemo
+          ) {
+            setShowFiles(true);
+            setOpen("notes.md");
+          }
+          workspaceInitialized.current = true;
         }
-        workspaceInitialized.current = true;
-      }
-    });
+      },
+      fetch,
+      session
+        ? `/api/mode?session=${encodeURIComponent(session)}`
+        : "/api/mode",
+    );
     configRequest.current = request;
     window.addEventListener("online", request.retryIfNeeded);
     window.addEventListener("focus", request.retryIfNeeded);
@@ -150,14 +159,17 @@ export function Thread() {
     if (connection === "connected") void configRequest.current?.retry();
   }, [connection]);
 
+  const clientUrl = config
+    ? (config.session?.clientUrl ?? "/api/thread")
+    : undefined;
   useEffect(() => {
-    if (!attached) return;
+    if (!attached || !clientUrl) return;
     setConnection("connecting");
     const current = new StatewireClient<
       ThreadState | undefined,
       ThreadCommands
     >({
-      transport: StatewireHttp({ url: "/api/thread" }),
+      transport: StatewireHttp({ url: clientUrl }),
     });
     client.current = current;
     const sync = () => {
@@ -177,7 +189,7 @@ export function Thread() {
       submitting.current = false;
       setPending(false);
     };
-  }, [attached, generation]);
+  }, [attached, generation, clientUrl]);
 
   useEffect(() => {
     if (follow.current)
@@ -206,7 +218,7 @@ export function Thread() {
   const clients = state.clients ?? [];
   const busy = running || pending;
   const canSend = connected && !busy && config?.configured === true;
-  const attachCommand = `tress attach ${origin || "<this-host>"}`;
+  const attachCommand = `tress attach ${origin || "<this-host>"}${config?.session ? ` -s ${config.session.attachId}` : ""}`;
   const matches = COMMANDS.filter((command) =>
     command.name.startsWith(input.trim().toLowerCase()),
   );
@@ -380,6 +392,17 @@ export function Thread() {
           </button>
         </div>
 
+        {config?.session ? (
+          <div className="thread-identity">
+            <span>
+              your session <code>{config.session.attachId}</code>
+            </span>
+            <CopyButton
+              text={config.session.attachId}
+              label="Copy session ID"
+            />
+          </div>
+        ) : null}
         {localDemo ? (
           <div className="local-workspace-info" aria-label="Local workspace">
             <p>Real files on this host. Changes are saved to disk.</p>
@@ -515,7 +538,7 @@ export function Thread() {
                     <div className="entry-error-label">run failed</div>
                   ) : null}
                   {entry.text ? (
-                    <div className="entry-text">{entry.text}</div>
+                    <Markdown text={entry.text} />
                   ) : running ? (
                     <div className="thinking">
                       <span aria-hidden="true">✳</span> working…
@@ -731,11 +754,7 @@ export function Thread() {
             </button>
           </div>
           <div className="composer-hint">
-            <span>
-              {state.harness ? "managed harness" : "host"}{" "}
-              <span className="separator">·</span>{" "}
-              {config?.model ?? "connecting…"}
-            </span>
+            <ModelBadge model={config?.model} />
             <span>
               {!attached
                 ? "offline"
@@ -771,7 +790,7 @@ export function Thread() {
             {attached ? "disconnect" : "reconnect"}
           </button>
           <a
-            href="/"
+            href={config?.session?.browserUrl ?? "/"}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Open the same thread in a second browser tab"
@@ -804,10 +823,16 @@ export function Thread() {
           <CopyButton
             text={attachCommand}
             label="Copy terminal attach command"
-            disabled={!origin}
+            disabled={!origin || !config}
           />
         </div>
         <p>Send a prompt from either client. Both follow the same thread.</p>
+        {config?.session ? (
+          <p>
+            Your session ID lets another client join this thread. A new visitor
+            gets their own.
+          </p>
+        ) : null}
         <p>
           Add <code>--ui</code> for the full terminal interface.
         </p>

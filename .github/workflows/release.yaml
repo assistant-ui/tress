@@ -1,0 +1,88 @@
+name: Release CLI
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check release version
+        run: |
+          python3 - <<'PY'
+          import os, tomllib
+          with open("Cargo.toml", "rb") as source:
+              version = tomllib.load(source)["workspace"]["package"]["version"]
+          assert os.environ["GITHUB_REF_NAME"] == f"v{version}", "Tag must match Cargo.toml version"
+          PY
+      - name: Install Linux linker
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Test installer
+        run: node --test site/scripts/install.test.mjs
+      - run: cargo test --locked -p tress
+      - name: Build release binary
+        env:
+          CC: ${{ runner.os == 'Linux' && 'musl-gcc' || 'cc' }}
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        run: cargo build --locked --release -p tress --target ${{ matrix.target }}
+      - name: Smoke test and package
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          "target/$TARGET/release/tress" --version
+          mkdir dist
+          cp "target/$TARGET/release/tress" "dist/tress-$TARGET"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tress-${{ matrix.target }}
+          path: dist/tress-*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tress-*
+          merge-multiple: true
+          path: dist
+      - name: Publish binaries and checksums
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          sha256sum tress-* > SHA256SUMS
+          gh release create "$RELEASE_TAG" tress-* SHA256SUMS --verify-tag --generate-notes

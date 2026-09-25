@@ -5,6 +5,7 @@
 // on a static deploy — the page says which mode it is in.
 
 const SCRIPT_HEADER = "x-tress-mode";
+import { resolveDemoSession, sessionResponse } from "../../../server/demo-session";
 
 type Block =
   | { kind: "text"; text: string }
@@ -166,6 +167,8 @@ function turnIndex(messages: { role: string }[]): number {
 }
 
 export async function POST(request: Request) {
+  try { await resolveDemoSession(request); }
+  catch (error) { return sessionResponse(error); }
   const body = await request.text();
   const key = process.env.ANTHROPIC_API_KEY;
   const parsedBody = JSON.parse(body) as {

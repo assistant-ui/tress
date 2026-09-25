@@ -196,7 +196,7 @@ h1 {
 }
 .local-workspace-path {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   gap: 12px;
   color: var(--dim);
 }
@@ -284,6 +284,17 @@ h1 {
   font-size: 12px;
   margin: 0 0 19px;
 }
+.thread-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.thread-identity code {
+  color: var(--text);
+}
 .entry-prompt {
   display: flex;
   gap: 11px;
@@ -295,8 +306,112 @@ h1 {
   flex-shrink: 0;
 }
 .entry-text {
-  white-space: pre-wrap;
   color: #b7b7b0;
+}
+.markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown blockquote,
+.markdown pre,
+.markdown-table {
+  margin: 0 0 0.85em;
+}
+.markdown > :last-child,
+.markdown li > :last-child,
+.markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+.markdown ul,
+.markdown ol {
+  padding-left: 1.8em;
+}
+.markdown li {
+  padding-left: 0.25em;
+  margin: 0.25em 0;
+}
+.markdown li::marker {
+  color: var(--muted);
+}
+.markdown li > ul,
+.markdown li > ol {
+  margin-top: 0.4em;
+}
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: 1.2em 0 0.5em;
+  color: var(--text);
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.markdown a {
+  text-decoration: underline;
+  text-decoration-color: var(--dim);
+  text-underline-offset: 3px;
+}
+.markdown :not(pre) > code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #171717;
+  color: var(--text);
+}
+.markdown pre {
+  max-width: 100%;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid #222;
+  border-radius: 4px;
+  background: #0d0d0d;
+  color: var(--text);
+  white-space: pre;
+  overflow-wrap: normal;
+  line-height: 1.65;
+  tab-size: 4;
+}
+.markdown blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+}
+.markdown hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.markdown-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.markdown th,
+.markdown td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.markdown th {
+  color: var(--text);
+  font-weight: 600;
+}
+.markdown .task-list-item {
+  list-style: none;
+}
+.markdown input[type="checkbox"] {
+  margin: 0 0.6em 0 -1.5em;
+  accent-color: var(--muted);
 }
 .entry-tools {
   color: #929288;
@@ -548,11 +663,38 @@ h1 {
 }
 .composer-hint {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px 12px;
   padding-top: 8px;
   color: var(--muted);
   font-size: 11px;
+}
+.model-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 100%;
+}
+.model-provider-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  background: currentColor;
+  mask-size: contain;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+}
+.model-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .composer-hint > span:last-child {
   color: var(--dim);

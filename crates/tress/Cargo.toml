@@ -24,6 +24,7 @@ ratatui = { version = "0.30.2", default-features = false, features = ["crossterm
 crossterm = { version = "0.29.0", features = ["event-stream"] }
 unicode-width = "0.2"
 unicode-segmentation = "1.12"
+tui-markdown = { version = "0.3.10", default-features = false }
 
 [[bin]]
 name = "tress"

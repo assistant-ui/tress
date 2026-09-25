@@ -24,9 +24,11 @@ const platformName = (userAgent: string) => {
   return "unknown OS";
 };
 
-const describeClient = (id: string, request: Request): Client => {
+export const describeClient = (id: string, request: Request): Client => {
   const userAgent = request.headers.get("user-agent") ?? "";
-  const browser = /Mozilla|Chrome|Chromium|Safari|Firefox|Edg\//.test(userAgent);
+  const browser = /Mozilla|Chrome|Chromium|Safari|Firefox|Edg\//.test(
+    userAgent,
+  );
   return {
     id,
     kind: browser ? "browser" : userAgent ? "api" : "terminal",
@@ -42,16 +44,28 @@ const describeClient = (id: string, request: Request): Client => {
 export const createPresenceTracker = () => {
   const active = new Map<string, { client: Client; streams: number }>();
   const listeners = new Set<Listener>();
+  let remote: Client[] = [];
   const snapshot = () =>
-    [...active.values()]
-      .map(({ client }) => client)
-      .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
+    [
+      ...new Map([
+        ...remote.map((client) => [client.id, client] as const),
+        ...[...active.values()].map(
+          ({ client }) => [client.id, client] as const,
+        ),
+      ]).values(),
+    ].sort(
+      (a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id),
+    );
   const publish = () => {
     const clients = snapshot();
     for (const listener of listeners) listener(clients);
   };
 
   return {
+    setRemote(clients: Client[]) {
+      remote = clients;
+      publish();
+    },
     subscribe(listener: Listener) {
       listeners.add(listener);
       return () => {

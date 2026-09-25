@@ -42,6 +42,7 @@ fn usage() -> String {
          tress                 start a session in the current directory\n  \
          tress ask <prompt>    run one prompt and exit\n  \
          tress attach <url>    join a thread with plain terminal output\n  \
+         tress attach <url> -s <id>  join your demo session (--session also works)\n  \
          tress attach <url> --ui  opt into the full terminal interface\n  \
          tress --help          this text\n\n\
          environment:\n  \
@@ -74,14 +75,14 @@ async fn main() -> std::process::ExitCode {
     };
 
     if args.first().is_some_and(|arg| arg == "attach") {
-        let (url, ui) = match attach_options(&args[1..]) {
+        let (url, ui, session) = match attach_options(&args[1..]) {
             Ok(options) => options,
             Err(error) => {
                 eprintln!("tress attach: {error}");
                 return std::process::ExitCode::FAILURE;
             }
         };
-        return match attach::run(url, &style, ui).await {
+        return match attach::run(url, &style, ui, session).await {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("{}", style.paint(ansi::RED, &format!("error: {error}")));
@@ -202,14 +203,30 @@ async fn main() -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
-fn attach_options(args: &[String]) -> Result<(&str, bool), String> {
+fn attach_options(args: &[String]) -> Result<(&str, bool, Option<&str>), String> {
     let mut url = None;
     let mut ui = false;
     let mut plain = false;
-    for arg in args {
+    let mut session = None;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "--ui" => ui = true,
             "--plain" => plain = true, // Keep the earlier explicit plain option working.
+            "-s" | "--session" => {
+                if session.is_some() {
+                    return Err("provide the session ID only once (-s or --session)".into());
+                }
+                let id = args.next().ok_or_else(|| format!("{arg} needs an ID"))?;
+                if !matches!(id.len(), 12 | 32)
+                    || !id
+                        .bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+                {
+                    return Err("invalid session ID; copy the full ID from the site".into());
+                }
+                session = Some(id.as_str());
+            }
             flag if flag.starts_with('-') => return Err(format!("unknown option {flag}")),
             value if url.is_none() => url = Some(value),
             _ => return Err("expected one thread URL".into()),
@@ -218,7 +235,7 @@ fn attach_options(args: &[String]) -> Result<(&str, bool), String> {
     if ui && plain {
         return Err("choose --ui or --plain, not both".into());
     }
-    Ok((url.ok_or("needs a thread URL")?, ui))
+    Ok((url.ok_or("needs a host URL")?, ui, session))
 }
 
 async fn run_turn(
@@ -305,7 +322,10 @@ mod cli_tests {
             (vec!["--ui", "localhost:5311"], true),
         ] {
             let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
-            assert_eq!(attach_options(&args), Ok(("localhost:5311", expected)));
+            assert_eq!(
+                attach_options(&args),
+                Ok(("localhost:5311", expected, None))
+            );
         }
     }
 
@@ -316,9 +336,38 @@ mod cli_tests {
             vec!["host", "--ui", "--plain"],
             vec!["host", "--other"],
             vec!["one", "two"],
+            vec!["host", "--session"],
+            vec!["host", "--session", "--ui"],
+            vec!["host", "--session", "bad/id"],
+            vec!["host", "-s"],
+            vec!["host", "-s", "--ui"],
+            vec!["host", "-s", "bad/id"],
+            vec![
+                "host",
+                "-s",
+                "0123456789abcdef0123456789abcdef",
+                "--session",
+                "0123456789abcdef0123456789abcdef",
+            ],
         ] {
             let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
             assert!(attach_options(&args).is_err());
+        }
+    }
+
+    #[test]
+    fn session_flag_works_with_plain_and_ui_in_any_order() {
+        for id in ["Abc1_def-XYZ", "0123456789abcdef0123456789abcdef"] {
+            for flag in ["-s", "--session"] {
+                for (args, ui) in [
+                    (vec!["localhost:5311", flag, id], false),
+                    (vec![flag, id, "localhost:5311", "--ui"], true),
+                    (vec!["--ui", "localhost:5311", flag, id], true),
+                ] {
+                    let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
+                    assert_eq!(attach_options(&args), Ok(("localhost:5311", ui, Some(id))));
+                }
+            }
         }
     }
 }
