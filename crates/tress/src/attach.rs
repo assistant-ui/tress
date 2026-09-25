@@ -110,6 +110,21 @@ fn thread_url(input: &str) -> String {
     }
 }
 
+/// The CLI keeps the access ID separate; Statewire uses the scoped endpoint.
+fn session_url(input: &str, id: &str) -> Result<String, String> {
+    let mut url = reqwest::Url::parse(&thread_url(input)).map_err(|error| error.to_string())?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("the host must use http or https".into());
+    }
+    if url.path() != DEFAULT_PATH || url.query().is_some() || url.fragment().is_some() {
+        return Err(
+            "with -s / --session, use the host URL, for example http://localhost:5311".into(),
+        );
+    }
+    url.set_path(&format!("/api/sessions/{id}"));
+    Ok(url.to_string())
+}
+
 fn connection_config() -> Config {
     Config {
         client_id: generate_client_id(),
@@ -122,8 +137,29 @@ fn connection_config() -> Config {
     }
 }
 
-pub async fn run(input: &str, style: &crate::Style, ui_requested: bool) -> Result<(), String> {
-    let url = thread_url(input);
+pub async fn run(
+    input: &str,
+    style: &crate::Style,
+    ui_requested: bool,
+    session: Option<&str>,
+) -> Result<(), String> {
+    let url = match session {
+        Some(id) => session_url(input, id)?,
+        None => thread_url(input),
+    };
+    let display_url = session.map_or_else(
+        || url.clone(),
+        |id| {
+            format!(
+                "{input} · session {}",
+                if id.len() <= 12 { id } else { &id[..8] }
+            )
+        },
+    );
+    let attach_command = session.map_or_else(
+        || format!("tress attach {input}"),
+        |id| format!("tress attach {input} -s {id}"),
+    );
     let (initial, mut events) = connect(&url, connection_config())
         .await
         .map_err(|error| error.to_string())?;
@@ -141,7 +177,7 @@ pub async fn run(input: &str, style: &crate::Style, ui_requested: bool) -> Resul
     let (lines_tx, mut lines_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
     if !interactive {
         println!(
-            "tress {} · shared thread · {url}",
+            "tress {} · shared thread · {display_url}",
             env!("CARGO_PKG_VERSION")
         );
         println!("/help for commands · the host keeps running when you leave · /exit to detach");
@@ -178,7 +214,12 @@ pub async fn run(input: &str, style: &crate::Style, ui_requested: bool) -> Resul
         };
         if let Some(screen) = &mut screen {
             screen
-                .draw(snapshot.as_ref(), connection, pending.is_some(), &url)
+                .draw(
+                    snapshot.as_ref(),
+                    connection,
+                    pending.is_some(),
+                    &display_url,
+                )
                 .map_err(|error| error.to_string())?;
         } else if !plain_prompt
             && pending.is_none()
@@ -265,7 +306,7 @@ pub async fn run(input: &str, style: &crate::Style, ui_requested: bool) -> Resul
                 }
             }
             Some(Command::Exit) => break,
-            Some(Command::Attach) => notice(&mut screen, &format!("tress attach {input}")),
+            Some(Command::Attach) => notice(&mut screen, &attach_command),
             Some(Command::Files) => {
                 if screen.is_none() {
                     if let Some(state) = &snapshot {
@@ -304,7 +345,10 @@ pub async fn run(input: &str, style: &crate::Style, ui_requested: bool) -> Resul
                         detail
                     },
                 );
-                notice(&mut screen, &format!("{connection} · {detail} · {url}"));
+                notice(
+                    &mut screen,
+                    &format!("{connection} · {detail} · {display_url}"),
+                );
             }
             Some(Command::Disconnect) => {
                 client = None; // Drop the transport; the shared host keeps running.
@@ -498,7 +542,28 @@ fn emit(entry: &Entry, printed: &mut Printed, style: &crate::Style, complete: bo
 
 #[cfg(test)]
 mod tests {
-    use super::{client_status, render, thread_url, ConnectedClient, Printed};
+    use super::{client_status, render, session_url, thread_url, ConnectedClient, Printed};
+
+    #[test]
+    fn session_id_selects_the_scoped_endpoint() {
+        let id = "0123456789abcdef0123456789abcdef";
+        for host in [
+            "localhost:5311",
+            "http://localhost:5311",
+            "http://localhost:5311/",
+        ] {
+            assert_eq!(
+                session_url(host, id).unwrap(),
+                format!("http://localhost:5311/api/sessions/{id}")
+            );
+        }
+        assert_eq!(
+            session_url("https://demo.example", id).unwrap(),
+            format!("https://demo.example/api/sessions/{id}")
+        );
+        assert!(session_url("https://demo.example/another-thread", id).is_err());
+        assert!(session_url("https://demo.example/?session=other", id).is_err());
+    }
 
     #[test]
     fn client_status_uses_live_identity_and_marks_stale_snapshots() {

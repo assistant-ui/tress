@@ -13,12 +13,26 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test site/scripts/install.test.mjs
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
   wasm:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: tress-test
+          POSTGRES_DB: tress_test
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TRESS_RELAY_TEST_DATABASE_URL: postgres://postgres:tress-test@localhost:5432/tress_test
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -40,6 +54,7 @@ jobs:
           tress_bindgen_version=$(python3 -c 'import tomllib; print(next(p["version"] for p in tomllib.load(open("Cargo.lock", "rb"))["package"] if p["name"] == "wasm-bindgen"))')
           cargo install wasm-bindgen-cli --version "$tress_bindgen_version" --locked
       - run: npm --prefix site ci
+      - run: npm --prefix site run test:relay
       - run: npm --prefix site run wasm
       - run: npm --prefix site run wasm:node
       - run: npm --prefix packages/workspaces run test:wasm

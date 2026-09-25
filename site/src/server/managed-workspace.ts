@@ -3,6 +3,7 @@ import { snapshotWorkspace, type Workspace } from "@tress/workspaces";
 import { createBashWorkspace } from "@tress/workspaces/just-bash";
 import { openWorkspace, workspaceConfig } from "./workspace";
 import { SEED_FILES } from "./seed";
+import { workspaceFiles } from "./workspace-storage";
 
 const key = Symbol.for("tress.managed.workspaces");
 type Runtime = {
@@ -58,18 +59,25 @@ const filesFrom = (messages: UIMessage[]) => {
 export const managedWorkspace = (
   threadId: string,
   history: UIMessage[] = [],
+  scope?: string,
 ) => {
   let workspace = runtime.workspaces.get(threadId);
   const config = workspaceConfig();
   const files = filesFrom(history);
   if (
     !workspace ||
+    (scope && process.env.TRESS_SERVERLESS === "1") ||
     (files && (config.mode === "memory" || config.mode === "overlay"))
   ) {
     workspace = (async () => {
-      if (config.mode === "memory")
-        return createBashWorkspace({ files: files ?? SEED_FILES() });
-      const value = await openWorkspace();
+      if (config.mode === "memory") {
+        const stored =
+          scope && process.env.TRESS_SERVERLESS === "1"
+            ? await (await import("./relay-store")).relayStore().files(scope)
+            : undefined;
+        return createBashWorkspace({ files: stored ?? files ?? SEED_FILES() });
+      }
+      const value = await openWorkspace(scope);
       if (config.mode === "overlay" && files)
         for (const [path, content] of Object.entries(files))
           await value.writeFile(path, content);
@@ -81,11 +89,30 @@ export const managedWorkspace = (
   return workspace;
 };
 
-export const refreshManagedFiles = async (threadId: string) => {
+export const refreshManagedFiles = async (
+  threadId: string,
+  scope?: string,
+  activeWorkspace?: Workspace,
+) => {
+  if (scope && process.env.TRESS_SERVERLESS === "1" && !activeWorkspace) {
+    // Observers never save an instance's stale filesystem over an agent's work.
+    return (
+      (await (await import("./relay-store")).relayStore().previews(scope)) ??
+      SEED_FILES()
+    );
+  }
   const paths = workspaceConfig().paths;
+  const workspace =
+    activeWorkspace ?? (await managedWorkspace(threadId, [], scope));
   const files = paths.length
-    ? await snapshotWorkspace(await managedWorkspace(threadId), { paths })
+    ? await snapshotWorkspace(workspace, { paths })
     : {};
+  if (scope && process.env.TRESS_SERVERLESS === "1")
+    await (
+      await import("./relay-store")
+    )
+      .relayStore()
+      .saveFiles(scope, threadId, await workspaceFiles(workspace), files);
   for (const listener of runtime.listeners) listener(threadId, files);
   return files;
 };

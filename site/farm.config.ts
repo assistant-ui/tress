@@ -2,8 +2,15 @@ import { defineConfig } from "@farm.js/core";
 import { wasm } from "@farm.js/wasm";
 
 export default defineConfig({
+  deploy:
+    process.env.FARM_DEPLOY_TARGET === "vercel"
+      ? { target: "vercel" }
+      : undefined,
   plugins: [wasm()],
   images: { provider: "none" },
+  routeRules: {
+    "/api/**": { runtime: "node", regions: ["iad1"], maxDuration: 300 },
+  },
   vite: {
     plugins: [
       {
@@ -25,6 +32,7 @@ export default defineConfig({
               "harness-sdk",
               "statewire",
               "@assistant-ui/tap",
+              "pg",
             ],
           },
         }),

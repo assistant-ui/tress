@@ -106,6 +106,7 @@ try {
         ANTHROPIC_API_KEY: "local-test-key",
         TRESS_API_URL: modelUrl,
         TRESS_THREAD_MODE: "local",
+        TRESS_DEMO_SHARED: "1",
         TRESS_WORKSPACE: mode,
         TRESS_WORKSPACE_ROOT: root,
         TRESS_VISIBLE_FILES: '["demo.txt"]',

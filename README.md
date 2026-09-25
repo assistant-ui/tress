@@ -36,6 +36,17 @@ the same commands. Plain terminal output is the default. Run
 and terminal UI, typing `/` opens a command picker:
 ↑/↓ selects, Tab completes, Enter runs, and Escape closes it.
 
+The site gives each visitor a separate session. Copy its attach command:
+
+```sh
+tress attach http://localhost:5311 -s <id>
+tress attach http://localhost:5311 -s <id> --ui
+```
+
+Use the full session ID shown on the page to join the same conversation and
+workspace from another client. The ID grants access to that anonymous session.
+See [demo setup and PostgreSQL metadata storage](site/README.md).
+
 The optional terminal UI has a persistent `❯` composer, live ready/working status,
 and a file preview toggled with `/files` or Ctrl-F. Your draft stays intact
 while the host streams. With an empty input, Tab/Shift-Tab changes files;
@@ -104,10 +115,12 @@ host's workspace, not the attached terminal's current directory.
 
 Early. The engine is a library (`tress::Engine`) driving a `Provider` over a
 `Tools` surface, with no I/O of its own — which is what lets the terminal
-binary, the browser build, and embedded hosts share it. The site hosts a shared
+binary, the browser build, and embedded hosts share it. The site hosts a
 [statewire](https://github.com/assistant-ui/statewire-rs) thread that browsers and
-`tress attach` can watch and steer. It survives client disconnects, not host
-restarts. Persistent model history and crash recovery remain application work.
+`tress attach` can watch and steer for each visitor. Managed Harness persists
+completed conversation turns across host restarts. Without Harness, conversation
+state stays in memory. Client disconnects do not stop a run, but resuming a tool
+interrupted by a host crash still requires application work.
 
 ## Configuration
 

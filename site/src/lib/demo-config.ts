@@ -1,6 +1,7 @@
 export type DemoConfig = {
   configured: boolean;
   model: string;
+  session?: { id: string; attachId: string; clientUrl: string; browserUrl: string };
   workspace?: {
     mode: string;
     writes: boolean;
@@ -18,6 +19,7 @@ type Update =
 export const observeDemoConfig = (
   update: (value: Update) => void,
   fetcher: typeof fetch = globalThis.fetch,
+  url = "/api/mode",
 ) => {
   let disposed = false;
   let loaded = false;
@@ -33,7 +35,7 @@ export const observeDemoConfig = (
     const timeout = setTimeout(() => controller.abort(), 10_000);
     update({ status: "loading" });
     try {
-      const response = await fetcher("/api/mode", {
+      const response = await fetcher(url, {
         signal: controller.signal,
         cache: "no-store",
       });

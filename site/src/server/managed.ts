@@ -6,6 +6,7 @@ import { Harness, HarnessCloud } from "harness-sdk";
 import { useEffect } from "@assistant-ui/tap/react-shim";
 import { useStatewireCommands, useStatewireState } from "statewire/host";
 import { StatewireSocketHost } from "statewire/host-internal";
+import type { StatewireHostInternal } from "statewire/host-internal";
 import type { Entry, ThreadState } from "../lib/thread";
 import type { ThreadMode } from "./config";
 import { workspaceConfig } from "./workspace";
@@ -15,6 +16,12 @@ import {
   subscribeManagedFiles,
 } from "./managed-workspace";
 import { createPresenceTracker } from "./presence";
+
+export type GatewaySession = {
+  scope: string;
+  threadId: string;
+  selectThread: (id: string) => Promise<void>;
+};
 
 type CloudMode = Extract<ThreadMode, { kind: "cloud" }>;
 const validId = (id: unknown): id is string =>
@@ -41,6 +48,8 @@ export const managedEntries = (messages: readonly Harness.Message[]): Entry[] =>
 export const createManagedGateway = async (
   config: CloudMode,
   factory?: (threadId: string) => Harness,
+  session?: GatewaySession,
+  persistence?: StatewireHostInternal.SocketHostPersistence,
 ) => {
   const presence = createPresenceTracker();
   const namespace = createHash("sha256")
@@ -55,15 +64,16 @@ export const createManagedGateway = async (
     .slice(0, 20);
   const directory = resolve(process.env.HARNESS_STATE_DIR ?? ".tress/harness");
   const path = join(directory, `${namespace}.json`);
-  let threadId = config.initialThreadId;
+  let threadId = session?.threadId ?? config.initialThreadId;
   try {
-    threadId = JSON.parse(await readFile(path, "utf8")).threadId;
+    if (!session) threadId = JSON.parse(await readFile(path, "utf8")).threadId;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   if (!validId(threadId))
     throw new Error("Invalid persisted HARNESS_THREAD_ID.");
   const save = async (id: string) => {
+    if (session) return session.selectThread(id);
     await mkdir(directory, { recursive: true });
     const temporary = `${path}.${randomUUID()}.tmp`;
     await writeFile(temporary, JSON.stringify({ threadId: id }), {
@@ -71,7 +81,7 @@ export const createManagedGateway = async (
     });
     await rename(temporary, path);
   };
-  await save(threadId);
+  if (!session) await save(threadId);
   const connect = () =>
     factory?.(threadId) ??
     new Harness({
@@ -90,6 +100,9 @@ export const createManagedGateway = async (
   let harness = connect();
   let unsubscribe = () => {};
   let sending = false;
+  let pending: Promise<unknown> = Promise.resolve();
+  let remoteFiles = false;
+  let setFiles = (_files: Record<string, string>) => {};
   let notify = () => {};
   const virtualFiles = ["memory", "overlay"].includes(workspaceConfig().mode);
   let restoredFiles = false;
@@ -115,6 +128,10 @@ export const createManagedGateway = async (
       clients: [],
       harness: info(),
     }));
+    setFiles = (files) => {
+      remoteFiles = true;
+      state.files = files;
+    };
     useEffect(
       () => presence.subscribe((clients) => (state.clients = clients)),
       [],
@@ -140,7 +157,7 @@ export const createManagedGateway = async (
           ? 1
           : 0);
       state.harness = info();
-      if (virtualFiles && state.status === "idle") {
+      if (virtualFiles && !remoteFiles) {
         const data = harness.messages.at(-1)?.metadata?.provider?.tress as
           { files?: unknown } | undefined;
         const files = data?.files;
@@ -166,7 +183,7 @@ export const createManagedGateway = async (
           state.files = files;
       });
       sync();
-      void refreshManagedFiles(threadId).catch((error) => {
+      void refreshManagedFiles(threadId, session?.scope).catch((error) => {
         state.harness = { ...info(), error: `Workspace: ${error.message}` };
       });
       return () => {
@@ -187,7 +204,8 @@ export const createManagedGateway = async (
         sending = true;
         sync();
         try {
-          await harness.sendMessage(prompt.trim());
+          pending = harness.sendMessage(prompt.trim());
+          await pending;
         } finally {
           sending = false;
           notify();
@@ -211,7 +229,7 @@ export const createManagedGateway = async (
           harness = connect();
           unsubscribe = harness.subscribe(() => notify());
           state.files = {};
-          await refreshManagedFiles(threadId);
+          await refreshManagedFiles(threadId, session?.scope);
         } finally {
           sending = false;
           notify();
@@ -222,7 +240,7 @@ export const createManagedGateway = async (
   })();
   let host: ReturnType<typeof StatewireSocketHost>;
   try {
-    host = StatewireSocketHost(element);
+    host = StatewireSocketHost(element, undefined, persistence);
   } catch (error) {
     harness.dispose();
     throw error;
@@ -231,6 +249,8 @@ export const createManagedGateway = async (
     host,
     presence,
     info,
+    drain: () => pending.catch(() => {}),
+    setFiles: (files: Record<string, string>) => setFiles(files),
     dispose: () => {
       host.dispose();
       harness.dispose();
@@ -247,21 +267,34 @@ type Holder = {
   gateway?: Promise<Awaited<ReturnType<typeof createManagedGateway>>>;
 };
 const holder = ((globalThis as Record<symbol, unknown>)[key] ??= {}) as Holder;
-export const managedGateway = (config: CloudMode) => {
-  if (holder.version !== GATEWAY_VERSION || !holder.gateway) {
-    const previous = holder.gateway;
-    holder.version = GATEWAY_VERSION;
+const sessionsKey = Symbol.for("tress.managed.session-gateways.v1");
+const sessions = ((globalThis as Record<symbol, unknown>)[sessionsKey] ??=
+  new Map()) as Map<string, Holder>;
+export const managedGateway = (config: CloudMode, session?: GatewaySession) => {
+  let cache = holder;
+  if (session) {
+    const id = JSON.stringify([
+      config.origin,
+      config.workspaceId,
+      session.scope,
+    ]);
+    cache = sessions.get(id) ?? {};
+    sessions.set(id, cache);
+  }
+  if (cache.version !== GATEWAY_VERSION || !cache.gateway) {
+    const previous = cache.gateway;
+    cache.version = GATEWAY_VERSION;
     const gateway = (async () => {
       // Retire the old tunnel and streams before opening their replacement.
       // The persisted thread id keeps the managed conversation intact.
       const stale = await previous?.catch(() => undefined);
       stale?.dispose();
-      return createManagedGateway(config);
+      return createManagedGateway(config, undefined, session);
     })();
-    holder.gateway = gateway;
+    cache.gateway = gateway;
     void gateway.catch(() => {
-      if (holder.gateway === gateway) holder.gateway = undefined;
+      if (cache.gateway === gateway) cache.gateway = undefined;
     });
   }
-  return holder.gateway;
+  return cache.gateway;
 };

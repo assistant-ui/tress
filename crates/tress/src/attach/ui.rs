@@ -19,6 +19,8 @@ use unicode_width::UnicodeWidthStr;
 use super::ThreadState;
 use crate::commands;
 
+mod markdown;
+
 const BG: Color = Color::Rgb(9, 9, 9);
 const TEXT: Color = Color::Rgb(214, 214, 211);
 const MUTED: Color = Color::Rgb(146, 146, 141);
@@ -420,6 +422,7 @@ impl View {
                             Span::styled("❯ ", Style::default().fg(ACCENT)),
                             Span::raw(safe(text.next().unwrap_or(""))),
                         ]));
+                        lines.extend(text.map(|line| Line::raw(safe(line))));
                     } else {
                         lines.push(Line::styled(
                             if entry.error {
@@ -435,8 +438,8 @@ impl View {
                                 Style::default().fg(MUTED),
                             ));
                         }
+                        lines.extend(markdown::render(&entry.text, regions[1].width));
                     }
-                    lines.extend(text.map(|line| Line::raw(safe(line))));
                     lines.push(Line::raw(""));
                 }
             }
@@ -812,7 +815,7 @@ mod tests {
             entries: vec![super::super::Entry {
                 id: "reply".into(),
                 role: "agent".into(),
-                text: (0..80).map(|i| format!("Reply line {i}\n")).collect(),
+                text: (0..80).map(|i| format!("Reply line {i}  \n")).collect(),
                 ..Default::default()
             }],
             ..Default::default()

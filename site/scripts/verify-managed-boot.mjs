@@ -23,6 +23,7 @@ const host = spawn(process.execPath, [".farm/.output/server/index.mjs"], {
     PORT: String(port),
     HOST: "127.0.0.1",
     TRESS_THREAD_MODE: "cloud",
+    TRESS_DEMO_SHARED: "1",
     TRESS_WORKSPACE: "memory",
     HARNESS_STATE_DIR: root,
     HARNESS_API_KEY: secret,

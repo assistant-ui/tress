@@ -5,13 +5,25 @@ import {
 } from "ai";
 import { openSession } from "../../../server/agent";
 import {
+  resolveDemoSession,
+  sessionResponse,
+} from "../../../server/demo-session";
+import {
   contextFrom,
   managedWorkspace,
   refreshManagedFiles,
 } from "../../../server/managed-workspace";
 
+export const maxDuration = 300;
+
 /** Managed Harness calls this endpoint with its persisted conversation. */
 export const POST = async (request: Request) => {
+  let session;
+  try {
+    session = await resolveDemoSession(request);
+  } catch (error) {
+    return sessionResponse(error);
+  }
   const body = await request.json();
   const messages = body.messages as UIMessage[];
   if (
@@ -45,12 +57,18 @@ export const POST = async (request: Request) => {
       { status: 400 },
     );
   const threadId = body.id.split("~").at(-1)!;
+  if (session && threadId !== session.thread.harnessThreadId)
+    return Response.json(
+      { error: "This conversation does not belong to this session." },
+      { status: 403 },
+    );
+  const scope = session?.thread.id;
   const history = messages.slice(0, -1);
   const stream = createUIMessageStream({
     onError: (error) =>
       `tress: ${error instanceof Error ? error.message : String(error)}`,
     execute: async ({ writer }) => {
-      const workspace = await managedWorkspace(threadId, history);
+      const workspace = await managedWorkspace(threadId, history, scope);
       let toolId = "";
       let toolCount = 0;
       const session = await openSession(workspace, {
@@ -62,7 +80,11 @@ export const POST = async (request: Request) => {
             output: result,
             providerExecuted: true,
           });
-          await refreshManagedFiles(threadId);
+          const files = await refreshManagedFiles(threadId, scope, workspace);
+          writer.write({
+            type: "message-metadata",
+            messageMetadata: { provider: { tress: { files } } },
+          });
         },
       });
       writer.write({ type: "start" });
@@ -98,7 +120,7 @@ export const POST = async (request: Request) => {
           type: "data-tress-context",
           data: session.checkpoint(),
         });
-        const files = await refreshManagedFiles(threadId);
+        const files = await refreshManagedFiles(threadId, scope, workspace);
         writer.write({ type: "data-files", data: files });
         writer.write({
           type: "finish",
