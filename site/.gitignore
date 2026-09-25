@@ -4,3 +4,5 @@ dist/
 .env
 .env.local
 .env.*.local
+src/farm.d.ts
+src/lib/api.generated.ts
