@@ -9,9 +9,11 @@
     "wasm": "cargo build -p tress-wasm --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-dir public/pkg ../target/wasm32-unknown-unknown/release/tress_wasm.wasm"
   },
   "dependencies": {
+    "@assistant-ui/tap": "^0.9.19",
     "@farm.js/core": "0.1.0-beta.104",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "statewire": "^0.19.4"
   },
   "devDependencies": {
     "@farm.js/cli": "0.1.0-beta.104",

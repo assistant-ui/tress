@@ -6,3 +6,4 @@ dist/
 .env.*.local
 src/farm.d.ts
 src/lib/api.generated.ts
+src/server/pkg-node/
