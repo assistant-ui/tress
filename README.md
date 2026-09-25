@@ -26,10 +26,26 @@ Done — greet.py works, it printed "hello, tress".
 - **Five tools**: `read`, `write`, `edit`, `ls`, `bash`. File tools are scoped to the directory you started in and refuse paths that escape it.
 - **You approve shell commands.** Every `bash` call asks before it runs; answer `a` to stop being asked for the rest of the session. With no terminal attached (a pipe, CI), gated calls are denied rather than silently run.
 - **Streaming**: replies appear as they are generated; tool activity stays inline in the transcript.
+- **Portable core**: the engine, tools, and message assembly build for `wasm32` — the HTTP transport and terminal are the only native-only parts.
+
+## In the browser
+
+The core compiles to wasm: `crates/tress-wasm` binds it for JS, and the same
+engine runs in a tab against an in-memory workspace with no install. Build
+instructions and a working demo are in [crates/tress-wasm](crates/tress-wasm).
+
+```js
+const session = new TressSession("/v1/messages", "claude-sonnet-5", {}, files);
+await session.send("add a greet function in greet.py", onEvent);
+```
 
 ## Status
 
-Early. The engine is a library (`tress::Engine`) driving a `Provider` over a `Tools` surface, with terminal I/O kept out of the core — so the same engine is meant to back a browser (wasm) build and embedded hosts, and to attach its session to a [statewire](https://github.com/assistant-ui/statewire-rs) thread so a session can be watched and steered from anywhere. Neither of those has landed yet.
+Early. The engine is a library (`tress::Engine`) driving a `Provider` over a
+`Tools` surface, with no I/O of its own — which is what lets the terminal
+binary, the browser build, and embedded hosts share it. Still to come:
+attaching a session to a [statewire](https://github.com/assistant-ui/statewire-rs)
+thread, so a run can be watched and steered from another device.
 
 ## Configuration
 
