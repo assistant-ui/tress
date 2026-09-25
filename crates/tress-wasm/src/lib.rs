@@ -49,7 +49,7 @@ impl Provider for FetchProvider {
         init.set_headers(&headers);
 
         let request = Request::new_with_str_and_init(&self.url, &init).map_err(js_error)?;
-        let response: Response = JsFuture::from(fetch(&request))
+        let response: Response = JsFuture::from(fetch(&request)?)
             .await
             .map_err(js_error)?
             .dyn_into()
@@ -122,16 +122,23 @@ fn js_error(error: JsValue) -> ProviderError {
     )
 }
 
-/// `fetch` from a window or a worker, so the bindings work in both.
-fn fetch(request: &Request) -> js_sys::Promise {
+/// Calls the global `fetch`, whatever the host is.
+///
+/// Reaching through `globalThis` rather than `Window` keeps the bindings
+/// working in a page, a worker, and Node, which is what lets the same module
+/// run the agent server-side.
+fn fetch(request: &Request) -> Result<js_sys::Promise, ProviderError> {
     let global = js_sys::global();
-    if let Ok(window) = global.clone().dyn_into::<web_sys::Window>() {
-        window.fetch_with_request(request)
-    } else {
-        global
-            .unchecked_into::<web_sys::WorkerGlobalScope>()
-            .fetch_with_request(request)
-    }
+    let handle = js_sys::Reflect::get(&global, &JsValue::from_str("fetch"))
+        .map_err(|_| ProviderError::Http("no global fetch".into()))?;
+    let function: js_sys::Function = handle
+        .dyn_into()
+        .map_err(|_| ProviderError::Http("global fetch is not callable".into()))?;
+    function
+        .call1(&global, request)
+        .map_err(js_error)?
+        .dyn_into()
+        .map_err(|_| ProviderError::Http("fetch did not return a promise".into()))
 }
 
 /// An agent session backed by an in-memory workspace.
