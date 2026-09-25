@@ -44,6 +44,7 @@ struct Printed {
     started: bool,
     text: usize,
     tools: usize,
+    running: bool,
 }
 
 const PROTOCOL: &str = "default";
@@ -181,6 +182,14 @@ fn render(value: &Value, printed: &mut Printed, style: &crate::Style) {
     if let Some(entry) = state.entries.get(printed.done) {
         emit(entry, printed, style, false);
     }
+
+    // Leave the cursor on its own line once a run settles, so what the user
+    // types next does not continue the agent's last sentence.
+    let running = state.status == "running";
+    if printed.running && !running {
+        println!();
+    }
+    printed.running = running;
 }
 
 /// Emits what is new in one entry. `complete` closes it off, for an entry
