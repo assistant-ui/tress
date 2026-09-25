@@ -38,7 +38,7 @@ fn usage() -> String {
          usage:\n  \
          tress                 start a session in the current directory\n  \
          tress ask <prompt>    run one prompt and exit\n  \
-         tress attach <url>    join a thread and follow it live\n  \
+         tress attach <url>    join a thread and follow it live (a host is enough)\n  \
          tress --help          this text\n\n\
          environment:\n  \
          ANTHROPIC_API_KEY     required\n  \

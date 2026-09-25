@@ -45,7 +45,31 @@ struct Printed {
 
 const PROTOCOL: &str = "default";
 
-pub async fn run(url: &str, style: &crate::Style) -> Result<(), String> {
+/// Where a host serves its thread when the URL names only an origin.
+const DEFAULT_PATH: &str = "/api/thread";
+
+/// Expands what a person is likely to type into the thread's URL.
+///
+/// An origin alone (`localhost:5312`, `https://example.com`) means that
+/// host's default thread; a URL that already carries a path is used as
+/// given, so other layouts still work.
+fn thread_url(input: &str) -> String {
+    let with_scheme = if input.contains("://") {
+        input.to_owned()
+    } else {
+        format!("http://{input}")
+    };
+    let trimmed = with_scheme.trim_end_matches('/').to_owned();
+    let after_scheme = trimmed.find("://").map_or(0, |index| index + 3);
+    if trimmed[after_scheme..].contains('/') {
+        trimmed
+    } else {
+        format!("{trimmed}{DEFAULT_PATH}")
+    }
+}
+
+pub async fn run(input: &str, style: &crate::Style) -> Result<(), String> {
+    let url = &thread_url(input);
     let config = Config {
         client_id: generate_client_id(),
         wire: VersionRange::exact(WIRE_VERSION),
@@ -173,5 +197,46 @@ fn render(value: &Value, printed: &mut Printed, style: &crate::Style) {
             println!();
         }
         printed.status = state.status;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::thread_url;
+
+    #[test]
+    fn an_origin_gets_the_default_thread_path() {
+        for input in [
+            "http://localhost:5312",
+            "http://localhost:5312/",
+            "localhost:5312",
+        ] {
+            assert_eq!(
+                thread_url(input),
+                "http://localhost:5312/api/thread",
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn https_and_bare_hosts_work() {
+        assert_eq!(
+            thread_url("https://demo.example"),
+            "https://demo.example/api/thread"
+        );
+        assert_eq!(thread_url("example.com"), "http://example.com/api/thread");
+    }
+
+    #[test]
+    fn an_explicit_path_is_left_alone() {
+        assert_eq!(
+            thread_url("http://localhost:5312/threads/abc"),
+            "http://localhost:5312/threads/abc"
+        );
+        assert_eq!(
+            thread_url("http://localhost:5312/api/thread/"),
+            "http://localhost:5312/api/thread"
+        );
     }
 }
