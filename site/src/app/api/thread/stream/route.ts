@@ -1,4 +1,14 @@
-import { threadHost } from "../../../../server/thread";
+import { trackStreamPresence } from "../../../../server/presence";
+import { getThreadBackend } from "../../../../server/thread-backend";
 
-export const GET = (request: Request) => threadHost.stream(request);
-export const POST = (request: Request) => threadHost.stream(request);
+const stream = async (request: Request) => {
+  const backend = await getThreadBackend(request);
+  return trackStreamPresence(
+    request,
+    await backend.host.stream(request),
+    backend.presence,
+  );
+};
+
+export const GET = stream;
+export const POST = GET;

@@ -1,8 +1,9 @@
 # tress-wasm
 
-Browser bindings for the tress agent core. The same `tress::Engine` the
-terminal binary runs drives an in-memory workspace here and reaches the model
-through the browser's own `fetch`.
+Browser and Node bindings for the tress agent core. The same `tress::Engine`
+the terminal binary runs reaches the model through the host's `fetch`.
+`TressSession` supplies an in-memory workspace; `TressHostSession` delegates
+asynchronous tools to your application.
 
 ## Build
 
@@ -45,8 +46,29 @@ await session.send("add a greet function in greet.py", (raw) => {
 console.log(session.files());           // { path: contents }
 ```
 
-The in-memory surface offers `read`, `write`, `edit`, and `ls` — no shell,
-because a browser has none, and a surface advertises only what it can honor.
+The original in-memory surface offers `read`, `write`, `edit`, and `ls`.
+
+## Host tools, local files, and sandboxes
+
+`TressHostSession` takes `(url, model, headers, schemasJson, execute)`.
+`execute(name, inputJson)` returns a promise of JSON text with
+`{ content: string, is_error: boolean }`. The host enforces authorization before
+executing tools. The engine waits for the result before its next model request.
+
+Use [`@tress/workspaces`](../../packages/workspaces/README.md) for typed agent
+bindings, just-bash, local disk/overlay adapters, remote sandbox adapters,
+custom tools, and asynchronous approval policy. The site uses Farm's
+`@farm.js/wasm` plugin with `wasm-bindgen --target bundler` bindings, generated
+automatically before development and production builds. Import the generated
+JS entry point; its WASM import initializes through the plugin. The site's
+shared agent still runs on the Node host.
+
+For standalone Node consumers, `npm --prefix site run wasm:node` generates
+CommonJS bindings. The separate `--target web` demo above still uses `await init()`.
+
+Host sessions expose `messages()`, `restoreMessages(json)`, and `setSystem(text)`.
+Store trusted model checkpoints separately from workspace files. These methods
+do not persist anything automatically or recover a half-completed tool call.
 
 ## Keys
 

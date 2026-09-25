@@ -25,4 +25,27 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build -p tress-wasm --target wasm32-unknown-unknown --release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            packages/workspaces/package-lock.json
+            site/package-lock.json
+      - run: npm --prefix packages/workspaces ci
+      - run: npm --prefix packages/workspaces run build
+      - run: npm --prefix packages/workspaces test
+      - name: Install matching WASM bindings generator
+        run: |
+          tress_bindgen_version=$(python3 -c 'import tomllib; print(next(p["version"] for p in tomllib.load(open("Cargo.lock", "rb"))["package"] if p["name"] == "wasm-bindgen"))')
+          cargo install wasm-bindgen-cli --version "$tress_bindgen_version" --locked
+      - run: npm --prefix site ci
+      - run: npm --prefix site run wasm
+      - run: npm --prefix site run wasm:node
+      - run: npm --prefix packages/workspaces run test:wasm
+      - run: npx tsc --noEmit
+        working-directory: site
+      - run: npm --prefix site run build
+      - run: cargo build -p tress
+      - run: npm --prefix site run test:host
+      - run: npm --prefix site run test:host:dev

@@ -2,91 +2,102 @@ import React from "react";
 import { Thread } from "../components/Thread";
 import { InstallLine } from "../components/InstallLine";
 
-const FEATURES: { title: string; body: string }[] = [
-  {
-    title: "The session outlives the window",
-    body: "A run lives in a thread on a host, not in your terminal. Close the lid mid-task and the agent keeps working. Come back and the transcript, the files, and the result are all there.",
-  },
-  {
-    title: "Many clients, one run",
-    body: "A thread is replicated state, so a terminal, a browser, and a phone can all watch the same run at once. Open this page twice and both follow along.",
-  },
-  {
-    title: "Tiny native binary",
-    body: "4.2 MB, no background service. It starts, does the work, and exits. Install it in a terminal, a CI job, or an agent sandbox.",
-  },
-  {
-    title: "Runs in the browser",
-    body: "The core carries no I/O of its own, so it compiles to 312 KB of WebAssembly and runs in a tab, in a worker, or on a server. No JSPI, no flags.",
-  },
-  {
-    title: "You approve the shell",
-    body: "Every command asks first. With no terminal attached, gated calls are denied rather than quietly run. File tools refuse paths that escape the workspace.",
-  },
-  {
-    title: "Embeddable and model agnostic",
-    body: "Tools and Provider are traits. Supply your own filesystem and transport and the loop is unchanged — the browser build is exactly that swap.",
-  },
-];
+const SOURCE = "https://github.com/assistant-ui/tress";
 
 export default function HomePage() {
   return (
-    <main className="page">
-      <header className="top">
-        <h1>Durable, tiny, native coding agent.</h1>
-        <InstallLine />
-        <p className="sub">
-          v0.1.0 · 4.2 MiB · status: <span className="warn">experimental</span>
-          <br />
-          <span className="soft">
-            early and changing often — the tool surface is deliberately small
-          </span>
-        </p>
+    <div className="page">
+      <a className="skip-link" href="#demo">
+        Skip to terminal
+      </a>
+      <header className="site-header">
+        <a className="wordmark" href="#" aria-label="tress home">
+          tress
+        </a>
+        <span className="nav-divider" aria-hidden="true">
+          /
+        </span>
+        <nav aria-label="Main navigation">
+          <a href="#demo">try</a>
+          <a href="#about">about</a>
+          <a href={`${SOURCE}#readme`}>docs</a>
+          <a href={SOURCE}>source ↗</a>
+        </nav>
       </header>
 
-      <section className="demo">
-        <Thread />
-        <p className="note">
-          This thread runs on the server, not in this tab. Start a run and then
-          close the tab, or open this page in a second window — the work
-          continues and every client sees the same thread.
-        </p>
-      </section>
+      <main>
+        <section className="intro" aria-labelledby="page-title">
+          <h1 id="page-title">
+            Tiny, native coding agent. One durable thread.
+          </h1>
+          <InstallLine />
+          <p className="version">
+            v0.1.0 · Rust + WebAssembly · status: <span>experimental</span>
+          </p>
+        </section>
 
-      <section className="prose">
-        <p>
-          tress is a coding agent built around one idea: the session is a
-          thread, and the thread is not owned by your terminal. The agent is a
-          small Rust core with no I/O of its own, so the same engine runs as a
-          native binary, inside a browser tab, and on a server driving a
-          replicated thread.
-        </p>
-        <p>
-          It reads and edits files, runs commands you approve, and reports what
-          it did. Its output is closer to a Unix shell than an IDE.
-        </p>
-        <p>
-          It is open source under MIT, model agnostic, and suitable for local
-          work, CI, and hosted use.
-        </p>
-      </section>
+        <section id="demo" aria-label="Live terminal demo">
+          <Thread />
+          <p className="demo-note">
+            The agent runs on the host. Close this tab, attach a terminal, or
+            open another window — the same thread is waiting.
+          </p>
+        </section>
 
-      <div className="rule">* * *</div>
+        <section className="about" id="about" aria-label="About tress">
+          <p>
+            tress is a small coding agent written in Rust. It reads and edits
+            files, works through a task, and keeps tool activity in the
+            conversation.
+          </p>
+          <p>
+            The session belongs to a thread. Your terminal and browser are just
+            ways to connect to it. Start in one, follow along in the other, and
+            pick up where you left off.
+          </p>
+          <p>
+            Open source under MIT. A native binary, with the same core compiled
+            to WebAssembly.
+          </p>
 
-      <section className="features">
-        {FEATURES.map((feature) => (
-          <article key={feature.title}>
-            <h2>{feature.title}</h2>
-            <p>{feature.body}</p>
+          <div className="rule" aria-hidden="true">
+            * * *
+          </div>
+
+          <article>
+            <h2>A thread that stays with you</h2>
+            <p>
+              The host keeps working when every client disconnects. Reattach to
+              recover the conversation and files. Managed Harness stores the
+              conversation across server restarts. Local execution continues
+              while the host is running.
+            </p>
           </article>
-        ))}
-      </section>
+          <article>
+            <h2>A small tool surface</h2>
+            <p>
+              <code>read</code>, <code>write</code>, <code>edit</code>,{" "}
+              <code>ls</code>, and <code>bash</code>. Local shell commands ask
+              for approval in the native CLI. The shared host supports virtual
+              files, a local directory, or a remote sandbox.
+            </p>
+          </article>
+          <article>
+            <h2>One engine, a few places to run</h2>
+            <p>
+              Use the native CLI in your project, or embed the Wasm core in a
+              browser or server. Supply your own tools and provider; keep the
+              agent loop.
+            </p>
+          </article>
+        </section>
+      </main>
 
       <footer>
-        <a href="https://github.com/assistant-ui/tress">github</a>
+        <a href={SOURCE}>source</a>
         <a href="https://github.com/assistant-ui/statewire-rs">statewire</a>
-        <span className="soft">MIT · built with farm.js</span>
+        <span>MIT · built with farm.js</span>
       </footer>
-    </main>
+    </div>
   );
 }

@@ -1,74 +1,36 @@
-// Loads the agent engine for server-side use.
-//
-// The wasm module is resolved from this file's own directory, which is the
-// one path that stays correct however routes are bundled.
+// Farm loads the WASM engine; credentials and workspace tools stay on the host.
+import {
+  createAgent,
+  WORKSPACE_TOOLS,
+  type Workspace,
+  type WorkspaceToolsOptions,
+} from "@tress/workspaces";
+import { workspaceConfig } from "./workspace";
 
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
-
-export type TressSession = {
-  send: (prompt: string, onEvent: (raw: string) => void) => Promise<void>;
-  files: () => Record<string, string>;
-};
-
-type Ctor = new (
-  url: string,
-  model: string,
-  headers: Record<string, string>,
-  files: Record<string, string>,
-) => TressSession;
-
-/** A session over `files`, talking to the Messages API with the server's key. */
-export const openSession = (files: Record<string, string>): TressSession => {
+export const openSession = async (
+  workspace: Workspace,
+  options: Pick<WorkspaceToolsOptions, "onToolResult" | "onObserverError"> & {
+    messages?: unknown[];
+  } = {},
+) => {
+  const { messages, ...hooks } = options;
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set on the server");
-  const { TressSession } = require("./pkg-node/tress_wasm.js") as {
-    TressSession: Ctor;
-  };
-  return new TressSession(
-    "https://api.anthropic.com/v1/messages",
-    process.env.TRESS_MODEL ?? "claude-sonnet-5",
-    { "x-api-key": key, "anthropic-version": "2023-06-01" },
-    files,
-  );
+  const { TressHostSession } = await import("../wasm/pkg/tress_wasm.js");
+  const { writes } = workspaceConfig();
+  const virtual = workspace.kind !== "vercel";
+  return createAgent({
+    Session: TressHostSession,
+    workspace,
+    url: process.env.TRESS_API_URL ?? "https://api.anthropic.com/v1/messages",
+    model: process.env.TRESS_MODEL ?? "claude-sonnet-5",
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+    system: `You are tress, a coding agent working in a shared workspace. Browser and terminal clients share this conversation and its files.
+Answer questions directly. Only inspect or change files when needed for the user's request. Paths are relative to the workspace root.
+${virtual ? "The shell is just-bash: simulated file and text commands, not a native operating system. Node, npm, git, and project test runners are not available. Never claim tests ran unless a tool actually ran them." : "Commands run inside the remote sandbox, with a timeout. Installed runtimes and dependencies belong to that sandbox."}
+${writes ? "Read relevant files before editing, make the smallest useful change, and report what you verified." : "This workspace is read-only; explain proposed changes without trying to write files."}
+Keep replies short and concrete.`,
+    tools: { include: writes ? WORKSPACE_TOOLS : ["read", "ls"], ...hooks },
+    messages,
+  });
 };
-
-export const SEED_FILES = (): Record<string, string> => ({
-  "retry.js": `export async function retry(fn, attempts = 5) {
-  let lastError;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError;
-}
-`,
-  "retry.test.js": `import { retry } from "./retry.js";
-
-test("gives up at once on a client error", async () => {
-  let calls = 0;
-  const fn = async () => {
-    calls += 1;
-    throw Object.assign(new Error("bad request"), { status: 400 });
-  };
-  await expect(retry(fn)).rejects.toThrow("bad request");
-  expect(calls).toBe(1);
-});
-
-test("waits between attempts instead of hammering", async () => {
-  const started = Date.now();
-  let calls = 0;
-  const fn = async () => {
-    calls += 1;
-    if (calls < 3) throw Object.assign(new Error("busy"), { status: 503 });
-    return "ok";
-  };
-  await expect(retry(fn)).resolves.toBe("ok");
-  expect(Date.now() - started).toBeGreaterThanOrEqual(20);
-});
-`,
-});

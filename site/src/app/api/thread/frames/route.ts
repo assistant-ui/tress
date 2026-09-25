@@ -1,3 +1,4 @@
-import { threadHost } from "../../../../server/thread";
+import { getThreadHost } from "../../../../server/thread-backend";
 
-export const POST = (request: Request) => threadHost.frames(request);
+export const POST = async (request: Request) =>
+  (await getThreadHost(request)).frames(request);

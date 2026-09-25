@@ -75,11 +75,8 @@ export function Terminal() {
     let cancelled = false;
     (async () => {
       try {
-        // Built by wasm-bindgen into public/, so it is loaded at runtime
-        // rather than resolved by the bundler.
-        const url = new URL("/pkg/tress_wasm.js", window.location.origin).href;
-        const module = await import(/* @vite-ignore */ url);
-        await module.default();
+        // Farm resolves the generated bindings and initializes their WASM import.
+        const module = await import("../wasm/pkg/tress_wasm.js");
         if (cancelled) return;
         session.current = new module.TressSession(
           "/api/messages",

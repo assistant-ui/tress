@@ -1,29 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { CopyButton } from "./CopyButton";
 
-const COMMAND = "cargo install --git https://github.com/assistant-ui/tress tress";
+const COMMAND =
+  "cargo install --git https://github.com/assistant-ui/tress tress";
 
 export function InstallLine() {
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(COMMAND);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      setCopied(false);
-    }
-  };
-
   return (
     <div className="install">
-      <span className="sigil">$</span>
+      <span className="sigil" aria-hidden="true">
+        $
+      </span>
       <code>{COMMAND}</code>
-      <button type="button" onClick={copy}>
-        {copied ? "copied" : "copy"}
-      </button>
+      <CopyButton text={COMMAND} label="Copy install command" />
     </div>
   );
 }

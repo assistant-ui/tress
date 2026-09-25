@@ -1,7 +1,7 @@
-//! Browser bindings for the tress agent core.
+//! Browser and Node bindings for the tress agent core.
 //!
 //! The same [`tress::Engine`] the terminal binary runs drives an in-memory
-//! workspace here, and reaches the model through the browser's own `fetch`.
+//! workspace or asynchronous host tools, and reaches the model through `fetch`.
 //! The host page supplies the endpoint and any auth header, so a key never
 //! has to live in the bundle — point it at a proxy you control.
 
@@ -12,7 +12,8 @@ use js_sys::{Array, Uint8Array};
 use serde_json::Value;
 use tress::engine::{Approval, Engine, Event};
 use tress::provider::{request_body, Delta, MessageAccumulator, Provider, ProviderError, Turn};
-use tress::MemoryTools;
+use tress::tools::ToolOutcome;
+use tress::{MemoryTools, Tools};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
@@ -226,6 +227,133 @@ impl TressSession {
             )?;
         }
         Ok(object.into())
+    }
+}
+
+/// Async tool calls implemented by the embedding host. Policy is enforced
+/// in the callback, before it accesses a workspace or a remote service.
+struct HostTools {
+    schemas: Vec<Value>,
+    execute: js_sys::Function,
+}
+
+impl Tools for HostTools {
+    fn schemas(&self) -> Vec<Value> {
+        self.schemas.clone()
+    }
+
+    fn needs_approval(&self, _: &str, _: &Value) -> bool {
+        false
+    }
+
+    async fn execute_async(&mut self, name: &str, input: &Value) -> ToolOutcome {
+        if !self.schemas.iter().any(|schema| schema["name"] == name) {
+            return ToolOutcome::error(format!("Unknown tool: {name}"));
+        }
+        let result = async {
+            let value = self.execute.call2(
+                &JsValue::NULL,
+                &JsValue::from_str(name),
+                &JsValue::from_str(&input.to_string()),
+            )?;
+            let value = JsFuture::from(js_sys::Promise::resolve(&value)).await?;
+            let raw = value
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("Tool must return JSON text"))?;
+            let result: Value = serde_json::from_str(&raw)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+            match (result["content"].as_str(), result["is_error"].as_bool()) {
+                (Some(content), Some(is_error)) => Ok(ToolOutcome {
+                    content: content.to_owned(),
+                    is_error,
+                }),
+                _ => Err(JsValue::from_str(
+                    "Tool result requires content and is_error",
+                )),
+            }
+        }
+        .await;
+        result.unwrap_or_else(|error| ToolOutcome::error(js_error(error).to_string()))
+    }
+}
+
+/// An embeddable session whose tools are provided asynchronously by JS.
+/// The host owns workspace lifetime, credentials, authorization, and storage.
+#[wasm_bindgen]
+pub struct TressHostSession {
+    engine: Engine<FetchProvider, HostTools>,
+}
+
+#[wasm_bindgen]
+impl TressHostSession {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        url: String,
+        model: String,
+        headers: JsValue,
+        schemas: String,
+        execute: js_sys::Function,
+    ) -> Result<TressHostSession, JsValue> {
+        let schemas: Vec<Value> = serde_json::from_str(&schemas)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        if schemas
+            .iter()
+            .any(|s| s["name"].as_str().is_none() || !s["input_schema"].is_object())
+        {
+            return Err(JsValue::from_str("Invalid tool definitions"));
+        }
+        let provider = FetchProvider {
+            url,
+            model,
+            headers: entries(&headers)?,
+            max_tokens: 16_000,
+        };
+        Ok(Self {
+            engine: Engine::new(provider, HostTools { schemas, execute }),
+        })
+    }
+
+    pub async fn send(
+        &mut self,
+        prompt: String,
+        on_event: js_sys::Function,
+    ) -> Result<(), JsValue> {
+        let mut emit = |event: Event| {
+            let value = match event {
+                Event::Text(text) => serde_json::json!({"type":"text", "text":text}),
+                Event::ToolStarted { name, summary } => {
+                    serde_json::json!({"type":"tool", "name":name, "summary":summary})
+                }
+                Event::ToolFinished { name, is_error } => {
+                    serde_json::json!({"type":"tool_done", "name":name, "isError":is_error})
+                }
+                Event::Idle => serde_json::json!({"type":"idle"}),
+                _ => return,
+            };
+            let _ = on_event.call1(&JsValue::NULL, &JsValue::from_str(&value.to_string()));
+        };
+        self.engine
+            .send(&prompt, &mut emit, &mut |_, _| Approval::Deny)
+            .await
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    pub fn messages(&self) -> String {
+        serde_json::to_string(self.engine.messages()).unwrap_or_else(|_| "[]".into())
+    }
+
+    /// Only restore trusted host checkpoints, never untrusted client input.
+    #[wasm_bindgen(js_name = restoreMessages)]
+    pub fn restore_messages(&mut self, json: String) -> Result<(), JsValue> {
+        let messages: Vec<Value> =
+            serde_json::from_str(&json).map_err(|error| JsValue::from_str(&error.to_string()))?;
+        self.engine.restore_messages(messages);
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setSystem)]
+    pub fn set_system(&mut self, system: String) {
+        self.engine.set_system(system);
     }
 }
 

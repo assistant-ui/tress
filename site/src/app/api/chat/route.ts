@@ -1,98 +1,114 @@
-// The AI SDK endpoint a harness runs against.
-//
-// assistant-ui cloud owns the thread and calls this endpoint for each turn.
-// The turn is executed by the same Rust engine the binary runs, loaded here
-// as a Node wasm module, and its output is written out as AI SDK stream
-// parts so the cloud can store and replicate it.
+import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  type UIMessage,
+} from "ai";
+import { openSession } from "../../../server/agent";
+import {
+  contextFrom,
+  managedWorkspace,
+  refreshManagedFiles,
+} from "../../../server/managed-workspace";
 
-import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
-import type { UIMessage } from "ai";
-import { openSession, SEED_FILES } from "../../../server/agent";
-
-/** The text of a UI message, whatever part shape it arrived in. */
-const textOf = (message: UIMessage | undefined): string =>
-  (message?.parts ?? [])
-    .map((part) => ("text" in part && typeof part.text === "string" ? part.text : ""))
+/** Managed Harness calls this endpoint with its persisted conversation. */
+export const POST = async (request: Request) => {
+  const body = await request.json();
+  const messages = body.messages as UIMessage[];
+  if (
+    !Array.isArray(messages) ||
+    messages.some((m) => !m || !Array.isArray(m.parts)) ||
+    messages.at(-1)?.role !== "user"
+  )
+    return Response.json(
+      { error: "Expected a conversation ending with a user message." },
+      { status: 400 },
+    );
+  const prompt = messages
+    .at(-1)!
+    .parts.filter((part) => part.type === "text")
+    .map((part) => part.text)
     .join("")
     .trim();
-
-/**
- * Rebuilds the workspace from the transcript.
- *
- * The cloud owns thread history, not this endpoint, so each turn replays the
- * files recorded on earlier turns rather than keeping state in this process.
- */
-const workspaceFrom = (messages: UIMessage[]): Record<string, string> => {
-  let files = SEED_FILES();
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      if (
-        part.type === "data-files" &&
-        part.data &&
-        typeof part.data === "object"
-      ) {
-        files = part.data as Record<string, string>;
-      }
-    }
-  }
-  return files;
-};
-
-export const POST = async (request: Request) => {
-  const { messages } = (await request.json()) as { messages: UIMessage[] };
-  const prompt = textOf(messages.filter((m) => m.role === "user").at(-1));
-  const key = process.env.ANTHROPIC_API_KEY;
-
+  if (!prompt)
+    return Response.json(
+      { error: "A text prompt is required." },
+      { status: 400 },
+    );
+  if (!process.env.ANTHROPIC_API_KEY)
+    return Response.json(
+      { error: "ANTHROPIC_API_KEY is not configured." },
+      { status: 503 },
+    );
+  if (typeof body.id !== "string" || !body.id)
+    return Response.json(
+      { error: "A managed thread id is required." },
+      { status: 400 },
+    );
+  const threadId = body.id.split("~").at(-1)!;
+  const history = messages.slice(0, -1);
   const stream = createUIMessageStream({
-    onError: (error) => `tress: ${error instanceof Error ? error.message : String(error)}`,
+    onError: (error) =>
+      `tress: ${error instanceof Error ? error.message : String(error)}`,
     execute: async ({ writer }) => {
-      if (!key) {
-        writer.write({
-          type: "text-start",
-          id: "t0",
-        });
-        writer.write({
-          type: "text-delta",
-          id: "t0",
-          delta: "The server has no ANTHROPIC_API_KEY, so this turn cannot run.",
-        });
-        writer.write({ type: "text-end", id: "t0" });
-        return;
-      }
-
-      const session = openSession(workspaceFrom(messages));
-
-      const id = "t0";
-      let open = false;
-      await session.send(prompt, (raw: string) => {
-        const event = JSON.parse(raw) as {
-          type: string;
-          text?: string;
-          summary?: string;
-        };
-        if (event.type === "text" && event.text) {
-          if (!open) {
-            writer.write({ type: "text-start", id });
-            open = true;
-          }
-          writer.write({ type: "text-delta", id, delta: event.text });
-        } else if (event.type === "tool" && event.summary) {
-          // Tool activity rides as transient data so it shows while the run
-          // streams without becoming part of the stored transcript.
+      const workspace = await managedWorkspace(threadId, history);
+      let toolId = "";
+      let toolCount = 0;
+      const session = await openSession(workspace, {
+        messages: contextFrom(history),
+        onToolResult: async (_call, result) => {
           writer.write({
-            type: "data-tool",
-            data: { summary: event.summary },
-            transient: true,
+            type: "tool-output-available",
+            toolCallId: toolId,
+            output: result,
+            providerExecuted: true,
           });
-        }
+          await refreshManagedFiles(threadId);
+        },
       });
-      if (open) writer.write({ type: "text-end", id });
-
-      // The resulting workspace is recorded on the turn, which is what the
-      // next turn replays.
-      writer.write({ type: "data-files", data: session.files() });
+      writer.write({ type: "start" });
+      let textId: string | undefined;
+      let textCount = 0;
+      const closeText = () => {
+        if (textId) writer.write({ type: "text-end", id: textId });
+        textId = undefined;
+      };
+      try {
+        await session.send(prompt, (event) => {
+          if (event.type === "text" && event.text) {
+            if (!textId) {
+              textId = `text-${++textCount}`;
+              writer.write({ type: "text-start", id: textId });
+            }
+            writer.write({ type: "text-delta", id: textId, delta: event.text });
+          } else if (event.type === "tool") {
+            closeText();
+            toolId = `tool-${++toolCount}`;
+            writer.write({
+              type: "tool-input-available",
+              toolCallId: toolId,
+              toolName: event.name,
+              input: { summary: event.summary },
+              providerExecuted: true,
+              dynamic: true,
+            });
+          }
+        });
+        closeText();
+        writer.write({
+          type: "data-tress-context",
+          data: session.checkpoint(),
+        });
+        const files = await refreshManagedFiles(threadId);
+        writer.write({ type: "data-files", data: files });
+        writer.write({
+          type: "finish",
+          finishReason: "stop",
+          messageMetadata: { provider: { tress: { files } } },
+        });
+      } finally {
+        session.dispose();
+      }
     },
   });
-
   return createUIMessageStreamResponse({ stream });
 };

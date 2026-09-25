@@ -90,6 +90,16 @@ impl<P: Provider, T: Tools> Engine<P, T> {
         &self.messages
     }
 
+    /// Restore a trusted checkpoint in the provider's message format.
+    /// Call only between turns; storage and validation belong to the host.
+    pub fn restore_messages(&mut self, messages: Vec<Value>) {
+        self.messages = messages;
+    }
+
+    pub fn set_system(&mut self, system: impl Into<String>) {
+        self.system = system.into();
+    }
+
     pub fn tools_mut(&mut self) -> &mut T {
         &mut self.tools
     }
@@ -149,12 +159,12 @@ impl<P: Provider, T: Tools> Engine<P, T> {
                         }
                         Approval::Always => {
                             self.always_allowed.push(name.clone());
-                            self.tools.execute(&name, &input)
+                            self.tools.execute_async(&name, &input).await
                         }
-                        Approval::Once => self.tools.execute(&name, &input),
+                        Approval::Once => self.tools.execute_async(&name, &input).await,
                     }
                 } else {
-                    self.tools.execute(&name, &input)
+                    self.tools.execute_async(&name, &input).await
                 };
 
                 on_event(Event::ToolFinished {
@@ -290,6 +300,57 @@ mod tests {
         assert_eq!(events.last(), Some(&Event::Idle));
         assert!(calls.lock().unwrap().is_empty());
         assert_eq!(engine.messages().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn async_tools_are_awaited_and_denied_calls_do_not_execute() {
+        struct AsyncTools {
+            calls: Arc<Mutex<usize>>,
+        }
+        impl Tools for AsyncTools {
+            fn schemas(&self) -> Vec<Value> {
+                vec![]
+            }
+            fn needs_approval(&self, _: &str, _: &Value) -> bool {
+                true
+            }
+            async fn execute_async(&mut self, _: &str, _: &Value) -> ToolOutcome {
+                tokio::task::yield_now().await;
+                *self.calls.lock().unwrap() += 1;
+                ToolOutcome::ok("async completed")
+            }
+        }
+        for decision in [Approval::Deny, Approval::Once] {
+            let calls = Arc::new(Mutex::new(0));
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let provider = ScriptedProvider {
+                turns: Arc::new(Mutex::new(vec![
+                    tool_turn("remote", json!({})),
+                    text_turn("done"),
+                ])),
+                seen: seen.clone(),
+            };
+            let mut engine = Engine::new(
+                provider,
+                AsyncTools {
+                    calls: calls.clone(),
+                },
+            );
+            engine
+                .send("go", &mut |_| {}, &mut |_, _| decision)
+                .await
+                .unwrap();
+            assert_eq!(
+                *calls.lock().unwrap(),
+                usize::from(decision == Approval::Once)
+            );
+            let requests = seen.lock().unwrap();
+            let result = &requests[1][2]["content"][0];
+            assert_eq!(result["is_error"], decision == Approval::Deny);
+            if decision == Approval::Once {
+                assert_eq!(result["content"], "async completed");
+            }
+        }
     }
 
     #[tokio::test]

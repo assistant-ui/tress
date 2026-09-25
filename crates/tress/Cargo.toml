@@ -20,6 +20,10 @@ statewire = { version = "0.1.0", features = ["http"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-util", "io-std", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "json", "rustls-tls"] }
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm", "unstable-rendered-line-info"] }
+crossterm = { version = "0.29.0", features = ["event-stream"] }
+unicode-width = "0.2"
+unicode-segmentation = "1.12"
 
 [[bin]]
 name = "tress"

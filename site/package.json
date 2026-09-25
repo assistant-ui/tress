@@ -3,16 +3,27 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "npm --prefix ../packages/workspaces run build && npm run wasm",
     "dev": "farm dev",
+    "demo:local": "node scripts/local-demo.mjs",
+    "prebuild": "npm --prefix ../packages/workspaces run build && npm run wasm",
     "build": "farm build",
     "preview": "farm preview",
-    "wasm": "cargo build -p tress-wasm --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-dir public/pkg ../target/wasm32-unknown-unknown/release/tress_wasm.wasm"
+    "test:config": "node --test scripts/demo-config.test.mjs",
+    "test:host": "node --test scripts/local-demo.test.mjs scripts/managed.test.mjs scripts/demo-config.test.mjs && node scripts/verify-workspaces.mjs && node scripts/verify-managed-boot.mjs",
+    "test:host:dev": "node scripts/verify-workspaces.mjs --dev",
+    "wasm": "node scripts/build-wasm.mjs",
+    "wasm:node": "node scripts/build-wasm.mjs nodejs"
   },
   "dependencies": {
     "@assistant-ui/tap": "^0.9.19",
     "@farm.js/core": "0.1.0-beta.104",
+    "@farm.js/wasm": "0.1.0-beta.0",
+    "@tress/workspaces": "file:../packages/workspaces",
+    "@vercel/sandbox": "^3.5.0",
     "ai": "^7.0.114",
-    "harness-sdk": "^0.2.0",
+    "harness-sdk": "file:vendor/harness-sdk-0.3.0.tgz",
+    "just-bash": "^3.4.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "statewire": "^0.19.4"
@@ -24,5 +35,10 @@
     "@types/react-dom": "^19.0.0",
     "typescript": "^5.3.3",
     "vite": "^5.0.10"
+  },
+  "overrides": {
+    "@farm.js/wasm": {
+      "@farm.js/core": "$@farm.js/core"
+    }
   }
 }
