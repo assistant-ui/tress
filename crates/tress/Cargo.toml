@@ -16,8 +16,9 @@ thiserror = "2"
 # The HTTP transport and the terminal binary are native-only; the core
 # (engine, tools, message assembly) compiles for wasm32 without them.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+statewire = { version = "0.1.0", features = ["http"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-util", "io-std", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "json", "rustls-tls"] }
 
 [[bin]]

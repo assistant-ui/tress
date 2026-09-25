@@ -811,6 +811,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
+name = "statewire"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "157fc0b82db5f1ac5c6825bb55c2b29f360d79b0a9d8035e1ee91923300b4d75"
+dependencies = [
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1005,6 +1019,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "statewire",
  "thiserror",
  "tokio",
 ]

@@ -8,7 +8,9 @@ use tress::tools::NativeTools;
 
 const DEFAULT_MODEL: &str = "claude-sonnet-5";
 
-mod ansi {
+mod attach;
+
+pub mod ansi {
     pub const DIM: &str = "\x1b[2m";
     pub const BOLD: &str = "\x1b[1m";
     pub const AMBER: &str = "\x1b[33m";
@@ -16,12 +18,12 @@ mod ansi {
     pub const RESET: &str = "\x1b[0m";
 }
 
-struct Style {
+pub struct Style {
     on: bool,
 }
 
 impl Style {
-    fn paint(&self, code: &str, text: &str) -> String {
+    pub fn paint(&self, code: &str, text: &str) -> String {
         if self.on {
             format!("{code}{text}{}", ansi::RESET)
         } else {
@@ -36,6 +38,7 @@ fn usage() -> String {
          usage:\n  \
          tress                 start a session in the current directory\n  \
          tress ask <prompt>    run one prompt and exit\n  \
+         tress attach <url>    join a thread and follow it live\n  \
          tress --help          this text\n\n\
          environment:\n  \
          ANTHROPIC_API_KEY     required\n  \
@@ -65,6 +68,20 @@ async fn main() -> std::process::ExitCode {
     let style = Style {
         on: std::io::stdout().is_terminal(),
     };
+
+    if args.first().is_some_and(|arg| arg == "attach") {
+        let Some(url) = args.get(1) else {
+            eprintln!("tress attach: needs a thread url");
+            return std::process::ExitCode::FAILURE;
+        };
+        return match attach::run(url, &style).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{}", style.paint(ansi::RED, &format!("error: {error}")));
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
 
     let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
         eprintln!(
