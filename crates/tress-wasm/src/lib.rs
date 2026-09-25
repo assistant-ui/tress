@@ -61,16 +61,19 @@ impl Provider for FetchProvider {
                 .ok()
                 .and_then(|text| text.as_string())
                 .unwrap_or_default();
-            return Err(ProviderError::Api(format!("{}: {detail}", response.status())));
+            return Err(ProviderError::Api(format!(
+                "{}: {detail}",
+                response.status()
+            )));
         }
 
         let stream = response
             .body()
             .ok_or_else(|| ProviderError::Http("response has no body".into()))?;
-        let reader: web_sys::ReadableStreamDefaultReader =
-            stream.get_reader().dyn_into().map_err(|_| {
-                ProviderError::Http("body reader is not a default reader".into())
-            })?;
+        let reader: web_sys::ReadableStreamDefaultReader = stream
+            .get_reader()
+            .dyn_into()
+            .map_err(|_| ProviderError::Http("body reader is not a default reader".into()))?;
 
         let mut buffer = String::new();
         let mut accumulator = MessageAccumulator::default();
@@ -83,8 +86,8 @@ impl Provider for FetchProvider {
             if done {
                 return Err(ProviderError::Truncated);
             }
-            let value = js_sys::Reflect::get(&chunk, &JsValue::from_str("value"))
-                .map_err(js_error)?;
+            let value =
+                js_sys::Reflect::get(&chunk, &JsValue::from_str("value")).map_err(js_error)?;
             let bytes = Uint8Array::new(&value).to_vec();
             buffer.push_str(&String::from_utf8_lossy(&bytes));
 
@@ -169,7 +172,11 @@ impl TressSession {
     /// Runs one turn. `on_event` receives `{type, ...}` objects: `text`,
     /// `tool`, `tool_done`, and `idle`.
     #[wasm_bindgen]
-    pub async fn send(&mut self, prompt: String, on_event: js_sys::Function) -> Result<(), JsValue> {
+    pub async fn send(
+        &mut self,
+        prompt: String,
+        on_event: js_sys::Function,
+    ) -> Result<(), JsValue> {
         let emit = |value: Value| {
             let _ = on_event.call1(
                 &JsValue::NULL,
