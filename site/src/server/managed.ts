@@ -239,12 +239,29 @@ export const createManagedGateway = async (
 };
 
 const key = Symbol.for("tress.managed.gateway");
+// Bump when the cached host's shape or resource wiring changes. Farm reloads
+// routes without clearing globalThis, so an older host can outlive its callers.
+const GATEWAY_VERSION = 1;
 type Holder = {
+  version?: number;
   gateway?: Promise<Awaited<ReturnType<typeof createManagedGateway>>>;
 };
 const holder = ((globalThis as Record<symbol, unknown>)[key] ??= {}) as Holder;
-export const managedGateway = (config: CloudMode) =>
-  (holder.gateway ??= createManagedGateway(config).catch((error) => {
-    holder.gateway = undefined;
-    throw error;
-  }));
+export const managedGateway = (config: CloudMode) => {
+  if (holder.version !== GATEWAY_VERSION || !holder.gateway) {
+    const previous = holder.gateway;
+    holder.version = GATEWAY_VERSION;
+    const gateway = (async () => {
+      // Retire the old tunnel and streams before opening their replacement.
+      // The persisted thread id keeps the managed conversation intact.
+      const stale = await previous?.catch(() => undefined);
+      stale?.dispose();
+      return createManagedGateway(config);
+    })();
+    holder.gateway = gateway;
+    void gateway.catch(() => {
+      if (holder.gateway === gateway) holder.gateway = undefined;
+    });
+  }
+  return holder.gateway;
+};
