@@ -51,7 +51,7 @@ export function Terminal() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
-  const [mode, setMode] = useState<"live" | "replay" | null>(null);
+  const [mode, setMode] = useState<"live" | "replay" | "rejected" | null>(null);
   const [files, setFiles] = useState<Record<string, string>>(SEED);
   const [open, setOpen] = useState("cart.js");
 
@@ -75,11 +75,8 @@ export function Terminal() {
     let cancelled = false;
     (async () => {
       try {
-        // Built by wasm-bindgen into public/, so it is loaded at runtime
-        // rather than resolved by the bundler.
-        const url = new URL("/pkg/tress_wasm.js", window.location.origin).href;
-        const module = await import(/* @vite-ignore */ url);
-        await module.default();
+        // Farm resolves the generated bindings and initializes their WASM import.
+        const module = await import("../wasm/pkg/tress_wasm.js");
         if (cancelled) return;
         session.current = new module.TressSession(
           "/api/messages",
@@ -93,7 +90,10 @@ export function Terminal() {
           body: JSON.stringify({ messages: [], probe: true }),
         });
         if (cancelled) return;
-        setMode(probe.headers.get("x-tress-mode") === "live" ? "live" : "replay");
+        const reported = probe.headers.get("x-tress-mode");
+        setMode(
+          reported === "live" || reported === "rejected" ? reported : "replay",
+        );
         setReady(true);
       } catch (error) {
         push({ kind: "error", text: `could not load the agent: ${error}` });
@@ -154,7 +154,9 @@ export function Terminal() {
             ? "loading wasm…"
             : mode === "live"
               ? "● live model"
-              : "● recorded session"}
+              : mode === "rejected"
+                ? "● key rejected — using the recording"
+                : "● recorded session"}
         </span>
       </div>
 

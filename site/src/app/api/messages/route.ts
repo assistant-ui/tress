@@ -81,6 +81,28 @@ const RECORDED: { match: RegExp; turns: Block[][] }[] = [
   },
 ];
 
+/** Whether the key is one the API will actually accept. */
+async function keyState(key: string): Promise<"live" | "rejected"> {
+  try {
+    const probe = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 1,
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
+    return probe.status === 401 || probe.status === 403 ? "rejected" : "live";
+  } catch {
+    return "rejected";
+  }
+}
+
 /** Renders one turn as Messages API stream events. */
 function streamFor(blocks: Block[]): string {
   const events: unknown[] = [{ type: "message_start" }];
@@ -146,6 +168,18 @@ function turnIndex(messages: { role: string }[]): number {
 export async function POST(request: Request) {
   const body = await request.text();
   const key = process.env.ANTHROPIC_API_KEY;
+  const parsedBody = JSON.parse(body) as {
+    messages: { role: string; content: unknown }[];
+    probe?: boolean;
+  };
+
+  // The page asks once on load which mode it is in. A key that the API
+  // rejects reports as rejected rather than live, so a bad key is visible
+  // before a run rather than halfway through one.
+  if (parsedBody.probe) {
+    const mode = key ? await keyState(key) : "replay";
+    return new Response(null, { headers: { [SCRIPT_HEADER]: mode } });
+  }
 
   if (key) {
     const upstream = await fetch("https://api.anthropic.com/v1/messages", {
@@ -166,13 +200,13 @@ export async function POST(request: Request) {
     });
   }
 
-  const parsed = JSON.parse(body) as {
-    messages: { role: string; content: unknown }[];
-  };
   const recording =
-    RECORDED.find((entry) => entry.match.test(firstPrompt(parsed.messages))) ??
+    RECORDED.find((entry) => entry.match.test(firstPrompt(parsedBody.messages))) ??
     RECORDED[RECORDED.length - 1];
-  const turn = recording.turns[Math.min(turnIndex(parsed.messages), recording.turns.length - 1)];
+  const turn =
+    recording.turns[
+      Math.min(turnIndex(parsedBody.messages), recording.turns.length - 1)
+    ];
 
   // Paced so the recording reads like a session rather than a paste.
   const stream = new ReadableStream({

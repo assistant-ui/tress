@@ -34,6 +34,7 @@ impl ToolOutcome {
 }
 
 /// The tool surface an engine drives.
+#[allow(async_fn_in_trait)]
 pub trait Tools {
     /// Tool definitions in Claude API shape: `name`, `description`,
     /// `input_schema`.
@@ -43,7 +44,15 @@ pub trait Tools {
     fn needs_approval(&self, name: &str, input: &Value) -> bool;
 
     /// Runs one tool call.
-    fn execute(&mut self, name: &str, input: &Value) -> ToolOutcome;
+    fn execute(&mut self, _name: &str, _input: &Value) -> ToolOutcome {
+        ToolOutcome::error("This tool requires asynchronous execution.")
+    }
+
+    /// Override for remote I/O or host callbacks. Existing synchronous
+    /// implementations continue to work without changes.
+    async fn execute_async(&mut self, name: &str, input: &Value) -> ToolOutcome {
+        self.execute(name, input)
+    }
 
     /// A one-line human summary of a call, for the UI.
     fn describe(&self, name: &str, input: &Value) -> String {

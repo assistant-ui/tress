@@ -21,6 +21,39 @@ I'll add the greeting function.
 Done — greet.py works, it printed "hello, tress".
 ```
 
+## Slash commands
+
+Enter `/` or `/help` in an interactive session to see commands. `/files` lists
+workspace files, `/status` shows the session status, `/clear` starts a fresh
+conversation without changing files on disk, and `/exit` (or `/quit`) leaves.
+
+With `tress attach <url>`, `/disconnect` and `/reconnect` leave and rejoin the
+shared host, and `/attach` shows its connection command. In this mode, `/clear`
+clears the **shared conversation** when idle. Memory mode also restores the
+example files; local and remote workspaces keep their files. The browser has
+the same commands. Plain terminal output is the default. Run
+`tress attach <url> --ui` to opt into the full terminal interface. In the browser
+and terminal UI, typing `/` opens a command picker:
+↑/↓ selects, Tab completes, Enter runs, and Escape closes it.
+
+The optional terminal UI has a persistent `❯` composer, live ready/working status,
+and a file preview toggled with `/files` or Ctrl-F. Your draft stays intact
+while the host streams. With an empty input, Tab/Shift-Tab changes files;
+mouse drag uses the terminal's normal text selection so transcript and file
+content can be copied. PgUp/PgDn scrolls the transcript and
+Alt-PgUp/Alt-PgDn scrolls file contents without moving the header or input.
+Ctrl-End returns to the latest reply. Pipes always use plain output, even with
+`--ui`; the earlier `--plain` flag remains an alias for the default.
+See the [site demo](site/README.md) for the two-client walkthrough.
+
+The demo connects to managed Harness when `HARNESS_API_KEY` is configured.
+The server holds the credential and localhost tunnel, so browser and terminal
+clients share cloud history while tools work on the host's configured files.
+Completed conversations survive host restarts. `/clear` selects a new cloud
+thread and keeps the previous one in Harness. With no harness key, the original
+in-memory host is used. `/status` reports the live browser and terminal clients
+attached to that host. See [managed setup](site/README.md#managed-harness-and-persistence).
+
 ## What it does
 
 - **Five tools**: `read`, `write`, `edit`, `ls`, `bash`. File tools are scoped to the directory you started in and refuse paths that escape it.
@@ -39,13 +72,42 @@ const session = new TressSession("/v1/messages", "claude-sonnet-5", {}, files);
 await session.send("add a greet function in greet.py", onEvent);
 ```
 
+## Embed it with your own files
+
+[`@tress/workspaces`](packages/workspaces/README.md) connects the Rust/WASM
+engine to asynchronous host tools. Choose just-bash in memory, a scoped local
+directory (with optional overlay), or an existing Vercel sandbox. Supply your
+own `Workspace` for other sandbox providers; configure tools, approval policy,
+model endpoint, event handlers, and saved conversation history.
+
+```ts
+const workspace = await createLocalWorkspace({ root: "/projects/my-app" });
+// Or: await createVercelWorkspace({ sandbox });
+const agent = createAgent({
+  Session: TressHostSession,
+  workspace,
+  url: modelEndpoint,
+  model,
+  headers,
+  tools: { include: ["read", "ls"] },
+});
+await agent.send("Explain this project", onEvent);
+```
+
+See the [complete integration and runnable examples](packages/workspaces/README.md).
+The package is local to this repository and has not been published to npm.
+Local JS adapters use simulated just-bash commands; a remote sandbox supplies
+real runtimes and test runners. Both browser and attached terminal use the
+host's workspace, not the attached terminal's current directory.
+
 ## Status
 
 Early. The engine is a library (`tress::Engine`) driving a `Provider` over a
 `Tools` surface, with no I/O of its own — which is what lets the terminal
-binary, the browser build, and embedded hosts share it. Still to come:
-attaching a session to a [statewire](https://github.com/assistant-ui/statewire-rs)
-thread, so a run can be watched and steered from another device.
+binary, the browser build, and embedded hosts share it. The site hosts a shared
+[statewire](https://github.com/assistant-ui/statewire-rs) thread that browsers and
+`tress attach` can watch and steer. It survives client disconnects, not host
+restarts. Persistent model history and crash recovery remain application work.
 
 ## Configuration
 

@@ -4,11 +4,16 @@ use std::io::{IsTerminal, Write};
 
 use tress::engine::{Approval, Engine, Event};
 use tress::provider::Anthropic;
-use tress::tools::NativeTools;
+use tress::tools::{NativeTools, Tools};
+
+use commands::Command;
 
 const DEFAULT_MODEL: &str = "claude-sonnet-5";
 
-mod ansi {
+mod attach;
+mod commands;
+
+pub mod ansi {
     pub const DIM: &str = "\x1b[2m";
     pub const BOLD: &str = "\x1b[1m";
     pub const AMBER: &str = "\x1b[33m";
@@ -16,12 +21,12 @@ mod ansi {
     pub const RESET: &str = "\x1b[0m";
 }
 
-struct Style {
+pub struct Style {
     on: bool,
 }
 
 impl Style {
-    fn paint(&self, code: &str, text: &str) -> String {
+    pub fn paint(&self, code: &str, text: &str) -> String {
         if self.on {
             format!("{code}{text}{}", ansi::RESET)
         } else {
@@ -36,6 +41,8 @@ fn usage() -> String {
          usage:\n  \
          tress                 start a session in the current directory\n  \
          tress ask <prompt>    run one prompt and exit\n  \
+         tress attach <url>    join a thread with plain terminal output\n  \
+         tress attach <url> --ui  opt into the full terminal interface\n  \
          tress --help          this text\n\n\
          environment:\n  \
          ANTHROPIC_API_KEY     required\n  \
@@ -65,6 +72,23 @@ async fn main() -> std::process::ExitCode {
     let style = Style {
         on: std::io::stdout().is_terminal(),
     };
+
+    if args.first().is_some_and(|arg| arg == "attach") {
+        let (url, ui) = match attach_options(&args[1..]) {
+            Ok(options) => options,
+            Err(error) => {
+                eprintln!("tress attach: {error}");
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+        return match attach::run(url, &style, ui).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{}", style.paint(ansi::RED, &format!("error: {error}")));
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
 
     let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
         eprintln!(
@@ -132,27 +156,42 @@ async fn main() -> std::process::ExitCode {
             }
         }
         let prompt = line.trim();
-        match prompt {
-            "" => continue,
-            "/exit" | "/quit" => break,
-            "/help" => {
-                println!("  /help   this text");
-                println!("  /clear  start a fresh conversation");
-                println!("  /exit   leave (ctrl-d works too)");
-                continue;
+        if prompt.is_empty() {
+            continue;
+        }
+        if let Some(command) = commands::parse(prompt) {
+            match command {
+                Command::Exit => break,
+                Command::Help => commands::help(false),
+                Command::Files => {
+                    let result = engine.tools_mut().execute("ls", &serde_json::json!({}));
+                    println!("{}", result.content);
+                }
+                Command::Status => println!("local session · {} · {model} · idle", root.display()),
+                Command::Clear => {
+                    engine = Engine::new(
+                        Anthropic::new(
+                            std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
+                            model.clone(),
+                        ),
+                        NativeTools::new(root.clone()),
+                    );
+                    println!(
+                        "{}",
+                        style.paint(
+                            ansi::DIM,
+                            "Conversation cleared. Files on disk are unchanged."
+                        )
+                    );
+                }
+                Command::Attach | Command::Disconnect | Command::Reconnect => {
+                    println!(
+                        "This is a local session. To join a shared host, run: tress attach <url>"
+                    );
+                }
+                Command::Unknown => println!("Unknown command: {prompt}. Type /help for commands."),
             }
-            "/clear" => {
-                engine = Engine::new(
-                    Anthropic::new(
-                        std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
-                        model.clone(),
-                    ),
-                    NativeTools::new(root.clone()),
-                );
-                println!("{}", style.paint(ansi::DIM, "cleared"));
-                continue;
-            }
-            _ => {}
+            continue;
         }
 
         if let Err(error) = run_turn(&mut engine, prompt, &style).await {
@@ -161,6 +200,25 @@ async fn main() -> std::process::ExitCode {
     }
 
     std::process::ExitCode::SUCCESS
+}
+
+fn attach_options(args: &[String]) -> Result<(&str, bool), String> {
+    let mut url = None;
+    let mut ui = false;
+    let mut plain = false;
+    for arg in args {
+        match arg.as_str() {
+            "--ui" => ui = true,
+            "--plain" => plain = true, // Keep the earlier explicit plain option working.
+            flag if flag.starts_with('-') => return Err(format!("unknown option {flag}")),
+            value if url.is_none() => url = Some(value),
+            _ => return Err("expected one thread URL".into()),
+        }
+    }
+    if ui && plain {
+        return Err("choose --ui or --plain, not both".into());
+    }
+    Ok((url.ok_or("needs a thread URL")?, ui))
 }
 
 async fn run_turn(
@@ -230,6 +288,37 @@ fn ask_approval(summary: &str, style: &Style) -> Approval {
             "a" | "always" => return Approval::Always,
             "n" | "no" => return Approval::Deny,
             _ => continue,
+        }
+    }
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::attach_options;
+
+    #[test]
+    fn attach_is_plain_unless_ui_is_explicit() {
+        for (args, expected) in [
+            (vec!["localhost:5311"], false),
+            (vec!["localhost:5311", "--plain"], false),
+            (vec!["localhost:5311", "--ui"], true),
+            (vec!["--ui", "localhost:5311"], true),
+        ] {
+            let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
+            assert_eq!(attach_options(&args), Ok(("localhost:5311", expected)));
+        }
+    }
+
+    #[test]
+    fn invalid_attach_options_fail_before_connecting() {
+        for args in [
+            vec!["--ui"],
+            vec!["host", "--ui", "--plain"],
+            vec!["host", "--other"],
+            vec!["one", "two"],
+        ] {
+            let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
+            assert!(attach_options(&args).is_err());
         }
     }
 }

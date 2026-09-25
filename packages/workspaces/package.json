@@ -1,0 +1,47 @@
+{
+  "name": "@tress/workspaces",
+  "version": "0.1.0",
+  "description": "Pluggable local, just-bash, and remote workspaces for the tress agent",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./just-bash": {
+      "types": "./dist/just-bash.d.ts",
+      "import": "./dist/just-bash.js"
+    },
+    "./local": {
+      "types": "./dist/local.d.ts",
+      "import": "./dist/local.js"
+    },
+    "./vercel": {
+      "types": "./dist/vercel.d.ts",
+      "import": "./dist/vercel.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.tests.json && tsx --test tests/*.test.ts",
+    "test:wasm": "tsx --test tests/wasm.integration.ts",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "just-bash": "^3.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vercel/sandbox": "^3.5.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

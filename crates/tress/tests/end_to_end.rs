@@ -5,7 +5,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// Serves one scripted SSE response per request, in order.
 fn serve(scripts: Vec<String>) -> (String, std::thread::JoinHandle<Vec<String>>) {
@@ -125,6 +125,83 @@ fn run(dir: &Path, base_url: &str, prompt: &str) -> std::process::Output {
         .env("TRESS_MODEL", "claude-sonnet-5")
         .output()
         .expect("run tress")
+}
+
+#[test]
+fn attach_keeps_pipes_plain_even_when_ui_is_requested() {
+    for flags in [vec![], vec!["--ui"], vec!["--plain"]] {
+        let mut child = Command::new(binary())
+            .args(["attach", "http://127.0.0.1:1"])
+            .args(flags)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"/help\n/exit\n")
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("/reconnect"));
+        assert!(
+            !stdout.contains("\x1b[?1049h"),
+            "entered alternate screen on a pipe"
+        );
+        assert!(!stdout.contains("\x1b[?1000h"), "captured mouse on a pipe");
+    }
+}
+
+#[test]
+fn interactive_commands_do_not_call_the_model_or_change_files() {
+    let scratch = Scratch::new("commands");
+    let file = scratch.path().join("keep.txt");
+    std::fs::write(&file, "unchanged").unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let mut child = Command::new(binary())
+        .current_dir(scratch.path())
+        .env("ANTHROPIC_API_KEY", "test-key")
+        .env(
+            "ANTHROPIC_BASE_URL",
+            format!("http://{}", listener.local_addr().unwrap()),
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"/\n/files\n/status\n/not-a-command\n/clear\n/quit\n")
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+    assert!(stdout.contains("/help"), "{stdout}");
+    assert!(stdout.contains("keep.txt"), "{stdout}");
+    assert!(stdout.contains("local session"), "{stdout}");
+    assert!(
+        stdout.contains("Unknown command: /not-a-command"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Conversation cleared"), "{stdout}");
+    assert_eq!(std::fs::read_to_string(file).unwrap(), "unchanged");
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
