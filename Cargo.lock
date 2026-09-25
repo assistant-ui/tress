@@ -1010,6 +1010,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tress-wasm"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "serde_json",
+ "tress",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

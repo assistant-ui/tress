@@ -1,0 +1,184 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>tress in the browser</title>
+<style>
+  :root {
+    --ink: #0b0e13;
+    --panel: #11151c;
+    --line: #232b37;
+    --text: #d9e1ea;
+    --muted: #8593a4;
+    --faint: #5b6879;
+    --amber: #e8a33d;
+    --ok: #4cc38a;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  header {
+    border-bottom: 1px solid var(--line);
+    padding: 14px 20px;
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+  }
+  header b { font-size: 15px; }
+  header span { color: var(--faint); font-size: 11px; }
+  main { display: grid; grid-template-columns: 1fr 320px; min-height: calc(100vh - 53px); }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+  #log { padding: 18px 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #log .tool { color: var(--faint); }
+  #log .you { color: var(--amber); }
+  #log .err { color: #e5484d; }
+  aside { border-left: 1px solid var(--line); background: var(--panel); padding: 14px 16px; }
+  aside h2 {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 0 0 10px;
+    font-weight: 500;
+  }
+  aside .file { margin-bottom: 12px; }
+  aside .name { color: var(--ok); }
+  aside pre {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  form { display: flex; gap: 8px; padding: 0 20px 20px; }
+  input {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    color: var(--text);
+    font: inherit;
+    padding: 9px 12px;
+  }
+  input:focus { outline: 1px solid var(--amber); }
+  button {
+    background: var(--amber);
+    border: 0;
+    border-radius: 5px;
+    color: #1a1206;
+    font: inherit;
+    font-weight: 600;
+    padding: 9px 18px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+</style>
+
+<header>
+  <b>tress</b>
+  <span id="status">loading wasm…</span>
+</header>
+
+<main>
+  <div>
+    <div id="log"></div>
+    <form id="composer">
+      <input
+        id="prompt"
+        autocomplete="off"
+        placeholder="add a greet function in greet.py"
+        disabled
+      />
+      <button id="send" disabled>send</button>
+    </form>
+  </div>
+  <aside>
+    <h2>workspace</h2>
+    <div id="files"></div>
+  </aside>
+</main>
+
+<script type="module">
+  import init, { TressSession } from "./pkg/tress_wasm.js";
+
+  const log = document.getElementById("log");
+  const files = document.getElementById("files");
+  const status = document.getElementById("status");
+  const prompt = document.getElementById("prompt");
+  const send = document.getElementById("send");
+
+  const write = (text, className) => {
+    const node = document.createElement("span");
+    if (className) node.className = className;
+    node.textContent = text;
+    log.append(node);
+    window.scrollTo(0, document.body.scrollHeight);
+  };
+
+  const renderFiles = (session) => {
+    const contents = session.files();
+    files.textContent = "";
+    for (const [path, body] of Object.entries(contents)) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "file";
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = path;
+      const pre = document.createElement("pre");
+      pre.textContent = body;
+      wrapper.append(name, pre);
+      files.append(wrapper);
+    }
+    if (!Object.keys(contents).length) {
+      files.textContent = "(empty)";
+      files.style.color = "var(--faint)";
+    }
+  };
+
+  await init();
+
+  // The page never holds a key: point this at a proxy that adds the header.
+  const session = new TressSession(
+    new URLSearchParams(location.search).get("api") ?? "/v1/messages",
+    new URLSearchParams(location.search).get("model") ?? "claude-sonnet-5",
+    {},
+    { "README.md": "# demo workspace\n\nEdit me from the agent.\n" },
+  );
+
+  status.textContent = "ready · in-memory workspace · no install";
+  prompt.disabled = false;
+  send.disabled = false;
+  prompt.focus();
+  renderFiles(session);
+
+  document.getElementById("composer").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const text = prompt.value.trim();
+    if (!text) return;
+    prompt.value = "";
+    prompt.disabled = true;
+    send.disabled = true;
+    write(`\n❯ ${text}\n`, "you");
+
+    try {
+      await session.send(text, (raw) => {
+        const event = JSON.parse(raw);
+        if (event.type === "text") write(event.text);
+        else if (event.type === "tool") write(`  · ${event.summary}\n`, "tool");
+        else if (event.type === "idle") write("\n");
+      });
+    } catch (error) {
+      write(`\nerror: ${error}\n`, "err");
+    }
+
+    renderFiles(session);
+    prompt.disabled = false;
+    send.disabled = false;
+    prompt.focus();
+  });
+</script>
