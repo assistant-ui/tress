@@ -33,14 +33,17 @@ struct ThreadState {
     status: String,
 }
 
-/// Tracks what has already reached the terminal, so each change prints only
-/// what is new rather than redrawing the transcript.
+/// Tracks what has already reached the terminal.
+///
+/// `done` counts entries printed in full; the fields after it track how far
+/// the entry at `done` has been printed, which is the one that grows while a
+/// run streams.
 #[derive(Default)]
 struct Printed {
-    entries: usize,
+    done: usize,
+    started: bool,
     text: usize,
     tools: usize,
-    status: String,
 }
 
 const PROTOCOL: &str = "default";
@@ -151,52 +154,63 @@ pub async fn run(input: &str, style: &crate::Style) -> Result<(), String> {
 }
 
 /// Prints whatever the thread gained since the last render.
+///
+/// Entries before the last can no longer change, so they are emitted in
+/// full; the last one is emitted as a delta so text streams as it arrives.
+/// That makes a fresh attach replay the whole transcript rather than only
+/// the newest reply.
 fn render(value: &Value, printed: &mut Printed, style: &crate::Style) {
     let Ok(state) = serde_json::from_value::<ThreadState>(value.clone()) else {
         return;
     };
 
     // A reset shortens the thread; start the transcript over.
-    if state.entries.len() < printed.entries {
+    if state.entries.len() < printed.done {
         *printed = Printed::default();
         println!("{}", style.paint(crate::ansi::DIM, "— thread reset —"));
     }
 
-    for (index, entry) in state.entries.iter().enumerate() {
-        let fresh = index >= printed.entries;
-        if fresh {
-            printed.entries = index + 1;
-            printed.text = 0;
-            printed.tools = 0;
-            if entry.role == "user" {
-                println!("\n{} {}", style.paint(crate::ansi::AMBER, "❯"), entry.text);
-                printed.text = entry.text.len();
-                continue;
-            }
-        }
-        if entry.role == "user" {
-            continue;
-        }
-        // The last entry is the one that grows while a run streams.
-        if index + 1 == state.entries.len() {
-            for tool in entry.tools.iter().skip(printed.tools) {
-                println!("{}", style.paint(crate::ansi::DIM, &format!("  · {tool}")));
-            }
-            printed.tools = entry.tools.len();
-
-            if entry.text.len() > printed.text {
-                print!("{}", &entry.text[printed.text..]);
-                let _ = std::io::stdout().flush();
-                printed.text = entry.text.len();
-            }
-        }
+    while printed.done + 1 < state.entries.len() {
+        emit(&state.entries[printed.done], printed, style, true);
+        printed.done += 1;
+        printed.started = false;
+        printed.text = 0;
+        printed.tools = 0;
     }
 
-    if state.status != printed.status {
-        if printed.status == "running" && state.status == "idle" {
-            println!();
+    if let Some(entry) = state.entries.get(printed.done) {
+        emit(entry, printed, style, false);
+    }
+}
+
+/// Emits what is new in one entry. `complete` closes it off, for an entry
+/// that can no longer grow.
+fn emit(entry: &Entry, printed: &mut Printed, style: &crate::Style, complete: bool) {
+    if entry.role == "user" {
+        if !printed.started {
+            println!("\n{} {}", style.paint(crate::ansi::AMBER, "❯"), entry.text);
+            printed.started = true;
+            printed.text = entry.text.len();
         }
-        printed.status = state.status;
+        return;
+    }
+
+    printed.started = true;
+    for tool in entry.tools.iter().skip(printed.tools) {
+        println!("{}", style.paint(crate::ansi::DIM, &format!("  · {tool}")));
+    }
+    printed.tools = entry.tools.len();
+
+    // Text only ever grows by appending, but guard the split anyway so a
+    // rewritten reply cannot panic on a multi-byte boundary.
+    if entry.text.len() > printed.text && entry.text.is_char_boundary(printed.text) {
+        print!("{}", &entry.text[printed.text..]);
+        let _ = std::io::stdout().flush();
+        printed.text = entry.text.len();
+    }
+
+    if complete && !entry.text.is_empty() {
+        println!();
     }
 }
 
