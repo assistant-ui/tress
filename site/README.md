@@ -383,3 +383,26 @@ PORT=5311 node --env-file=.env.local .farm/.output/server/index.mjs
 `npm run wasm` rebuilds the Farm bindings on demand. `npm run wasm:node`
 generates separate CommonJS bindings for standalone Node consumers and the
 workspace package's WASM tests; the site does not load those bindings.
+
+### Thread sidebar
+
+The **threads** button opens a compact sidebar (a drawer on smaller screens).
+Create a thread, switch between workspaces, rename a conversation, or archive and
+restore it. New threads receive separate files and attach IDs. Switching leaves
+runs on the host and keeps unsent drafts in the current tab; archiving only changes
+the list and never deletes history or files. `/clear` keeps its existing behavior.
+
+A separate HttpOnly browser-owner cookie controls the list. Shareable `-s` IDs
+continue granting access to one thread, without exposing the owner's other threads.
+On a normal visit without a session link, an existing session cookie can adopt
+its unclaimed legacy thread. Shared links never grant ownership of the list.
+The database stores hashed owner/attach credentials, titles, and archive timestamps; Harness
+continues storing conversations. Cookie loss means losing access to the browser's
+list, though saved attach IDs still open their individual threads.
+
+Run `npm run db:migrate` for PostgreSQL before starting an updated local server.
+The Vercel build applies the migration automatically. File-backed development uses
+the same API. Titles use the first prompt without another model call. The sidebar
+loads metadata on selection, opening, and window focus; it does not subscribe to
+all threads or poll in the background. The working indicator reflects the open
+thread's live state.

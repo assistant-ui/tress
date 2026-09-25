@@ -5,38 +5,42 @@ import {
   resolveDemoSession,
   sessionCookie,
   sessionResponse,
+  resolveDemoOwner,
+  ownerCookie,
+  sessionInfo,
 } from "../../../server/demo-session";
 
 /** Tells the page which thread backend is in use. */
 export const GET = async (request: Request) => {
   try {
-    const session = await resolveDemoSession(request, true);
+    const owner = await resolveDemoOwner(request, true);
+    const session = await resolveDemoSession(request, true, undefined, owner);
     const workspace = workspaceConfig(session?.thread.id);
     const mode = threadMode(request.url);
-    const backend = process.env.TRESS_SERVERLESS === "1"
-      ? undefined
-      : await getThreadBackend(request, session);
+    const backend =
+      process.env.TRESS_SERVERLESS === "1"
+        ? undefined
+        : await getThreadBackend(request, session);
     const headers = new Headers({
       "Cache-Control": "private, no-store",
       Vary: "Cookie",
     });
+    if (owner?.fresh) headers.append("Set-Cookie", ownerCookie(owner, request));
     if (session?.fresh)
-      headers.set("Set-Cookie", sessionCookie(session, request));
+      headers.append("Set-Cookie", sessionCookie(session, request));
     return Response.json(
       {
         ...mode,
         ...(session
           ? {
-              session: {
-                id: session.thread.id,
-                attachId: session.token,
-                clientUrl: `/api/sessions/${session.token}`,
-                browserUrl: `/?session=${session.token}`,
-              },
+              session: sessionInfo(session),
             }
           : {}),
         ...(mode.kind === "cloud"
-          ? { harness: backend && "info" in backend ? backend.info() : undefined }
+          ? {
+              harness:
+                backend && "info" in backend ? backend.info() : undefined,
+            }
           : {}),
         workspace: {
           mode: workspace.mode,

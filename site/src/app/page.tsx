@@ -1,5 +1,5 @@
 import React from "react";
-import { Thread } from "../components/Thread";
+import { Threads } from "../components/Threads";
 import { InstallLine } from "../components/InstallLine";
 
 const SOURCE = "https://github.com/assistant-ui/tress";
@@ -37,7 +37,7 @@ export default function HomePage() {
         </section>
 
         <section id="demo" aria-label="Live terminal demo">
-          <Thread />
+          <Threads />
           <p className="demo-note">
             The agent runs on the host. Close this tab, attach a terminal, or
             open another window — the same thread is waiting.

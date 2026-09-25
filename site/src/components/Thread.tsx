@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -85,7 +86,19 @@ const LOCAL_SUGGESTIONS = [
 ];
 type Client = StatewireClient<ThreadState | undefined, ThreadCommands>;
 
-export function Thread() {
+export function Thread({
+  session: selectedSession,
+  onReady,
+  onActivity,
+  toolbar,
+  drafts,
+}: {
+  session?: string;
+  onReady?: (config: DemoConfig) => void;
+  onActivity?: (id: string, running: boolean, prompt?: string) => void;
+  toolbar?: ReactNode;
+  drafts?: Map<string, string>;
+} = {}) {
   const [input, setInput] = useState("");
   const [open, setOpen] = useState("retry.js");
   const [showFiles, setShowFiles] = useState(false);
@@ -113,6 +126,9 @@ export function Thread() {
     null,
   );
   const workspaceInitialized = useRef(false);
+  const pinnedConfigUrl = useRef<string | undefined>(undefined);
+  const draft = useRef(input);
+  draft.current = input;
   const log = useRef<HTMLDivElement>(null);
   const client = useRef<Client | null>(null);
   const submitting = useRef(false);
@@ -121,13 +137,18 @@ export function Thread() {
 
   useEffect(() => {
     setOrigin(window.location.origin);
-    const session = new URL(window.location.href).searchParams.get("session");
+    const session =
+      selectedSession ??
+      new URL(window.location.href).searchParams.get("session");
     const request = observeDemoConfig(
       (result) => {
         setConfigLoading(result.status === "loading");
         if (result.status === "error") setConfigFailed(true);
         if (result.status === "ready") {
           setConfig(result.config);
+          if (result.config.session)
+            pinnedConfigUrl.current = `/api/mode?session=${encodeURIComponent(result.config.session.attachId)}`;
+          onReady?.(result.config);
           setConfigFailed(false);
           if (
             !workspaceInitialized.current &&
@@ -139,7 +160,7 @@ export function Thread() {
           workspaceInitialized.current = true;
         }
       },
-      fetch,
+      (url, init) => fetch(pinnedConfigUrl.current ?? url, init),
       session
         ? `/api/mode?session=${encodeURIComponent(session)}`
         : "/api/mode",
@@ -153,7 +174,7 @@ export function Thread() {
       configRequest.current = null;
       request.dispose();
     };
-  }, []);
+  }, [selectedSession, onReady]);
 
   useEffect(() => {
     if (connection === "connected") void configRequest.current?.retry();
@@ -195,6 +216,23 @@ export function Thread() {
     if (follow.current)
       log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [state.entries, notice, attached, showHelp]);
+
+  useEffect(() => {
+    const id = config?.session?.id;
+    if (!id || !drafts) return;
+    setInput(drafts.get(id) ?? "");
+    return () => {
+      drafts.set(id, draft.current);
+    };
+  }, [config?.session?.id, drafts]);
+
+  const firstPrompt = state.entries.find(
+    (entry) => entry.role === "user",
+  )?.text;
+  useEffect(() => {
+    if (config?.session)
+      onActivity?.(config.session.id, state.status === "running", firstPrompt);
+  }, [config?.session?.id, state.status, firstPrompt, onActivity]);
 
   const demo = !config?.workspace || config.workspace.mode === "memory";
   const localDemo = config?.workspace?.localDemo === true;
@@ -372,11 +410,13 @@ export function Thread() {
         <div
           className={`terminal-titlebar${localDemo ? " has-local-workspace" : ""}`}
         >
-          <div className="window-dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
+          {toolbar ?? (
+            <div className="window-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          )}
           <span className="terminal-title">
             tress{localDemo ? " · local files" : ""}
           </span>

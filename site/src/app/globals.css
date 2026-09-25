@@ -1052,3 +1052,217 @@ footer > span {
     animation: none !important;
   }
 }
+
+/* Thread navigation stays outside the conversation on wide screens. */
+.thread-shell {
+  position: relative;
+}
+.threads-toggle {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 7px;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+.threads-toggle[aria-expanded="true"] {
+  color: var(--text);
+}
+.thread-sidebar {
+  position: absolute;
+  right: calc(100% + 24px);
+  top: 0;
+  width: 200px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+}
+.thread-sidebar[hidden] {
+  display: none;
+}
+.threads-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 43px;
+  margin-bottom: 10px;
+}
+.threads-heading h2 {
+  margin: 0;
+  font: inherit;
+  color: var(--text);
+}
+.threads-heading button {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  line-height: 1;
+  width: 25px;
+  height: 25px;
+}
+.new-thread {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #101010;
+  padding: 7px 10px;
+  color: var(--text);
+  text-align: left;
+}
+.thread-list {
+  margin: 14px 0;
+  max-height: min(58vh, 560px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.thread-row {
+  display: flex;
+  position: relative;
+  align-items: start;
+  min-width: 0;
+}
+.thread-select {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  text-align: left;
+  padding: 7px 7px 7px 10px;
+  color: var(--muted);
+}
+.thread-select[aria-current] {
+  border-left-color: var(--text);
+  background: #141414;
+  color: var(--text);
+}
+.thread-row-title {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.thread-row-meta {
+  color: var(--dim);
+  font-size: 10px;
+}
+.thread-actions {
+  flex: 0 0 26px;
+}
+.thread-actions summary {
+  list-style: none;
+  text-align: center;
+  cursor: pointer;
+  padding: 5px 0;
+  color: var(--dim);
+}
+.thread-actions summary::-webkit-details-marker {
+  display: none;
+}
+.thread-actions[open] {
+  flex-basis: 66px;
+}
+.thread-actions > div {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 6px;
+}
+.thread-actions button {
+  background: none;
+  border: 0;
+  text-align: left;
+  padding: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.thread-rename {
+  width: 100%;
+  padding: 5px 0;
+}
+.thread-rename input {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: #101010;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 6px;
+}
+.thread-rename > div {
+  display: flex;
+  gap: 12px;
+  padding-top: 5px;
+}
+.thread-rename button,
+.threads-error button {
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  color: var(--muted);
+}
+.archived-toggle {
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+  width: 100%;
+  text-align: left;
+  background: none;
+  color: var(--dim);
+}
+.threads-empty,
+.threads-error,
+.threads-footnote {
+  margin: 10px 0;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.threads-error {
+  color: #cf9a8b;
+}
+.thread-drawer {
+  position: fixed;
+  inset: 0 auto 0 0;
+  height: 100dvh;
+  max-height: none;
+  width: min(300px, 88vw);
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+}
+.thread-drawer::backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+.thread-sidebar-content {
+  min-height: 100%;
+  padding: 16px 20px;
+}
+.thread-drawer .thread-select {
+  padding-block: 10px;
+}
+.thread-drawer .new-thread,
+.thread-drawer .archived-toggle {
+  min-height: 44px;
+}
+.thread-drawer .threads-heading button {
+  width: 32px;
+  height: 32px;
+}
+.thread-drawer .thread-actions summary {
+  min-height: 40px;
+}

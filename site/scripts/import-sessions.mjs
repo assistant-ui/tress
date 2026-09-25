@@ -41,8 +41,8 @@ try {
       throw new Error("A session record does not match its filename.");
     const result = await client.query(
       `INSERT INTO tress_demo_threads
-         (id, owner_id, access_hash, harness_thread_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (id, owner_id, access_hash, harness_thread_id, created_at, updated_at, title, archived_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (id) DO NOTHING`,
       [
         thread.id,
@@ -51,6 +51,8 @@ try {
         thread.harnessThreadId,
         thread.createdAt,
         thread.updatedAt,
+        thread.title ?? null,
+        thread.archivedAt ?? null,
       ],
     );
     const {
@@ -90,6 +92,29 @@ try {
         "An alias refers to a missing session; import cancelled.",
       );
     await addAccess(name.slice(0, -5), thread.id);
+  }
+  const owners = await readdir(join(directory, "owners")).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  for (const name of owners.filter((name) =>
+    /^[a-f0-9]{64}\.json$/.test(name),
+  )) {
+    const owner = JSON.parse(
+      await readFile(join(directory, "owners", name), "utf8"),
+    );
+    const hash = name.slice(0, -5);
+    await client.query(
+      `INSERT INTO tress_demo_owners (id, access_hash) VALUES ($1, $2)
+      ON CONFLICT DO NOTHING`,
+      [owner.id, hash],
+    );
+    const { rows } = await client.query(
+      "SELECT id FROM tress_demo_owners WHERE access_hash = $1",
+      [hash],
+    );
+    if (rows[0]?.id !== owner.id)
+      throw new Error("Browser ownership conflicts; import cancelled.");
   }
   await client.query("COMMIT");
   console.log(
