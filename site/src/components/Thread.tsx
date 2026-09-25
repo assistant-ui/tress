@@ -22,13 +22,13 @@ type Commands = { send: (prompt: string) => Promise<unknown>; reset: () => Promi
 const EMPTY: ThreadState = { entries: [], status: "idle", files: {}, runs: 0 };
 
 const SUGGESTIONS = [
-  "find the bug in cart.js and fix it",
-  "explain what cart.js does",
+  "retry.js hammers the server on failure — fix it so the tests pass",
+  "what is wrong with retry.js?",
 ];
 
 export function Thread() {
   const [input, setInput] = useState("");
-  const [open, setOpen] = useState("cart.js");
+  const [open, setOpen] = useState("retry.js");
   const log = useRef<HTMLDivElement>(null);
 
   const client = useMemo(
