@@ -110,14 +110,6 @@ function __wbg_get_imports() {
             const ret = Object.entries(arg0);
             return ret;
         },
-        __wbg_fetch_82e0a5258707356f: function(arg0, arg1) {
-            const ret = arg0.fetch(arg1);
-            return ret;
-        },
-        __wbg_fetch_920242d59bac2026: function(arg0, arg1) {
-            const ret = arg0.fetch(arg1);
-            return ret;
-        },
         __wbg_getReader_38a152de4ceaae00: function(arg0) {
             const ret = arg0.getReader();
             return ret;
@@ -144,6 +136,16 @@ function __wbg_get_imports() {
             const ret = result;
             return ret;
         },
+        __wbg_instanceof_Promise_f6320f682f582ddf: function(arg0) {
+            let result;
+            try {
+                result = arg0 instanceof Promise;
+            } catch (_) {
+                result = false;
+            }
+            const ret = result;
+            return ret;
+        },
         __wbg_instanceof_ReadableStreamDefaultReader_a847f0465a2b7a2f: function(arg0) {
             let result;
             try {
@@ -158,16 +160,6 @@ function __wbg_get_imports() {
             let result;
             try {
                 result = arg0 instanceof Response;
-            } catch (_) {
-                result = false;
-            }
-            const ret = result;
-            return ret;
-        },
-        __wbg_instanceof_Window_a3b8566f0a9c5d1a: function(arg0) {
-            let result;
-            try {
-                result = arg0 instanceof Window;
             } catch (_) {
                 result = false;
             }

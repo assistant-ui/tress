@@ -51,7 +51,7 @@ export function Terminal() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
-  const [mode, setMode] = useState<"live" | "replay" | null>(null);
+  const [mode, setMode] = useState<"live" | "replay" | "rejected" | null>(null);
   const [files, setFiles] = useState<Record<string, string>>(SEED);
   const [open, setOpen] = useState("cart.js");
 
@@ -93,7 +93,10 @@ export function Terminal() {
           body: JSON.stringify({ messages: [], probe: true }),
         });
         if (cancelled) return;
-        setMode(probe.headers.get("x-tress-mode") === "live" ? "live" : "replay");
+        const reported = probe.headers.get("x-tress-mode");
+        setMode(
+          reported === "live" || reported === "rejected" ? reported : "replay",
+        );
         setReady(true);
       } catch (error) {
         push({ kind: "error", text: `could not load the agent: ${error}` });
@@ -154,7 +157,9 @@ export function Terminal() {
             ? "loading wasm…"
             : mode === "live"
               ? "● live model"
-              : "● recorded session"}
+              : mode === "rejected"
+                ? "● key rejected — using the recording"
+                : "● recorded session"}
         </span>
       </div>
 
