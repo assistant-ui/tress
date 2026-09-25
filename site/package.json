@@ -1,0 +1,24 @@
+{
+  "name": "tress-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "farm dev",
+    "build": "farm build",
+    "preview": "farm preview",
+    "wasm": "cargo build -p tress-wasm --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-dir public/pkg ../target/wasm32-unknown-unknown/release/tress_wasm.wasm"
+  },
+  "dependencies": {
+    "@farm.js/core": "0.1.0-beta.104",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@farm.js/cli": "0.1.0-beta.104",
+    "@types/node": "^20.10.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.10"
+  }
+}
