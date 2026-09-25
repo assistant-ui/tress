@@ -11,6 +11,8 @@
   "dependencies": {
     "@assistant-ui/tap": "^0.9.19",
     "@farm.js/core": "0.1.0-beta.104",
+    "ai": "^7.0.114",
+    "harness-sdk": "^0.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "statewire": "^0.19.4"
