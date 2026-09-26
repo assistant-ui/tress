@@ -2,6 +2,7 @@ import { threadMode } from "./config";
 import { managedGateway } from "./managed";
 import { resolveDemoSession, type DemoSession } from "./demo-session";
 import { threadStore } from "./thread-store";
+import { admitRun } from "./demo-policy";
 
 export const getThreadHost = async (request: Request) => {
   return (await getThreadBackend(request)).host;
@@ -27,5 +28,7 @@ export const getThreadBackend = async (
       },
     );
   }
-  return (await import("./thread")).localThreadBackend(session?.thread.id);
+  return (await import("./thread")).localThreadBackend(session?.thread.id, () =>
+    admitRun(session?.thread),
+  );
 };

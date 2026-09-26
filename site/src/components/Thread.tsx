@@ -49,6 +49,10 @@ const COMMANDS = [
     description: "connection, clients, workspace, and runs",
   },
   {
+    name: "/doctor",
+    description: "check host model, Harness, and storage",
+  },
+  {
     name: "/attach",
     description: "connect your terminal",
   },
@@ -132,6 +136,7 @@ export function Thread({
   const [origin, setOrigin] = useState("");
   const [config, setConfig] = useState<DemoConfig | null>(null);
   const [configFailed, setConfigFailed] = useState(false);
+  const [configError, setConfigError] = useState<string>();
   const [configLoading, setConfigLoading] = useState(true);
   const configRequest = useRef<ReturnType<typeof observeDemoConfig> | null>(
     null,
@@ -154,13 +159,17 @@ export function Thread({
     const request = observeDemoConfig(
       (result) => {
         setConfigLoading(result.status === "loading");
-        if (result.status === "error") setConfigFailed(true);
+        if (result.status === "error") {
+          setConfigFailed(true);
+          setConfigError(result.message);
+        }
         if (result.status === "ready") {
           setConfig(result.config);
           if (result.config.session)
             pinnedConfigUrl.current = `/api/mode?session=${encodeURIComponent(result.config.session.attachId)}`;
           onReady?.(result.config);
           setConfigFailed(false);
+          setConfigError(undefined);
           if (
             !workspaceInitialized.current &&
             result.config.workspace?.localDemo
@@ -349,22 +358,28 @@ export function Thread({
     setAttached(!attached);
   };
 
+  const configUnavailable = configFailed && !configLoading;
   const connecting =
-    attached && !connected && connection !== "stopped" &&
+    !configUnavailable &&
+    attached &&
+    !connected &&
+    connection !== "stopped" &&
     state.harness?.connection !== "stopped";
-  const status = !attached
-    ? "Disconnected"
-    : !connected
-      ? connection === "stopped" || state.harness?.connection === "stopped"
-        ? "Connection lost"
-        : "Connecting…"
-      : running
-        ? "Agent working"
-        : pending
-          ? "Sending…"
-          : state.harness
-            ? "Cloud connected"
-            : "Connected";
+  const status = configUnavailable
+    ? "Unavailable"
+    : !attached
+      ? "Disconnected"
+      : !connected
+        ? connection === "stopped" || state.harness?.connection === "stopped"
+          ? "Connection lost"
+          : "Connecting…"
+        : running
+          ? "Agent working"
+          : pending
+            ? "Sending…"
+            : state.harness
+              ? "Cloud connected"
+              : "Connected";
 
   const showWorkspaceInfo = () => {
     follow.current = true;
@@ -383,8 +398,8 @@ export function Thread({
       setNotice(
         workspace?.mode === "local"
           ? "The host has not provided its local workspace path."
-          : workspaceDescription?.description ??
-              "Waiting for workspace information. Reconnect and try /pwd again.",
+          : (workspaceDescription?.description ??
+              "Waiting for workspace information. Reconnect and try /pwd again."),
       );
     }
   };
@@ -451,6 +466,56 @@ export function Thread({
               {!connected ? "Use /reconnect to sync." : null}
             </>,
           );
+          break;
+        }
+        case "/doctor": {
+          const checking = "Checking model access, Harness, and storage…";
+          setNotice(checking);
+          const query = config?.session
+            ? `?session=${encodeURIComponent(config.session.attachId)}`
+            : "";
+          void fetch(`/api/health${query}`, {
+            cache: "no-store",
+            signal: AbortSignal.timeout(20_000),
+          })
+            .then(async (response) => {
+              const report = await response.json();
+              if (!Array.isArray(report.checks))
+                throw new Error(
+                  report.error ?? "Host diagnostics are unavailable.",
+                );
+              setNotice((previous) =>
+                previous === checking ? (
+                  <>
+                    {report.ok ? "Host checks passed" : "Host needs attention"}
+                    <dl className="status-details">
+                      {report.checks.map(
+                        (item: {
+                          name: string;
+                          status: string;
+                          message: string;
+                        }) => (
+                          <Fragment key={item.name}>
+                            <dt>{item.name}</dt>
+                            <dd>
+                              {item.status} · {item.message}
+                            </dd>
+                          </Fragment>
+                        ),
+                      )}
+                    </dl>
+                    Credentials stay on the host. No completion was generated.
+                  </>
+                ) : (
+                  previous
+                ),
+              );
+            })
+            .catch((error) =>
+              setNotice((previous) =>
+                previous === checking ? error.message : previous,
+              ),
+            );
           break;
         }
         case "/clear":
@@ -547,11 +612,10 @@ export function Thread({
             <Badge>workspace</Badge>
           )}
           <span className="connection-status" role="status">
-            <Badge
-              bordered={false}
-              variant={connected ? "success" : "warning"}
-            >
-              {connecting || (connected && busy) ? <Spinner /> : (
+            <Badge bordered={false} variant={connected ? "success" : "warning"}>
+              {connecting || (connected && busy) ? (
+                <Spinner />
+              ) : (
                 <span className="status-dot" aria-hidden="true" />
               )}
               {status.toLowerCase()}
@@ -592,7 +656,11 @@ export function Thread({
           </div>
           {!config ? (
             <div className="empty-state">
-              <Spinner label="Loading your workspace…" />
+              {configUnavailable ? (
+                "Workspace unavailable."
+              ) : (
+                <Spinner label="Loading your workspace…" />
+              )}
             </div>
           ) : state.entries.length === 0 ? (
             <div className="empty-state">
@@ -666,7 +734,9 @@ export function Thread({
                   {entry.tools.length > 0 ? (
                     <ToolCall
                       name={`${entry.tools.length} ${entry.tools.length === 1 ? "tool call" : "tool calls"}`}
-                      isRunning={running && entry.id === state.entries.at(-1)?.id}
+                      isRunning={
+                        running && entry.id === state.entries.at(-1)?.id
+                      }
                     >
                       <ul>
                         {entry.tools.map((tool, index) => {
@@ -674,7 +744,9 @@ export function Thread({
                           const detail = parts.join(" ");
                           return (
                             <li key={index} title={tool}>
-                              <span title={TOOL_LABELS[name] ?? name}>{name}</span>
+                              <span title={TOOL_LABELS[name] ?? name}>
+                                {name}
+                              </span>
                               {detail ? <code>{detail}</code> : null}
                             </li>
                           );
@@ -738,7 +810,9 @@ export function Thread({
         ) : null}
         {configFailed ? (
           <div className="inline-error" role="alert">
-            Couldn’t load the model configuration. Retrying automatically.{" "}
+            {configError ??
+              "Couldn’t load the model configuration. Retrying automatically."}{" "}
+            {configError ? <a href="/">Open a new session</a> : null}{" "}
             <button
               type="button"
               className="config-retry"
@@ -889,7 +963,11 @@ export function Thread({
             </button>
           </div>
           <div className="composer-hint">
-            <ModelBadge model={config?.model} />
+            {configUnavailable && !config ? (
+              <span>model unavailable</span>
+            ) : (
+              <ModelBadge model={config?.model} />
+            )}
             <KeyboardShortcuts
               shortcuts={[
                 { key: "/", description: "commands" },

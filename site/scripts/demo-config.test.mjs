@@ -126,3 +126,52 @@ test("a late response after unmount cannot change the page", async () => {
   await setImmediate();
   assert.deepEqual(updates, [{ status: "loading" }]);
 });
+
+test("expired sessions show the server explanation and stop automatic retries", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const updates = [];
+  let calls = 0;
+  const observer = observeDemoConfig(
+    (update) => updates.push(update),
+    async () => {
+      calls++;
+      return Response.json(
+        { error: "This demo session has expired." },
+        { status: 410 },
+      );
+    },
+  );
+  t.after(observer.dispose);
+  await setImmediate();
+  assert.deepEqual(updates.at(-1), {
+    status: "error",
+    message: "This demo session has expired.",
+    retryable: false,
+  });
+  t.mock.timers.tick(60000);
+  await setImmediate();
+  assert.equal(calls, 1);
+});
+
+test("new-session rate limits honor Retry-After", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let calls = 0;
+  const observer = observeDemoConfig(
+    () => {},
+    async () => {
+      calls++;
+      return Response.json(
+        { error: "Daily limit reached." },
+        { status: 429, headers: { "Retry-After": "60" } },
+      );
+    },
+  );
+  t.after(observer.dispose);
+  await setImmediate();
+  t.mock.timers.tick(59000);
+  await setImmediate();
+  assert.equal(calls, 1);
+  t.mock.timers.tick(1000);
+  await setImmediate();
+  assert.equal(calls, 2);
+});

@@ -17,6 +17,7 @@ import {
 } from "./managed-workspace";
 import { createPresenceTracker } from "./presence";
 import { managedBackendUrl } from "./managed-backend";
+import { demoLimits } from "./demo-policy";
 
 export type GatewaySession = {
   scope: string;
@@ -192,7 +193,8 @@ export const createManagedGateway = async (
       state.harness = info();
       if (virtualFiles && !remoteFiles) {
         const data = harness.messages.at(-1)?.metadata?.provider?.tress as
-          { files?: unknown } | undefined;
+          | { files?: unknown }
+          | undefined;
         const files = data?.files;
         if (
           files &&
@@ -283,6 +285,13 @@ export const createManagedGateway = async (
     presence,
     info,
     reconnect,
+    isBusy: () =>
+      sending ||
+      harness.isBusy ||
+      harness.isLoading ||
+      harness.status === "submitted" ||
+      harness.status === "streaming" ||
+      Boolean(reconnecting),
     drain: () => pending.catch(() => {}),
     setFiles: (files: Record<string, string>) => setFiles(files),
     dispose: () => {
@@ -296,15 +305,51 @@ export const createManagedGateway = async (
 const key = Symbol.for("tress.managed.gateway");
 // Bump when the cached host's shape or resource wiring changes. Farm reloads
 // routes without clearing globalThis, so an older host can outlive its callers.
-const GATEWAY_VERSION = 3;
+const GATEWAY_VERSION = 4;
 type Holder = {
   version?: number;
   gateway?: Promise<Awaited<ReturnType<typeof createManagedGateway>>>;
+  ready?: Awaited<ReturnType<typeof createManagedGateway>>;
+  lastActiveAt?: number;
 };
 const holder = ((globalThis as Record<symbol, unknown>)[key] ??= {}) as Holder;
 const sessionsKey = Symbol.for("tress.managed.session-gateways.v1");
 const sessions = ((globalThis as Record<symbol, unknown>)[sessionsKey] ??=
   new Map()) as Map<string, Holder>;
+
+export const sweepManagedGateways = (now = Date.now()) => {
+  const idle = demoLimits().idleMinutes * 60_000;
+  if (!idle) return;
+  for (const [id, cache] of [[undefined, holder], ...sessions] as [
+    string | undefined,
+    Holder,
+  ][]) {
+    const gateway = cache.ready;
+    if (!gateway) continue;
+    if (gateway.isBusy() || gateway.presence.count()) {
+      cache.lastActiveAt = now;
+      continue;
+    }
+    if (now - (cache.lastActiveAt ?? now) < idle) continue;
+    gateway.dispose();
+    cache.gateway = undefined;
+    cache.ready = undefined;
+    if (id) sessions.delete(id);
+  }
+};
+const timerKey = Symbol.for("tress.managed.idle-sweeper.v1");
+const timers = globalThis as Record<symbol, unknown>;
+if (!timers[timerKey]) {
+  const timer = setInterval(() => {
+    try {
+      sweepManagedGateways();
+    } catch {
+      /* Invalid settings are reported by /api/health. */
+    }
+  }, 60_000);
+  timer.unref();
+  timers[timerKey] = timer;
+}
 export const managedGateway = (config: CloudMode, session?: GatewaySession) => {
   let cache = holder;
   if (session) {
@@ -316,15 +361,19 @@ export const managedGateway = (config: CloudMode, session?: GatewaySession) => {
     cache = sessions.get(id) ?? {};
     sessions.set(id, cache);
   }
+  cache.lastActiveAt = Date.now();
   if (cache.version !== GATEWAY_VERSION || !cache.gateway) {
     const previous = cache.gateway;
+    cache.ready = undefined;
     cache.version = GATEWAY_VERSION;
     const gateway = (async () => {
       // Retire the old tunnel and streams before opening their replacement.
       // The persisted thread id keeps the managed conversation intact.
       const stale = await previous?.catch(() => undefined);
       stale?.dispose();
-      return createManagedGateway(config, undefined, session);
+      const ready = await createManagedGateway(config, undefined, session);
+      cache.ready = ready;
+      return ready;
     })();
     cache.gateway = gateway;
     void gateway.catch(() => {
