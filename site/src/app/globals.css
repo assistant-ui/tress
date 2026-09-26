@@ -762,7 +762,11 @@ h1 {
   gap: 9px;
   cursor: pointer;
   width: fit-content;
-  margin-left: auto;
+  min-height: 32px;
+  margin: 4px 0 4px auto;
+  padding: 6px 8px;
+  line-height: 1.4;
+  border-radius: 4px;
   list-style: none;
   color: var(--text);
 }
@@ -776,9 +780,10 @@ h1 {
   flex-shrink: 0;
   background: currentColor;
   clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transform: translateY(1px);
 }
 .terminal-attach[open] summary::before {
-  transform: rotate(90deg);
+  transform: translateY(1px) rotate(90deg);
 }
 .attach-command {
   display: flex;
@@ -1048,7 +1053,8 @@ footer > span {
     font-size: 11px;
   }
   .terminal-attach summary {
-    padding: 5px 0;
+    min-height: 36px;
+    padding: 8px;
   }
   .attach-command {
     gap: 8px;
