@@ -432,6 +432,23 @@ export function Thread({
           </button>
         </div>
 
+        <details className="terminal-attach" ref={attachDetails} open>
+          <summary>attach your terminal</summary>
+          <div className="attach-command">
+            <span aria-hidden="true">$</span>
+            <code>{attachCommand}</code>
+            <CopyButton
+              text={attachCommand}
+              label="Copy terminal attach command"
+              disabled={!origin || !config}
+            />
+          </div>
+          <p>
+            Same thread, live in both clients. Add <code>--ui</code> for the
+            full terminal interface.
+          </p>
+        </details>
+
         {config?.session ? (
           <div className="thread-identity">
             <span>
@@ -855,28 +872,6 @@ export function Thread({
           ) : null}
         </div>
       </div>
-      <details className="terminal-attach" ref={attachDetails}>
-        <summary>attach your terminal</summary>
-        <div className="attach-command">
-          <span aria-hidden="true">$</span>
-          <code>{attachCommand}</code>
-          <CopyButton
-            text={attachCommand}
-            label="Copy terminal attach command"
-            disabled={!origin || !config}
-          />
-        </div>
-        <p>Send a prompt from either client. Both follow the same thread.</p>
-        {config?.session ? (
-          <p>
-            Your session ID lets another client join this thread. A new visitor
-            gets their own.
-          </p>
-        ) : null}
-        <p>
-          Add <code>--ui</code> for the full terminal interface.
-        </p>
-      </details>
     </div>
   );
 }
