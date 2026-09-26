@@ -23,6 +23,7 @@ import { KeyboardShortcuts } from "./terminal/KeyboardShortcuts";
 import { ToolCall } from "./terminal/ToolCall";
 import { TerminalIcon } from "./terminal/TerminalIcon";
 import { TressWordmark } from "./TressWordmark";
+import type { SessionTopology } from "./ThreadSidebar";
 
 const EMPTY: ThreadState = {
   entries: [],
@@ -101,12 +102,14 @@ export function Thread({
   session: selectedSession,
   onReady,
   onActivity,
+  onTopology,
   toolbar,
   drafts,
 }: {
   session?: string;
   onReady?: (config: DemoConfig) => void;
   onActivity?: (id: string, running: boolean, prompt?: string) => void;
+  onTopology?: (topology: SessionTopology) => void;
   toolbar?: ReactNode;
   drafts?: Map<string, string>;
 } = {}) {
@@ -267,6 +270,9 @@ export function Thread({
     (!state.harness || state.harness.connection === "connected");
   const running = state.status === "running";
   const clients = state.clients ?? [];
+  const hostLabel = config?.host?.label ?? "tress host";
+  const hostRuntime =
+    config?.host?.runtime ?? (state.harness ? "managed" : "local");
   const busy = running || pending;
   const canSend = connected && !busy && config?.configured === true;
   const attachCommand = `tress attach ${origin || "<this-host>"}${config?.session ? ` -s ${config.session.attachId}` : ""}`;
@@ -277,6 +283,27 @@ export function Thread({
     inputFocused && !menuDismissed && input.trim().startsWith("/");
   const activeIndex = Math.min(commandIndex, matches.length - 1);
   const activeCommand = matches[activeIndex];
+
+  useEffect(() => {
+    if (!config || !onTopology) return;
+    onTopology({
+      host: {
+        label: hostLabel,
+        runtime: hostRuntime,
+        workspace: workspaceDescription?.label,
+      },
+      clients,
+      connected,
+    });
+  }, [
+    clients,
+    config,
+    connected,
+    hostLabel,
+    hostRuntime,
+    onTopology,
+    workspaceDescription?.label,
+  ]);
 
   useEffect(() => {
     if (menuOpen) commandMenu.current?.scrollIntoView({ block: "nearest" });
@@ -419,6 +446,15 @@ export function Thread({
             <>
               {status}
               <dl className="status-details">
+                <dt>Host</dt>
+                <dd>
+                  {hostLabel}
+                  <span className="status-detail-note">
+                    {hostRuntime === "managed" ? "managed runtime" : "local runtime"}
+                  </span>
+                </dd>
+                <dt>This tab</dt>
+                <dd>browser client</dd>
                 {state.harness ? (
                   <>
                     <dt>Thread</dt>
@@ -448,6 +484,11 @@ export function Thread({
                   ) : null}
                 </dd>
               </dl>
+              <p className="status-role-note">
+                The host runs the agent and controls workspace access. Anyone
+                with this private thread link or session ID can attach as a
+                client; clients cannot take over the host role yet.
+              </p>
               {!connected ? "Use /reconnect to sync." : null}
             </>,
           );
