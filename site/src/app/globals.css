@@ -757,9 +757,28 @@ h1 {
   color: var(--muted);
 }
 .terminal-attach summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   cursor: pointer;
   width: fit-content;
+  margin-left: auto;
+  list-style: none;
   color: var(--text);
+}
+.terminal-attach summary::-webkit-details-marker {
+  display: none;
+}
+.terminal-attach summary::before {
+  content: "";
+  width: 7px;
+  height: 8px;
+  flex-shrink: 0;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.terminal-attach[open] summary::before {
+  transform: rotate(90deg);
 }
 .attach-command {
   display: flex;
