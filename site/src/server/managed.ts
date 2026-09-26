@@ -16,6 +16,7 @@ import {
   subscribeManagedFiles,
 } from "./managed-workspace";
 import { createPresenceTracker } from "./presence";
+import { managedBackendUrl } from "./managed-backend";
 
 export type GatewaySession = {
   scope: string;
@@ -82,14 +83,17 @@ export const createManagedGateway = async (
     await rename(temporary, path);
   };
   if (!session) await save(threadId);
-  const connect = () =>
-    factory?.(threadId) ??
-    new Harness({
+  const connect = async () => {
+    if (factory) return factory(threadId);
+    const backendUrl = session
+      ? await managedBackendUrl(config, session.scope, threadId)
+      : config.backendUrl;
+    return new Harness({
       transport: HarnessCloud({
         origin: config.origin,
         workspaceId: config.workspaceId,
         threadId,
-        url: config.backendUrl,
+        url: backendUrl,
         credential: () => {
           const key = process.env.HARNESS_API_KEY;
           if (!key) throw new Error("HARNESS_API_KEY is not configured.");
@@ -97,13 +101,41 @@ export const createManagedGateway = async (
         },
       }),
     });
-  let harness = connect();
+  };
+  let harness = await connect();
   let unsubscribe = () => {};
   let sending = false;
   let pending: Promise<unknown> = Promise.resolve();
   let remoteFiles = false;
   let setFiles = (_files: Record<string, string>) => {};
   let notify = () => {};
+  let disposed = false;
+  let reconnecting: Promise<void> | undefined;
+  const reconnect = () => {
+    if (reconnecting) return reconnecting;
+    if (
+      disposed ||
+      sending ||
+      harness.isBusy ||
+      harness.transport.status !== "stopped"
+    )
+      return Promise.resolve();
+    reconnecting = (async () => {
+      const next = await connect();
+      if (disposed) {
+        next.dispose();
+        return;
+      }
+      unsubscribe();
+      harness.dispose();
+      harness = next;
+      unsubscribe = harness.subscribe(() => notify());
+      notify();
+    })().finally(() => {
+      reconnecting = undefined;
+    });
+    return reconnecting;
+  };
   const virtualFiles = ["memory", "overlay"].includes(workspaceConfig().mode);
   let restoredFiles = false;
   const info = (): NonNullable<ThreadState["harness"]> => {
@@ -226,7 +258,7 @@ export const createManagedGateway = async (
           forgetManagedWorkspace(threadId);
           threadId = nextId;
           restoredFiles = false;
-          harness = connect();
+          harness = await connect();
           unsubscribe = harness.subscribe(() => notify());
           state.files = {};
           await refreshManagedFiles(threadId, session?.scope);
@@ -249,9 +281,11 @@ export const createManagedGateway = async (
     host,
     presence,
     info,
+    reconnect,
     drain: () => pending.catch(() => {}),
     setFiles: (files: Record<string, string>) => setFiles(files),
     dispose: () => {
+      disposed = true;
       host.dispose();
       harness.dispose();
     },
@@ -261,7 +295,7 @@ export const createManagedGateway = async (
 const key = Symbol.for("tress.managed.gateway");
 // Bump when the cached host's shape or resource wiring changes. Farm reloads
 // routes without clearing globalThis, so an older host can outlive its callers.
-const GATEWAY_VERSION = 1;
+const GATEWAY_VERSION = 2;
 type Holder = {
   version?: number;
   gateway?: Promise<Awaited<ReturnType<typeof createManagedGateway>>>;

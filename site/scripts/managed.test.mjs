@@ -241,6 +241,49 @@ test("hot reload replaces an incompatible cached gateway once and retains its th
   }
 });
 
+test("reattaching retries a stopped cloud connection once without rotating the conversation", async () => {
+  const hosts = new Map();
+  const factory = scriptedFactory(hosts, []);
+  const session = { scope: "retry", threadId: "retry-thread", selectThread: async () => assert.fail("must not rotate") };
+  const previous = await createManagedGateway(config, factory, session);
+  const seed = new StatewireClient({ transport: transport(previous.host) });
+  await wait(() => seed.state?.harness?.connection === "connected", "initial connection");
+  await seed.commands.send("Keep this history");
+  await wait(() => seed.state?.runs === 1 && seed.state.status === "idle", "saved reply");
+  seed.dispose();
+  previous.dispose();
+  let attempts = 0;
+  const gateway = await createManagedGateway(config, (id) => {
+    attempts++;
+    if (attempts === 1)
+      return new Harness({ transport: StatewireHttp({
+        url: "http://test.invalid",
+        fetch: async () => new Response("unavailable credential", { status: 401 }),
+      }) });
+    return factory(id);
+  }, session);
+  const clients = [];
+  try {
+    const first = new StatewireClient({ transport: transport(gateway.host) });
+    clients.push(first);
+    await wait(() => first.state?.harness?.connection === "stopped", "stopped upstream");
+    await Promise.all([gateway.reconnect(), gateway.reconnect()]);
+    assert.equal(attempts, 2, "concurrent clients share the retry");
+    const second = new StatewireClient({ transport: transport(gateway.host) });
+    clients.push(second);
+    await wait(() => second.state?.harness?.connection === "connected", "recovered cloud");
+    assert.equal(second.state.harness.threadId, "retry-thread");
+    assert.equal(second.state.entries[0].text, "Keep this history");
+    assert.equal(second.state.entries.at(-1).text, "Managed reply");
+    await gateway.reconnect();
+    assert.equal(attempts, 2, "healthy cloud connections are not replaced");
+  } finally {
+    clients.forEach((client) => client.dispose());
+    gateway.dispose();
+    hosts.forEach((host) => host.dispose());
+  }
+});
+
 test("isolated managed sessions rotate only their own stored thread and resume it", async () => {
   const hosts = new Map();
   const factory = scriptedFactory(hosts, []);
