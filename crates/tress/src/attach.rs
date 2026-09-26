@@ -174,6 +174,31 @@ pub async fn run(
     ui_requested: bool,
     session: Option<&str>,
 ) -> Result<(), String> {
+    run_inner(input, style, ui_requested, session, None).await
+}
+
+pub async fn ask(
+    input: &str,
+    style: &crate::Style,
+    session: Option<&str>,
+    prompt: &str,
+) -> Result<(), String> {
+    if prompt.trim().is_empty() {
+        return Err("A prompt is required".into());
+    }
+    run_inner(input, style, false, session, Some(prompt)).await
+}
+
+async fn run_inner(
+    input: &str,
+    style: &crate::Style,
+    ui_requested: bool,
+    session: Option<&str>,
+    initial_prompt: Option<&str>,
+) -> Result<(), String> {
+    let one_shot = initial_prompt.is_some();
+    let mut unsent = initial_prompt;
+    let ready_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
     let mut url = match session {
         Some(id) => session_url(input, id)?,
         None => thread_url(input),
@@ -212,7 +237,7 @@ pub async fn run(
         screen.set_threads(&recent.items, &url);
     }
     let (lines_tx, mut lines_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    if !interactive {
+    if !interactive && !one_shot {
         println!(
             "tress {} · shared thread · {display_url}",
             env!("CARGO_PKG_VERSION")
@@ -258,7 +283,8 @@ pub async fn run(
                     &display_url,
                 )
                 .map_err(|error| error.to_string())?;
-        } else if !plain_prompt
+        } else if !one_shot
+            && !plain_prompt
             && pending.is_none()
             && snapshot
                 .as_ref()
@@ -269,8 +295,31 @@ pub async fn run(
             plain_prompt = true;
         }
 
+        if connected {
+            if let (Some(prompt), Some(state)) = (unsent, snapshot.as_ref()) {
+                if state.status == "running" {
+                    return Err(
+                        "The host is busy; wait for this thread's current run to finish.".into(),
+                    );
+                }
+                printed.first_id = state.entries.first().map(|entry| entry.id.clone());
+                printed.done = state.entries.len();
+                pending = Some(
+                    client
+                        .as_ref()
+                        .unwrap()
+                        .command(PROTOCOL, "send", vec![json!(prompt)])
+                        .await,
+                );
+                unsent = None;
+            }
+        }
+
         let typed = tokio::select! {
-            typed = lines_rx.recv(), if !interactive => {
+            _ = tokio::time::sleep_until(ready_deadline), if one_shot && unsent.is_some() => {
+                return Err("The host did not become ready within 20 seconds. Use `tress` to inspect its connection.".into());
+            }
+            typed = lines_rx.recv(), if !interactive && !one_shot => {
                 let Some(line) = typed else { break };
                 plain_prompt = false;
                 Some(line)
@@ -316,6 +365,7 @@ pub async fn run(
             }
             event = events.recv(), if client.is_some() => {
                 let Some(event) = event else {
+                    if one_shot { return Err("Host connection closed; the run may continue on the host. Reattach to check.".into()); }
                     client = None;
                     pending = None;
                     notice(&mut screen, "Connection closed. Use /reconnect to try again.");
@@ -340,11 +390,12 @@ pub async fn run(
                             let error = snapshot.as_ref().and_then(|state| state.harness.as_ref()).and_then(|cloud| cloud.error.clone());
                             if error != cloud_error {
                                 if let Some(message) = &error {
+                                    if one_shot { return Err(format!("Managed Harness: {message}")); }
                                     notice(&mut screen, &format!("Managed Harness: {message}"));
                                 }
                                 cloud_error = error;
                             }
-                            if screen.is_none() {
+                            if screen.is_none() && (!one_shot || unsent.is_none()) {
                                 if plain_prompt { println!(); plain_prompt = false; }
                                 render(&value, &mut printed, style);
                             }
@@ -352,15 +403,29 @@ pub async fn run(
                     }
                     Event::CommandUpdate { answer, terminal: true } if pending == Some(answer.seq) => {
                         pending = None;
+                        if one_shot {
+                            if answer.verdict != Some(Verdict::Result) {
+                                return Err(format!("Command failed: {}", answer.message.as_deref().unwrap_or("the host rejected the command")));
+                            }
+                            if let Some(value) = client.as_ref().unwrap().main_value(PROTOCOL).await {
+                                render(&value, &mut printed, style);
+                                if let Ok(state) = serde_json::from_value::<ThreadState>(value) {
+                                    if state.entries.last().is_some_and(|entry| entry.error) { return Err("The host reported a failed run".into()); }
+                                }
+                            }
+                            return Ok(());
+                        }
                         if answer.verdict.is_some_and(|verdict| verdict != Verdict::Result) {
                             notice(&mut screen, &format!("Command failed: {}", answer.message.as_deref().unwrap_or("the host rejected the command")));
                         }
                     }
                     Event::CommandsLost { .. } => {
+                        if one_shot { return Err("Command connection was interrupted. Reattach to check the run before retrying.".into()); }
                         pending = None;
                         notice(&mut screen, "Connection interrupted. Use /status or /reconnect before sending again.");
                     }
                     Event::Finished { fin, .. } => {
+                        if one_shot { return Err("The host detached. Reattach to check the run before retrying.".into()); }
                         client = None;
                         pending = None;
                         notice(&mut screen, &format!("Detached: {:?}. Use /reconnect to rejoin the thread.", fin.reason));
