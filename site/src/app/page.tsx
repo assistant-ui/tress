@@ -46,9 +46,11 @@ export default function HomePage() {
 
         <section className="about" id="about" aria-label="About tress">
           <p>
-            tress is a small coding agent written in Rust. It reads and edits
-            files, works through a task, and keeps tool activity in the
-            conversation.
+            <a className="about-project-link" href={SOURCE}>
+              tress
+            </a>{" "}
+            is a small coding agent written in Rust. It reads and edits files,
+            works through a task, and keeps tool activity in the conversation.
           </p>
           <p>
             The session belongs to a thread. Your terminal and browser are just
