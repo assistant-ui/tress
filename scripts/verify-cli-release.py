@@ -49,6 +49,11 @@ with tempfile.TemporaryDirectory(prefix="tress-release-") as directory:
             requests.append(self.path)
             body = json.dumps({
                 "kind": "cloud", "configured": True, "session": {"attachId": SESSION},
+                "ok": True, "checks": [
+                    {"name": "Storage", "status": "ok", "message": "Fixture storage ready"},
+                    {"name": "Model", "status": "ok", "message": "Fixture model accessible"},
+                    {"name": "Harness", "status": "ok", "message": "Fixture thread reachable"},
+                ],
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -75,7 +80,12 @@ with tempfile.TemporaryDirectory(prefix="tress-release-") as directory:
             assert json.loads(view)["credentials"] == "managed by host"
             assert SESSION not in view, "diagnostics exposed the session capability"
             run("doctor", "--check-api")
-            assert requests == [f"/api/mode?session={SESSION}"] * 2
+            assert len(requests) == 2
+            assert requests[0] == f"/api/mode?session={SESSION}"
+            # Support both versions while the diagnostics endpoint rolls out.
+            assert requests[1] in {
+                f"/api/mode?session={SESSION}", f"/api/health?session={SESSION}",
+            }
         finally:
             server.shutdown()
             worker.join(timeout=5)
