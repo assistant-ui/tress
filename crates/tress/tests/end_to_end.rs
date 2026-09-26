@@ -29,15 +29,23 @@ fn serve(scripts: Vec<String>) -> (String, std::thread::JoinHandle<Vec<String>>)
 fn handle_request(mut stream: TcpStream, script: &str) -> String {
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut length = 0usize;
+    let mut authenticated = false;
     loop {
         let mut line = String::new();
         if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
             break;
         }
+        if let Some(value) = line.to_ascii_lowercase().strip_prefix("x-api-key:") {
+            authenticated = matches!(value.trim(), "test-key" | "saved-test-key");
+        }
         if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
             length = value.trim().parse().unwrap_or(0);
         }
     }
+    assert!(
+        authenticated,
+        "mock API requires the expected test credential"
+    );
     let mut body = vec![0u8; length];
     reader.read_exact(&mut body).expect("request body");
 
@@ -115,8 +123,20 @@ impl Drop for Scratch {
     }
 }
 
+fn isolated_command(dir: &Path) -> Command {
+    let mut command = Command::new(binary());
+    command
+        .current_dir(dir)
+        .env("XDG_CONFIG_HOME", dir.join("config"))
+        .env_remove("TRESS_MODEL")
+        .env_remove("TRESS_MAX_STEPS")
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("ANTHROPIC_BASE_URL");
+    command
+}
+
 fn run(dir: &Path, base_url: &str, prompt: &str) -> std::process::Output {
-    Command::new(binary())
+    isolated_command(dir)
         .arg("ask")
         .arg(prompt)
         .current_dir(dir)
@@ -163,8 +183,7 @@ fn interactive_commands_do_not_call_the_model_or_change_files() {
     std::fs::write(&file, "unchanged").unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
-    let mut child = Command::new(binary())
-        .current_dir(scratch.path())
+    let mut child = isolated_command(scratch.path())
         .env("ANTHROPIC_API_KEY", "test-key")
         .env(
             "ANTHROPIC_BASE_URL",
@@ -328,7 +347,7 @@ fn a_tool_error_is_reported_to_the_model_not_fatal() {
 #[test]
 fn a_missing_key_fails_with_a_clear_message() {
     let scratch = Scratch::new("nokey");
-    let output = Command::new(binary())
+    let output = isolated_command(scratch.path())
         .arg("ask")
         .arg("hi")
         .current_dir(scratch.path())
@@ -337,4 +356,75 @@ fn a_missing_key_fails_with_a_clear_message() {
         .expect("run tress");
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("ANTHROPIC_API_KEY"));
+}
+
+#[test]
+fn saved_settings_are_used_after_clearing_a_conversation() {
+    let scratch = Scratch::new("saved-clear");
+    let (url, server) = serve(vec![text_reply("first reply"), text_reply("after clear")]);
+    let mut setup = isolated_command(scratch.path())
+        .args([
+            "setup",
+            "--key-stdin",
+            "--model",
+            "saved-model",
+            "--base-url",
+            &url,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    setup
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"saved-test-key\n")
+        .unwrap();
+    assert!(setup.wait_with_output().unwrap().status.success());
+    let mut child = isolated_command(scratch.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"hello\n/clear\nhello again\n/quit\n")
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("after clear"));
+    let requests = server.join().unwrap();
+    for request in requests {
+        let body: serde_json::Value = serde_json::from_str(&request).unwrap();
+        assert_eq!(body["model"], "saved-model");
+        assert_eq!(
+            body["messages"].as_array().unwrap().len(),
+            1,
+            "clear must reset history"
+        );
+    }
+}
+
+#[test]
+fn configured_step_limit_stops_the_real_binary() {
+    let scratch = Scratch::new("step-limit");
+    let (url, server) = serve(vec![tool_reply("ls", serde_json::json!({}))]);
+    let output = isolated_command(scratch.path())
+        .args(["ask", "--max-steps", "1", "list files"])
+        .env("ANTHROPIC_API_KEY", "test-key")
+        .env("ANTHROPIC_BASE_URL", url)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("stopped after 1 model steps"));
+    assert_eq!(server.join().unwrap().len(), 1);
 }
