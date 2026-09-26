@@ -21,7 +21,7 @@ export default function HomePage() {
           <a href="#demo">try</a>
           <a href="#about">about</a>
           <a href={`${SOURCE}#readme`}>docs</a>
-          <a href={SOURCE}>GitHub ↗</a>
+          <a href={SOURCE}>github ↗</a>
         </nav>
       </header>
 
@@ -94,7 +94,7 @@ export default function HomePage() {
       </main>
 
       <footer>
-        <a href={SOURCE}>GitHub</a>
+        <a href={SOURCE}>github</a>
         <a href="https://github.com/assistant-ui/statewire-rs">statewire</a>
         <span>
           MIT · powered by <a href="https://harness-sdk.dev">harness-sdk</a>
