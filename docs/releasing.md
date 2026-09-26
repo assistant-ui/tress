@@ -53,6 +53,6 @@ python3 scripts/verify-cli-release.py "$tress_check_dir/tress"
 ```
 
 Confirm that the version matches the release, then remove the temporary
-directory. Remove the pending-release notice in the README and setup guide
-once the release is available. Installing the CLI alone does not create a
+directory. Confirm that the README, setup guide, and website identify the
+released version. Installing the CLI alone does not create a
 session or change credentials; `tress setup` is a separate user action.

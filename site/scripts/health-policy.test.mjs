@@ -6,6 +6,10 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { build } from "esbuild";
 import { Pool } from "pg";
+import { resource } from "@assistant-ui/tap";
+import { StatewireSocketHost } from "statewire/host-internal";
+import { useStatewireCommands, useStatewireState } from "statewire/host";
+import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
 
 const root = await mkdtemp(join(tmpdir(), "tress-health-policy-"));
 const output = new URL(
@@ -132,6 +136,39 @@ test("health distinguishes database failure, rejected Harness access, and unsupp
     /HTTP 403/,
   );
   assert(!JSON.stringify(result).includes("secret"));
+});
+
+test("Harness diagnostics negotiate with the real Statewire host without sending commands", async () => {
+  const host = StatewireSocketHost(
+    resource(() => {
+      const [state] = useStatewireState(() => ({ status: "idle" }));
+      const commands = useStatewireCommands({
+        send: () => assert.fail("Diagnostics must not send commands"),
+      });
+      return { state, commands };
+    })(),
+    { protocol: HARNESS_HOST_PROTOCOL },
+  );
+  try {
+    const result = await checkHost(
+      request(),
+      undefined,
+      store("protocol"),
+      async (url, init) => {
+        if (url.hostname === "provider.example")
+          return Response.json({ id: "fixture-model" });
+        assert.equal(
+          init.method,
+          undefined,
+          "Only a GET stream probe is allowed",
+        );
+        return host.stream(new Request(url, init));
+      },
+    );
+    assert.equal(result.ok, true, JSON.stringify(result.checks));
+  } finally {
+    host.dispose();
+  }
 });
 
 test("missing model key and network failure produce actionable checks", async () => {

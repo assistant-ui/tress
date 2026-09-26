@@ -16,8 +16,7 @@ The installer downloads a binary, verifies its checksum, and installs to
 `~/.local/bin`. Follow its PATH instructions if needed.
 
 Hosted setup requires **v0.2.0 or newer**. Check `tress --version` after
-installation. Until v0.2.0 is published, the installer still downloads v0.1.0;
-build this checkout with Rust to use hosted setup now:
+installation. To build the current checkout with Rust instead:
 
 ```sh
 cargo install --locked --path crates/tress
@@ -25,7 +24,7 @@ cargo install --locked --path crates/tress
 
 ## Upgrade from v0.1.0
 
-Once v0.2.0 is published, rerun the install command to upgrade. The installer
+Rerun the install command to upgrade to the latest release. The installer
 replaces the executable and leaves your configuration and files untouched.
 
 The default changes in v0.2.0: `tress` and `tress ask` connect to a host. Run

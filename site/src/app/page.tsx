@@ -33,7 +33,7 @@ export default function HomePage() {
           </h1>
           <InstallLine />
           <p className="version">
-            v0.1.0 · durable threads · status: <span>experimental</span>
+            v0.2.0 · durable threads · status: <span>experimental</span>
           </p>
         </section>
 
