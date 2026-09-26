@@ -407,9 +407,7 @@ export function Thread({
   return (
     <div className="playground">
       <div className="terminal-window">
-        <div
-          className={`terminal-titlebar${localDemo ? " has-local-workspace" : ""}`}
-        >
+        <div className="terminal-titlebar">
           {toolbar ?? (
             <div className="window-dots" aria-hidden="true">
               <span />
@@ -418,7 +416,18 @@ export function Thread({
             </div>
           )}
           <span className="terminal-title">
-            tress{localDemo ? " · local files" : ""}
+            <span>tress{config?.session ? " ·" : ""}</span>
+            {config?.session ? (
+              <span className="terminal-session">
+                <code title={config.session.attachId}>
+                  {config.session.attachId}
+                </code>
+                <CopyButton
+                  text={config.session.attachId}
+                  label="Copy session ID"
+                />
+              </span>
+            ) : null}
           </span>
           <button
             type="button"
@@ -449,29 +458,15 @@ export function Thread({
           </p>
         </details>
 
-        {config?.session ? (
-          <div className="thread-identity">
-            <span>
-              your session <code>{config.session.attachId}</code>
-            </span>
-            <CopyButton
-              text={config.session.attachId}
-              label="Copy session ID"
-            />
-          </div>
-        ) : null}
-        {localDemo ? (
+        {localDemo && config?.workspace?.root ? (
           <div className="local-workspace-info" aria-label="Local workspace">
-            <p>Real files on this host. Changes are saved to disk.</p>
-            {config?.workspace?.root ? (
-              <div className="local-workspace-path">
-                <code>{config.workspace.root}</code>
-                <CopyButton
-                  text={config.workspace.root}
-                  label="Copy local workspace path"
-                />
-              </div>
-            ) : null}
+            <div className="local-workspace-path">
+              <code>{config.workspace.root}</code>
+              <CopyButton
+                text={config.workspace.root}
+                label="Copy local workspace path"
+              />
+            </div>
           </div>
         ) : null}
 

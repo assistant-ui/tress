@@ -152,11 +152,11 @@ h1 {
 }
 .terminal-titlebar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  height: 43px;
-  padding: 0 18px;
+  min-height: 43px;
+  padding: 6px 18px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -171,17 +171,26 @@ h1 {
   background: #464644;
 }
 .terminal-title {
-  color: #8d8d88;
-}
-.terminal-titlebar.has-local-workspace {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-}
-.has-local-workspace .terminal-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  column-gap: 6px;
   min-width: 0;
-  text-align: center;
+  color: #8d8d88;
   white-space: nowrap;
+}
+.terminal-session {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.terminal-session code {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--text);
 }
 .local-workspace-info {
   margin: 0 18px 8px;
@@ -190,9 +199,6 @@ h1 {
   color: var(--muted);
   font-size: 11px;
   text-align: left;
-}
-.local-workspace-info p {
-  margin: 0 0 6px;
 }
 .local-workspace-path {
   display: flex;
@@ -283,17 +289,6 @@ h1 {
 .entry {
   font-size: 12px;
   margin: 0 0 19px;
-}
-.thread-identity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 20px;
-  color: var(--muted);
-  font-size: 11px;
-}
-.thread-identity code {
-  color: var(--text);
 }
 .entry-prompt {
   display: flex;
@@ -977,7 +972,14 @@ footer > span {
     font-size: 10px;
   }
   .terminal-titlebar {
-    padding: 0 13px;
+    padding: 6px 13px;
+    gap: 8px;
+  }
+  .terminal-title {
+    font-size: 11px;
+  }
+  .terminal-title .copy-button {
+    padding: 2px 4px;
   }
   .window-dots {
     gap: 5px;
