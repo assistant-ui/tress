@@ -103,15 +103,22 @@ Saved connections are private plaintext files, not an encrypted keychain.
 tress config                # selected mode and connection; session ID hidden
 tress config --json         # machine-readable settings
 tress doctor                # local configuration checks, no network call
-tress doctor --check-api    # check the host's configuration endpoint
+tress doctor --check-api    # check host storage, model access, and Harness
 ```
 
-Hosted diagnostics confirm reachability and whether the host reports a model
-credential configured. They do not generate a completion or prove that the
-provider will accept a future request. A 401/403 can indicate host access or
-Vercel deployment protection; a 404 can indicate an invalid session. Ask the
-host operator to fix missing model credentials. Local credentials are not used
-as a fallback.
+Hosted diagnostics return separate storage, model, and Harness checks. The
+host checks provider model metadata and opens then closes its managed thread
+stream. Keys remain on the host and no completion is generated. Metadata
+access does not guarantee a later generation will succeed; compatible proxies
+without model metadata report `unknown`. Results are cached for 30 seconds.
+The command exits unsuccessfully if any check fails or is unknown. Hosts from
+before this endpoint was added report that diagnostics are unavailable.
+
+In the browser, use `/doctor` for the same report. A 401/403 may indicate
+deployment protection or rejected host credentials. An expired session returns
+410; use `tress setup` and choose `new` to create another. Daily demo limits
+return 429 and reset at midnight UTC. Clients always use the host's model
+credential, including after an error.
 
 ## Explicit local execution
 

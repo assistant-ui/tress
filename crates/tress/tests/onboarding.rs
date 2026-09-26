@@ -583,17 +583,19 @@ fn hosted_setup_joins_the_requested_session_and_doctor_uses_host_configuration()
     // A fresh listener represents the same saved host for the diagnostic.
     let (next_host, server) = serve_host(
         200,
-        json!({"kind":"cloud", "configured":true, "session":{"attachId":id}}),
+        json!({"ok":true, "checks":[{"name":"Harness", "status":"ok", "message":"Managed thread is reachable."}]}),
     );
     let path = home.0.join("config/tress/connection.json");
     fs::write(&path, json!({"host":next_host, "session":id}).to_string()).unwrap();
     let output = home.run(&["doctor", "--check-api"]);
     success(&output);
-    assert!(String::from_utf8_lossy(&output.stdout).contains("Host is reachable"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("Harness: Managed thread is reachable")
+    );
     assert!(server
         .join()
         .unwrap()
-        .contains(&format!("/api/mode?session={id}")));
+        .contains(&format!("/api/health?session={id}")));
 }
 
 #[test]
@@ -601,6 +603,8 @@ fn failed_host_checks_do_not_fall_back_to_a_personal_key_or_save_configuration()
     for (status, body, message) in [
         (403, json!({"error":"do-not-echo"}), "requires access"),
         (404, json!({}), "not found"),
+        (410, json!({}), "session has expired"),
+        (429, json!({}), "daily new-session limit"),
         (302, json!({}), "redirected"),
         (
             200,
@@ -638,6 +642,51 @@ fn failed_host_checks_do_not_fall_back_to_a_personal_key_or_save_configuration()
         assert!(!home.0.join("config").exists());
         assert!(!server.join().unwrap().contains("do-not-use-this"));
     }
+}
+
+#[test]
+fn hosted_doctor_reports_failed_components_without_using_personal_keys() {
+    let home = Home::new();
+    let (host, server) = serve_host(
+        503,
+        json!({"ok":false,"checks":[
+            {"name":"Storage","status":"ok","message":"Ready"},
+            {"name":"Harness","status":"error","message":"Access rejected (HTTP 403)"}
+        ]}),
+    );
+    fs::create_dir_all(home.0.join("config/tress")).unwrap();
+    fs::write(
+        home.0.join("config/tress/connection.json"),
+        json!({"host":host,"session":"session12345"}).to_string(),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(
+            home.0.join("config/tress/connection.json"),
+            fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+    }
+    let output = home
+        .command()
+        .args(["doctor", "--check-api"])
+        .env("ANTHROPIC_API_KEY", "personal-key-must-not-be-used")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Storage: Ready"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.contains("Harness: Access rejected"));
+    assert!(!stdout.contains("personal-key"));
+    let request = server.join().unwrap();
+    assert!(request.contains("/api/health?session=session12345"));
+    assert!(!request.contains("personal-key"));
 }
 
 #[test]

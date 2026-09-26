@@ -62,13 +62,23 @@ See [demo setup and PostgreSQL metadata storage](site/README.md).
 
 ### Host and clients
 
-The **host** owns the agent loop, model credentials, thread state, and workspace.
-Browsers and attached terminals are **clients** that watch and steer that thread.
-Both use the host's model configuration. Neither needs a personal model key.
+The **host** is the tress server at the attach URL. It runs the agent and owns
+the model credentials, thread state, and workspace access. Browser tabs,
+terminals connected through `tress setup` or `tress attach`, and API connections
+are **clients** attached to it. Both browser and terminal use the host's model
+configuration; neither needs a personal model key. The thread sidebar and
+`/status` show these roles separately.
 
 The server operator supplies the host address. Anyone holding a private thread
 link or session ID can join that thread. Setup connects to an existing host;
 it does not deploy a server or turn the terminal into a shareable host.
+
+The host label defaults to the server address. `TRESS_HOST_LABEL` can replace
+that text with a friendly display label such as `Alice's Mac`; it does not
+change networking, permissions, or host ownership. The person running or
+deploying tress currently assigns the host. Clients cannot promote themselves
+or transfer the host role. See [hosting and client communication](docs/hosting.md)
+for the supported modes and complete setup flow.
 
 The optional terminal UI has a persistent `❯` composer, live ready/working status,
 and a file preview toggled with `/files` or Ctrl-F. Your draft stays intact

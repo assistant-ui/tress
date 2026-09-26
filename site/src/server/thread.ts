@@ -22,7 +22,11 @@ import { createPresenceTracker } from "./presence";
 
 const newId = () => Math.random().toString(36).slice(2, 10);
 
-const createThreadElement = (presence: ReturnType<typeof createPresenceTracker>, scope?: string) => {
+const createThreadElement = (
+  presence: ReturnType<typeof createPresenceTracker>,
+  scope?: string,
+  beforeSend = async () => {},
+) => {
   const config = workspaceConfig(scope);
   let session: Agent | undefined;
   let workspace: Promise<Workspace> | undefined;
@@ -72,6 +76,13 @@ const createThreadElement = (presence: ReturnType<typeof createPresenceTracker>,
       send: async (prompt: string) => {
         if (typeof prompt !== "string" || !prompt.trim()) return;
         if (state.status === "running") return;
+        state.status = "running";
+        try {
+          await beforeSend();
+        } catch (error) {
+          state.status = "idle";
+          throw error;
+        }
 
         state.entries.push({
           id: newId(),
@@ -146,22 +157,33 @@ type ThreadBackend = {
   host: ReturnType<typeof StatewireSocketHost>;
   presence: ReturnType<typeof createPresenceTracker>;
 };
-type Holder = { backend?: ThreadBackend; backends?: Map<string, ThreadBackend> };
+type Holder = {
+  backend?: ThreadBackend;
+  backends?: Map<string, ThreadBackend>;
+};
 const holder = ((globalThis as Record<symbol, unknown>)[globalKey] ??=
   {}) as Holder;
 
-const createThreadBackend = (scope?: string): ThreadBackend => {
+const createThreadBackend = (
+  scope?: string,
+  beforeSend?: () => Promise<void>,
+): ThreadBackend => {
   const presence = createPresenceTracker();
   return {
-    host: StatewireSocketHost(createThreadElement(presence, scope)),
+    host: StatewireSocketHost(createThreadElement(presence, scope, beforeSend)),
     presence,
   };
 };
 
-export const localThreadBackend = (scope?: string) => {
-  if (!scope) return holder.backend ??= createThreadBackend();
-  const backends = holder.backends ??= new Map();
+export const localThreadBackend = (
+  scope?: string,
+  beforeSend?: () => Promise<void>,
+) => {
+  if (!scope)
+    return (holder.backend ??= createThreadBackend(undefined, beforeSend));
+  const backends = (holder.backends ??= new Map());
   let backend = backends.get(scope);
-  if (!backend) backends.set(scope, backend = createThreadBackend(scope));
+  if (!backend)
+    backends.set(scope, (backend = createThreadBackend(scope, beforeSend)));
   return backend;
 };

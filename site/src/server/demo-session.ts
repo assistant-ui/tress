@@ -1,5 +1,11 @@
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { threadStore, type DemoThread, type ThreadStore } from "./thread-store";
+import {
+  assertSessionActive,
+  consumeBudget,
+  DemoPolicyError,
+  policyResponse,
+} from "./demo-policy";
 
 const COOKIE = "tress_demo_session";
 const validToken = (token: string) =>
@@ -39,6 +45,22 @@ export async function resolveDemoSession(
   if (token && validToken(token)) {
     const thread = await store.get(accessHash(token));
     if (thread) {
+      try {
+        assertSessionActive(thread);
+      } catch (error) {
+        // An expired ambient cookie may start fresh; explicit links never silently switch threads.
+        if (create && explicit == null && error instanceof DemoPolicyError) {
+          const headers = new Headers(request.headers);
+          headers.delete("cookie");
+          return resolveDemoSession(
+            new Request(request.url, { headers }),
+            true,
+            store,
+            owner,
+          );
+        }
+        throw error;
+      }
       if (create && owner?.id === thread.ownerId) {
         const selected = await ownedSession(thread, owner, store);
         return {
@@ -81,6 +103,7 @@ export async function resolveDemoSession(
     createdAt: now,
     updatedAt: now,
   };
+  await consumeBudget(store, "sessions", thread.ownerId);
   await store.create(thread);
   return { token: next, thread, fresh: true };
 }
@@ -89,6 +112,7 @@ export const sessionCookie = (session: DemoSession, request: Request) =>
   `${COOKIE}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${new URL(request.url).protocol === "https:" ? "; Secure" : ""}`;
 
 export const sessionResponse = (error: unknown) => {
+  if (error instanceof DemoPolicyError) return policyResponse(error);
   if (error instanceof SessionError)
     return Response.json(
       { error: error.message },
@@ -152,6 +176,7 @@ export const ownedSession = async (
 ): Promise<DemoSession> => {
   if (thread.ownerId !== owner.id)
     throw new SessionError("Thread not found.", 404);
+  assertSessionActive(thread);
   const token = ownerThreadToken(owner, thread.id);
   await store.addAccess(thread.accessHash, accessHash(token));
   return { token, thread, fresh: true };
