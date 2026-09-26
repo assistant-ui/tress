@@ -624,6 +624,35 @@ h1 {
   font-size: 12px;
   margin-top: 18px;
 }
+.status-details {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 18px;
+  margin: 10px 0 0;
+  color: var(--text);
+}
+.status-details dt {
+  color: var(--muted);
+}
+.status-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.status-details ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.status-details li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 10px;
+}
+.status-client-id {
+  color: var(--muted);
+}
 .command-help {
   border-top: 1px solid var(--line);
   padding-top: 12px;
