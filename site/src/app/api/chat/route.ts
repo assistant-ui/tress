@@ -4,6 +4,7 @@ import {
   type UIMessage,
 } from "ai";
 import { openSession } from "../../../server/agent";
+import { admitRun } from "../../../server/demo-policy";
 import {
   resolveDemoSession,
   sessionResponse,
@@ -63,6 +64,11 @@ export const POST = async (request: Request) => {
       { status: 403 },
     );
   const scope = session?.thread.id;
+  try {
+    await admitRun(session?.thread);
+  } catch (error) {
+    return sessionResponse(error);
+  }
   const history = messages.slice(0, -1);
   const stream = createUIMessageStream({
     onError: (error) =>

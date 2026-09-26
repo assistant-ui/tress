@@ -109,7 +109,10 @@ authentication or permission system.
 
 ## Public deployments
 
-The sample uses private session IDs for access. A public production deployment
-should also add authentication, authorization, TLS, request and run quotas,
-session expiration, and idle-host cleanup. PostgreSQL can persist session
-metadata, but it does not by itself coordinate multiple execution hosts.
+The demo uses private session IDs for access and includes configurable daily
+run/session limits, session expiry, and idle managed-connection cleanup. See
+the [host diagnostics and limits](../site/README.md#host-diagnostics-and-demo-limits)
+for defaults and configuration. Add your own authentication and ownership rules
+when integrating it with an application. PostgreSQL stores session metadata,
+shared counters, and serverless relay state; Harness stores the managed
+conversation. Local in-memory threads still require a long-lived host.
