@@ -9,7 +9,7 @@ import { StatewireSocketHost } from "statewire/host-internal";
 import type { StatewireHostInternal } from "statewire/host-internal";
 import type { Entry, ThreadState } from "../lib/thread";
 import type { ThreadMode } from "./config";
-import { workspaceConfig } from "./workspace";
+import { workspaceConfig, workspaceInfo } from "./workspace";
 import {
   forgetManagedWorkspace,
   refreshManagedFiles,
@@ -158,6 +158,7 @@ export const createManagedGateway = async (
       files: {},
       runs: 0,
       clients: [],
+      workspace: workspaceInfo(session?.scope),
       harness: info(),
     }));
     setFiles = (files) => {
@@ -295,7 +296,7 @@ export const createManagedGateway = async (
 const key = Symbol.for("tress.managed.gateway");
 // Bump when the cached host's shape or resource wiring changes. Farm reloads
 // routes without clearing globalThis, so an older host can outlive its callers.
-const GATEWAY_VERSION = 2;
+const GATEWAY_VERSION = 3;
 type Holder = {
   version?: number;
   gateway?: Promise<Awaited<ReturnType<typeof createManagedGateway>>>;

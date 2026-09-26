@@ -192,25 +192,35 @@ h1 {
   text-overflow: ellipsis;
   color: var(--text);
 }
-.local-workspace-info {
+.workspace-summary {
   margin: 0 18px 8px;
-  padding: 10px 0 12px;
-  border-bottom: 1px solid #252525;
+}
+.workspace-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
   color: var(--muted);
   font-size: 11px;
-  text-align: left;
 }
-.local-workspace-path {
+.workspace-indicator span {
+  color: var(--dim);
+}
+.workspace-path-notice {
   display: flex;
   align-items: baseline;
   gap: 12px;
-  color: var(--dim);
+  margin-top: 6px;
+  color: var(--text);
 }
-.local-workspace-path code {
+.workspace-path-notice code {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.local-workspace-path button {
+.workspace-path-notice button {
   flex-shrink: 0;
 }
 .files-toggle {

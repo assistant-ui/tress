@@ -1,4 +1,4 @@
-import { workspaceConfig } from "../../../server/workspace";
+import { workspaceConfig, workspaceInfo } from "../../../server/workspace";
 import { threadMode } from "../../../server/config";
 import { getThreadBackend } from "../../../server/thread-backend";
 import {
@@ -43,10 +43,9 @@ export const GET = async (request: Request) => {
             }
           : {}),
         workspace: {
-          mode: workspace.mode,
+          ...workspaceInfo(session?.thread.id),
           writes: workspace.writes,
           localDemo: workspace.localDemo,
-          ...(workspace.localDemo ? { root: workspace.root } : {}),
         },
         configured: Boolean(process.env.ANTHROPIC_API_KEY),
         model: process.env.TRESS_MODEL ?? "claude-sonnet-5",

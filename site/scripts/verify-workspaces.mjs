@@ -143,6 +143,9 @@ try {
     };
     const first = await attach();
     const second = await attach();
+    assert.equal(second.state.workspace.mode, mode);
+    assert.equal(second.state.workspace.root, mode === "local" ? root : undefined);
+    assert.equal(config.workspace.root, mode === "local" ? root : undefined);
     await waitFor(
       () => first.state.clients.length === 2 && second.state.clients.length === 2,
       "live client presence",
@@ -215,10 +218,19 @@ try {
       returning.state.entries.at(-2).text,
       "Remember our earlier change",
     );
-    terminal.stdin.write("/files\n/status\n/exit\n");
+    const requestsBeforeCommands = requests.length;
+    terminal.stdin.write("/files\n/pwd\n/status\n/exit\n");
     await once(terminal, "exit");
     assert.match(terminalOutput, /demo.txt/);
     assert.match(terminalOutput, /2 connected clients/);
+    assert(
+      terminalOutput.includes(
+        mode === "local"
+          ? `Local workspace on the host: ${root}`
+          : "there is no local disk path",
+      ),
+    );
+    assert.equal(requests.length, requestsBeforeCommands, "/pwd does not call the model");
     terminal = undefined;
     await waitFor(
       () => returning.state.clients.length === 1,

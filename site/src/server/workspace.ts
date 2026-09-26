@@ -2,7 +2,7 @@ import type { Workspace } from "@tress/workspaces";
 import { createBashWorkspace } from "@tress/workspaces/just-bash";
 import { SEED_FILES } from "./seed";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export function workspaceConfig(scope?: string) {
   if (scope && !/^[a-f0-9-]{36}$/.test(scope))
@@ -32,6 +32,15 @@ export function workspaceConfig(scope?: string) {
       mode === "memory" ||
       mode === "overlay" ||
       process.env.TRESS_ALLOW_WRITES === "1",
+  };
+}
+
+/** Describe the host workspace without exposing remote or overlay host paths. */
+export function workspaceInfo(scope?: string) {
+  const { mode, root } = workspaceConfig(scope);
+  return {
+    mode,
+    ...(mode === "local" && root ? { root: resolve(root) } : {}),
   };
 }
 

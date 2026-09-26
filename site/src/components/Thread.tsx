@@ -12,6 +12,7 @@ import {
 import { StatewireClient, StatewireHttp } from "statewire";
 import type { ThreadCommands, ThreadState } from "../lib/thread";
 import { observeDemoConfig, type DemoConfig } from "../lib/demo-config";
+import { describeWorkspace } from "../lib/workspace-info";
 import { CopyButton } from "./CopyButton";
 import { SourcePane } from "./SourcePane";
 import { Markdown } from "./Markdown";
@@ -32,6 +33,10 @@ const COMMANDS = [
   {
     name: "/files",
     description: "browse workspace files",
+  },
+  {
+    name: "/pwd",
+    description: "show the local workspace path",
   },
   {
     name: "/status",
@@ -117,7 +122,7 @@ export function Thread({
   const [generation, setGeneration] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<ReactNode>("");
   const [origin, setOrigin] = useState("");
   const [config, setConfig] = useState<DemoConfig | null>(null);
   const [configFailed, setConfigFailed] = useState(false);
@@ -236,6 +241,8 @@ export function Thread({
 
   const demo = !config?.workspace || config.workspace.mode === "memory";
   const localDemo = config?.workspace?.localDemo === true;
+  const workspace = state.workspace ?? config?.workspace;
+  const workspaceDescription = workspace && describeWorkspace(workspace.mode);
   const suggestions =
     localDemo && config?.workspace?.writes
       ? LOCAL_SUGGESTIONS
@@ -350,6 +357,29 @@ export function Thread({
             ? "Cloud connected"
             : "Connected";
 
+  const showWorkspaceInfo = () => {
+    follow.current = true;
+    if (workspace?.mode === "local" && workspace.root) {
+      const root = workspace.root;
+      setNotice(
+        <>
+          Local workspace on the host
+          <div className="workspace-path-notice">
+            <code>{root}</code>
+            <CopyButton text={root} label="Copy local workspace path" />
+          </div>
+        </>,
+      );
+    } else {
+      setNotice(
+        workspace?.mode === "local"
+          ? "The host has not provided its local workspace path."
+          : workspaceDescription?.description ??
+              "Waiting for workspace information. Reconnect and try /pwd again.",
+      );
+    }
+  };
+
   const send = (prompt: string) => {
     const value = prompt.trim();
     if (!value) return;
@@ -365,6 +395,9 @@ export function Thread({
           break;
         case "/files":
           setShowFiles((visible) => !visible);
+          break;
+        case "/pwd":
+          showWorkspaceInfo();
           break;
         case "/attach":
           if (attachDetails.current) {
@@ -458,15 +491,17 @@ export function Thread({
           </p>
         </details>
 
-        {localDemo && config?.workspace?.root ? (
-          <div className="local-workspace-info" aria-label="Local workspace">
-            <div className="local-workspace-path">
-              <code>{config.workspace.root}</code>
-              <CopyButton
-                text={config.workspace.root}
-                label="Copy local workspace path"
-              />
-            </div>
+        {workspaceDescription ? (
+          <div className="workspace-summary">
+            <button
+              type="button"
+              className="workspace-indicator"
+              title={workspaceDescription.description}
+              aria-label={`${workspaceDescription.label} workspace: show details`}
+              onClick={showWorkspaceInfo}
+            >
+              {workspaceDescription.label} <span>/pwd</span>
+            </button>
           </div>
         ) : null}
 

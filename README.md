@@ -24,8 +24,9 @@ Done — greet.py works, it printed "hello, tress".
 ## Slash commands
 
 Enter `/` or `/help` in an interactive session to see commands. `/files` lists
-workspace files, `/status` shows the session status, `/clear` starts a fresh
-conversation without changing files on disk, and `/exit` (or `/quit`) leaves.
+workspace files, `/pwd` shows the local workspace path, `/status` shows the
+session status, `/clear` starts a fresh conversation without changing files
+on disk, and `/exit` (or `/quit`) leaves.
 
 With `tress attach <url>`, `/disconnect` and `/reconnect` leave and rejoin the
 shared host, and `/attach` shows its connection command. In this mode, `/clear`
@@ -35,6 +36,12 @@ the same commands. Plain terminal output is the default. Run
 `tress attach <url> --ui` to opt into the full terminal interface. In the browser
 and terminal UI, typing `/` opens a command picker:
 ↑/↓ selects, Tab completes, Enter runs, and Escape closes it.
+
+The browser labels the workspace as local, sandbox, memory, or overlay instead
+of showing a full host path. Use `/pwd` (or click that label) to reveal and copy
+a local workspace path. In an attached terminal, `/pwd` reports the host's
+workspace, not the terminal's current directory. Remote and virtual workspaces
+explain their storage mode without suggesting a local disk folder.
 
 The site gives each visitor a separate session. Copy its attach command:
 

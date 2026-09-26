@@ -16,7 +16,7 @@
     "test:sessions": "node --test scripts/sessions.test.mjs",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
     "db:import": "node --env-file-if-exists=.env.local scripts/import-sessions.mjs",
-    "test:host": "node --test scripts/local-demo.test.mjs scripts/managed.test.mjs scripts/managed-backend.test.mjs scripts/demo-config.test.mjs scripts/markdown.test.mjs scripts/sessions.test.mjs && node scripts/verify-workspaces.mjs && node scripts/verify-managed-boot.mjs && node scripts/verify-sessions.mjs",
+    "test:host": "node --test scripts/local-demo.test.mjs scripts/workspace-info.test.mjs scripts/managed.test.mjs scripts/managed-backend.test.mjs scripts/demo-config.test.mjs scripts/markdown.test.mjs scripts/sessions.test.mjs && node scripts/verify-workspaces.mjs && node scripts/verify-managed-boot.mjs && node scripts/verify-sessions.mjs",
     "test:host:dev": "node scripts/verify-workspaces.mjs --dev",
     "wasm": "node scripts/build-wasm.mjs",
     "wasm:node": "node scripts/build-wasm.mjs nodejs"

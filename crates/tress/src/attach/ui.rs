@@ -391,7 +391,16 @@ impl View {
         } else {
             0
         };
-        let notice_height = if self.notice.is_empty() { 0 } else { 2 };
+        let notice = Paragraph::new(safe(&self.notice))
+            .style(Style::default().fg(MUTED))
+            .wrap(Wrap { trim: false });
+        let notice_height = if self.notice.is_empty() {
+            0
+        } else {
+            notice
+                .line_count(area.width)
+                .min((area.height / 3).max(1) as usize) as u16
+        };
         let regions = Layout::vertical([
             Constraint::Length(3),
             Constraint::Min(1),
@@ -413,13 +422,20 @@ impl View {
         } else {
             "ready"
         };
+        let workspace = state
+            .and_then(|state| state.workspace.as_ref())
+            .map(|workspace| format!(" · {}", workspace.label()))
+            .unwrap_or_default();
         let header = vec![
             Line::from(vec![
                 Span::styled(
                     "tress",
                     Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(format!("  ·  {status}"), Style::default().fg(MUTED)),
+                Span::styled(
+                    format!("  ·  {status}{workspace}"),
+                    Style::default().fg(MUTED),
+                ),
             ]),
             Line::from(Span::styled(safe(url), Style::default().fg(MUTED))),
         ];
@@ -531,12 +547,7 @@ impl View {
                     .with_selected((!matches.is_empty()).then_some(self.menu_index)),
             );
         }
-        frame.render_widget(
-            Paragraph::new(safe(&self.notice))
-                .style(Style::default().fg(MUTED))
-                .wrap(Wrap { trim: false }),
-            regions[4],
-        );
+        frame.render_widget(notice, regions[4]);
 
         let composer = Block::default()
             .borders(Borders::TOP | Borders::BOTTOM)
@@ -841,6 +852,19 @@ mod tests {
             .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn workspace_path_notice_wraps_without_hiding_the_composer() {
+        let path = "/host/workspaces/threads/a41ed8b6-1903-4034-a5cb-77f7f83d81a2";
+        let mut view = View {
+            notice: format!("Local workspace on the host: {path}"),
+            ..Default::default()
+        };
+        let output = screen(&mut view, &ThreadState::default(), 40, 24);
+        let compact: String = output.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(compact.contains(path));
+        assert!(output.contains("Ask anything"));
     }
 
     #[test]
