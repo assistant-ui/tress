@@ -88,6 +88,7 @@ impl Anthropic {
         Self {
             client: reqwest::Client::builder()
                 .connect_timeout(std::time::Duration::from_secs(10))
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("client builds"),
             base_url: std::env::var("ANTHROPIC_BASE_URL")
@@ -96,6 +97,12 @@ impl Anthropic {
             model,
             max_tokens: 32_000,
         }
+    }
+
+    /// Use an explicitly configured Anthropic-compatible endpoint.
+    pub fn with_base_url(mut self, base_url: String) -> Self {
+        self.base_url = base_url.trim_end_matches('/').to_owned();
+        self
     }
 }
 

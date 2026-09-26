@@ -5,10 +5,14 @@
 A tiny coding agent that works in your project directory. One native binary, no background service, shell-style output.
 
 ```sh
-export ANTHROPIC_API_KEY=...
+tress setup              # choose a model and save a private API key
 tress                    # start a session here
 tress ask "fix the failing test in parser.rs"
 ```
+
+[Install and configuration guide](docs/setup.md). The new setup commands are
+available from source; the published v0.1.0 binary still uses
+`ANTHROPIC_API_KEY` directly until the next release.
 
 ```
 tress 0.1.0 · ~/oss/tress · claude-sonnet-5
@@ -53,6 +57,20 @@ tress attach http://localhost:5311 -s <id> --ui
 Use the full session ID shown on the page to join the same conversation and
 workspace from another client. The ID grants access to that anonymous session.
 See [demo setup and PostgreSQL metadata storage](site/README.md).
+
+### Host and clients
+
+The **host** is the tress server named by the attach URL. It owns the agent
+loop, model credentials, thread state, and workspace access. A browser tab,
+`tress attach` terminal, or API connection is a **client**: it can watch and
+steer the hosted thread but does not own the workspace. The browser thread
+sidebar and `/status` show the host separately from every live client, including
+each client's type and short connection ID.
+
+The person running or deploying tress assigns the host. Set `TRESS_HOST_NAME`
+on the server to display a friendly name; otherwise the site shows its URL host.
+Anyone holding the private thread link or session ID can join as a client.
+Client-to-host promotion or peer-elected hosting is not implemented yet.
 
 The optional terminal UI has a persistent `❯` composer, live ready/working status,
 and a file preview toggled with `/files` or Ctrl-F. Your draft stays intact
@@ -131,16 +149,30 @@ interrupted by a host crash still requires application work.
 
 ## Configuration
 
-| Variable | Meaning |
-| --- | --- |
-| `ANTHROPIC_API_KEY` | Required. |
-| `TRESS_MODEL` | Model id; defaults to `claude-sonnet-5`. |
-| `ANTHROPIC_BASE_URL` | Override the API endpoint (used by the tests' mock server). |
+Run `tress setup` once, then `tress` inside any project. `tress config` shows
+resolved settings and their sources; `tress doctor --check-api` checks setup
+and model access without generating a response.
+
+Optional project defaults in `.tress.json`:
+
+```json
+{ "model": "claude-sonnet-5", "max_steps": 64 }
+```
+
+Flags override environment variables, then project settings, then personal
+settings. API keys are stored separately outside the project. Existing
+`ANTHROPIC_API_KEY`, `TRESS_MODEL`, and `ANTHROPIC_BASE_URL` environments keep
+working; `TRESS_MAX_STEPS` sets the per-prompt model request limit.
+
+See [configuration, credential storage, and troubleshooting](docs/setup.md).
+These settings apply to the native CLI; attached clients use their host's
+configuration.
 
 ## Develop
 
 ```sh
 cargo test
+python3 scripts/test-setup-pty.py
 cargo clippy --all-targets
 cargo fmt --check
 ```

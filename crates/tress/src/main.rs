@@ -8,10 +8,12 @@ use tress::tools::{NativeTools, Tools};
 
 use commands::Command;
 
-const DEFAULT_MODEL: &str = "claude-sonnet-5";
+use config::DEFAULT_MODEL;
 
 mod attach;
 mod commands;
+mod config;
+mod onboarding;
 
 pub mod ansi {
     pub const DIM: &str = "\x1b[2m";
@@ -39,6 +41,9 @@ fn usage() -> String {
     format!(
         "tress {}\n\n\
          usage:\n  \
+         tress setup           configure Anthropic and save your API key\n  \
+         tress config          show effective settings (--json for JSON)\n  \
+         tress doctor          check setup (--check-api to verify access)\n  \
          tress                 start a session in the current directory\n  \
          tress ask <prompt>    run one prompt and exit\n  \
          tress attach <url>    join a thread with plain terminal output\n  \
@@ -46,8 +51,12 @@ fn usage() -> String {
          tress attach <url> --ui  opt into the full terminal interface\n  \
          tress --help          this text\n\n\
          environment:\n  \
-         ANTHROPIC_API_KEY     required\n  \
-         TRESS_MODEL           model id (default {DEFAULT_MODEL})\n",
+         ANTHROPIC_API_KEY     overrides the saved API key\n  \
+         TRESS_MODEL           model id (default {DEFAULT_MODEL})\n  \
+         TRESS_MAX_STEPS       maximum model requests per turn (default 64)\n  \
+         ANTHROPIC_BASE_URL    Anthropic-compatible API endpoint\n\n\
+         session options: --model <id>, --max-steps <n>, --base-url <url>\n\
+         precedence: flags > environment > .tress.json > personal config > defaults\n",
         env!("CARGO_PKG_VERSION")
     )
 }
@@ -91,15 +100,6 @@ async fn main() -> std::process::ExitCode {
         };
     }
 
-    let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") else {
-        eprintln!(
-            "{}",
-            style.paint(ansi::RED, "ANTHROPIC_API_KEY is not set.")
-        );
-        eprintln!("Export a key, then run tress again.");
-        return std::process::ExitCode::FAILURE;
-    };
-    let model = std::env::var("TRESS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
     let root = match std::env::current_dir() {
         Ok(root) => root,
         Err(error) => {
@@ -108,16 +108,34 @@ async fn main() -> std::process::ExitCode {
         }
     };
 
-    let mut engine = Engine::new(
-        Anthropic::new(api_key, model.clone()),
-        NativeTools::new(root.clone()),
-    );
-
-    let one_shot = match args.first().map(String::as_str) {
-        Some("ask") => Some(args[1..].join(" ")),
-        Some(other) if !other.starts_with('-') => Some(args.join(" ")),
-        _ => None,
+    if let Some(command @ ("setup" | "config" | "doctor")) = args.first().map(String::as_str) {
+        return match onboarding::run(command, &args[1..], &root).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress {command}: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
+    let (flags, one_shot) = match session_options(&args) {
+        Ok(options) => options,
+        Err(error) => {
+            eprintln!("tress: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
     };
+    let settings = match config::Paths::discover(&root)
+        .and_then(|paths| config::Resolved::load(&paths, &flags))
+        .and_then(|settings| settings.key().map(|_| ()).map(|_| settings))
+    {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!("tress: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    let model = &settings.model.value;
+    let mut engine = configured_engine(&settings, &root);
 
     if let Some(prompt) = one_shot {
         if prompt.trim().is_empty() {
@@ -174,13 +192,7 @@ async fn main() -> std::process::ExitCode {
                 ),
                 Command::Pwd => println!("{}", root.display()),
                 Command::Clear => {
-                    engine = Engine::new(
-                        Anthropic::new(
-                            std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
-                            model.clone(),
-                        ),
-                        NativeTools::new(root.clone()),
-                    );
+                    engine = configured_engine(&settings, &root);
                     println!(
                         "{}",
                         style.paint(
@@ -205,6 +217,42 @@ async fn main() -> std::process::ExitCode {
     }
 
     std::process::ExitCode::SUCCESS
+}
+
+fn configured_engine(
+    settings: &config::Resolved,
+    root: &std::path::Path,
+) -> Engine<Anthropic, NativeTools> {
+    Engine::new(
+        Anthropic::new(
+            settings.key().expect("validated key").to_owned(),
+            settings.model.value.clone(),
+        )
+        .with_base_url(settings.base_url.value.clone()),
+        NativeTools::new(root.to_path_buf()),
+    )
+    .with_max_steps(settings.max_steps.value)
+}
+
+fn session_options(args: &[String]) -> Result<(config::UserConfig, Option<String>), String> {
+    let mut flags = config::UserConfig::default();
+    let mut rest = config::parse_flags(args, &mut flags)?;
+    let ask = rest.first().is_some_and(|arg| arg == "ask");
+    if ask {
+        rest = config::parse_flags(&rest[1..], &mut flags)?;
+    }
+    if rest.first().is_some_and(|arg| arg == "--") {
+        rest = &rest[1..];
+    } else if rest.first().is_some_and(|arg| arg.starts_with('-')) {
+        return Err(format!("Unknown option {}. See `tress --help`.", rest[0]));
+    }
+    if rest.is_empty() {
+        if ask {
+            return Err("tress ask needs a prompt".into());
+        }
+        return Ok((flags, None));
+    }
+    Ok((flags, Some(rest.join(" "))))
 }
 
 fn attach_options(args: &[String]) -> Result<(&str, bool, Option<&str>), String> {
@@ -316,6 +364,25 @@ fn ask_approval(summary: &str, style: &Style) -> Approval {
 #[cfg(test)]
 mod cli_tests {
     use super::attach_options;
+
+    #[test]
+    fn session_flags_do_not_consume_prompt_text() {
+        for args in [
+            vec!["--model", "test-model", "ask", "explain", "--model"],
+            vec!["ask", "--model", "test-model", "explain", "--model"],
+            vec!["--model", "test-model", "explain", "--model"],
+        ] {
+            let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
+            let (flags, prompt) = super::session_options(&args).unwrap();
+            assert_eq!(flags.model.as_deref(), Some("test-model"));
+            assert_eq!(prompt.as_deref(), Some("explain --model"));
+        }
+        let args = ["ask", "--", "--literal"].map(str::to_owned);
+        assert_eq!(
+            super::session_options(&args).unwrap().1.as_deref(),
+            Some("--literal")
+        );
+    }
 
     #[test]
     fn attach_is_plain_unless_ui_is_explicit() {
