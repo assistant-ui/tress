@@ -80,9 +80,21 @@ a {
 .wordmark {
   color: #e2e2dd;
   font-size: 21px;
-  font-style: italic;
   letter-spacing: -1px;
   font-weight: 600;
+}
+.tress-wordmark {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  line-height: 1;
+}
+.tress-mark {
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+  margin-right: 0.04em;
 }
 .nav-divider {
   color: #555550;

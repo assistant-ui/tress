@@ -4,6 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "tress — keep the thread",
+  icons: { icon: [{ url: "/favicon.svg", type: "image/svg+xml" }] },
   description:
     "A tiny, durable coding agent. One shared thread across your terminal and browser, powered by Rust and statewire.",
 };

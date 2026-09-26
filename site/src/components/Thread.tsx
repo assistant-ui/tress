@@ -22,6 +22,7 @@ import { Spinner } from "./terminal/Spinner";
 import { KeyboardShortcuts } from "./terminal/KeyboardShortcuts";
 import { ToolCall } from "./terminal/ToolCall";
 import { TerminalIcon } from "./terminal/TerminalIcon";
+import { TressWordmark } from "./TressWordmark";
 
 const EMPTY: ThreadState = {
   entries: [],
@@ -486,7 +487,8 @@ export function Thread({
             </div>
           )}
           <span className="terminal-title">
-            <span>tress{config?.session ? " ·" : ""}</span>
+            <TressWordmark />
+            {config?.session ? <span aria-hidden="true">·</span> : null}
             {config?.session ? (
               <span className="terminal-session">
                 <code title={config.session.attachId}>
