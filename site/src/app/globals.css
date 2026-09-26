@@ -78,8 +78,11 @@ a {
   height: 67px;
 }
 .wordmark {
+  display: inline-flex;
+  align-items: center;
   color: #e2e2dd;
   font-size: 21px;
+  line-height: 1;
   letter-spacing: -1px;
   font-weight: 600;
 }
