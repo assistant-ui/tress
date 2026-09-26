@@ -186,7 +186,10 @@ fn interactive_commands_do_not_call_the_model_or_change_files() {
     assert!(output.status.success());
     assert!(stdout.contains("/help"), "{stdout}");
     assert!(stdout.contains("keep.txt"), "{stdout}");
-    assert!(stdout.contains("local session"), "{stdout}");
+    assert!(
+        stdout.contains("Local session\nStatus     idle\n"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("Unknown command: /not-a-command"),
         "{stdout}"
