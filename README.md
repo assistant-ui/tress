@@ -54,6 +54,19 @@ Use the full session ID shown on the page to join the same conversation and
 workspace from another client. The ID grants access to that anonymous session.
 See [demo setup and PostgreSQL metadata storage](site/README.md).
 
+### Host and clients
+
+The **host** is the tress server at the attach URL. It runs the agent and owns
+the model credentials, thread state, and workspace access. Browser tabs,
+`tress attach` terminals, and API connections are **clients** attached to it.
+The thread sidebar and `/status` show these roles separately.
+
+The host label defaults to the server address. `TRESS_HOST_LABEL` can replace
+that text with a friendly display label such as `Alice's Mac`; it does not
+change networking, permissions, or host ownership. The person running or
+deploying tress currently assigns the host. Clients cannot promote themselves
+or transfer the host role.
+
 The optional terminal UI has a persistent `❯` composer, live ready/working status,
 and a file preview toggled with `/files` or Ctrl-F. Your draft stays intact
 while the host streams. With an empty input, Tab/Shift-Tab changes files;

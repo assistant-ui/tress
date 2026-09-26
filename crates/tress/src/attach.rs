@@ -141,6 +141,13 @@ fn thread_url(input: &str) -> String {
     }
 }
 
+fn host_origin(input: &str) -> String {
+    reqwest::Url::parse(input).map_or_else(
+        |_| input.to_owned(),
+        |url| url.origin().ascii_serialization(),
+    )
+}
+
 /// The CLI keeps the access ID separate; Statewire uses the scoped endpoint.
 fn session_url(input: &str, id: &str) -> Result<String, String> {
     let mut url = reqwest::Url::parse(&thread_url(input)).map_err(|error| error.to_string())?;
@@ -426,11 +433,14 @@ pub async fn run(
                 }
             }
             Some(Command::Status) => {
+                let host = host_origin(&url);
                 let detail = snapshot.as_ref().map_or_else(
-                    || format!("{connection}\nWaiting for workspace"),
+                    || format!(
+                        "{connection}\nRole       terminal client\nHost       {host}\nWaiting for workspace"
+                    ),
                     |state| {
                         let mut detail = format!(
-                            "{connection}\nAgent      {}\nRuns       {} completed\nFiles      {}",
+                            "{connection}\nRole       terminal client\nHost       {host}\nAgent      {}\nRuns       {} completed\nFiles      {}",
                             state.status,
                             state.runs,
                             state.files.len()
@@ -449,6 +459,9 @@ pub async fn run(
                         if !connected {
                             detail.push_str("\nUse /reconnect to sync.");
                         }
+                        detail.push_str(
+                            "\n\nThe host runs the agent and controls workspace access.\nHost assignment is set by the server operator; clients cannot take over the host role yet.",
+                        );
                         detail
                     },
                 );
@@ -650,8 +663,17 @@ fn emit(entry: &Entry, printed: &mut Printed, style: &crate::Style, complete: bo
 #[cfg(test)]
 mod tests {
     use super::{
-        client_status, render, session_url, thread_url, ConnectedClient, Printed, WorkspaceInfo,
+        client_status, host_origin, render, session_url, thread_url, ConnectedClient, Printed,
+        WorkspaceInfo,
     };
+
+    #[test]
+    fn status_identifies_the_host_origin_without_the_thread_path() {
+        assert_eq!(
+            host_origin("https://demo.example:8443/api/sessions/secret"),
+            "https://demo.example:8443"
+        );
+    }
 
     #[test]
     fn pwd_uses_the_hosts_scoped_root_and_does_not_claim_virtual_files_are_local() {

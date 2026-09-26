@@ -1,6 +1,10 @@
 export type DemoConfig = {
   configured: boolean;
   model: string;
+  host?: {
+    label: string;
+    runtime: "local" | "managed";
+  };
   session?: { id: string; attachId: string; clientUrl: string; browserUrl: string };
   workspace?: {
     mode: string;

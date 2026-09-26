@@ -9,6 +9,19 @@ export type ThreadSummary = {
   createdAt: string;
   updatedAt: string;
 };
+export type SessionTopology = {
+  host: {
+    label: string;
+    runtime: "local" | "managed";
+    workspace?: string;
+  };
+  clients: {
+    id: string;
+    kind: "browser" | "terminal" | "api";
+    label: string;
+  }[];
+  connected: boolean;
+};
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -18,6 +31,7 @@ type Props = {
   loaded: boolean;
   busy: boolean;
   error: string;
+  topology: SessionTopology | null;
   onRetry: () => Promise<void>;
   onSelect: (id?: string) => Promise<boolean>;
   onUpdate: (
@@ -36,6 +50,7 @@ export function ThreadSidebar(props: Props) {
     loaded,
     busy,
     error,
+    topology,
     onSelect,
     onUpdate,
   } = props;
@@ -226,6 +241,52 @@ export function ThreadSidebar(props: Props) {
             ? "← All threads"
             : `Archived${threads.some((thread) => thread.archivedAt) ? ` (${threads.filter((thread) => thread.archivedAt).length})` : ""}`}
         </button>
+      ) : null}
+      {topology ? (
+        <section className="session-topology" aria-labelledby="session-topology-title">
+          <h3 id="session-topology-title">Connection roles</h3>
+          <div className="topology-role topology-host">
+            <span className="topology-role-label">host</span>
+            <div>
+              <strong>{topology.host.label}</strong>
+              <span>
+                {topology.host.runtime === "managed"
+                  ? "managed Harness runtime"
+                  : "local tress runtime"}
+                {topology.host.workspace
+                  ? ` · ${topology.host.workspace} workspace`
+                  : ""}
+              </span>
+              <small>Runs the agent and controls workspace access.</small>
+            </div>
+          </div>
+          <div className="topology-clients">
+            <div className="topology-clients-heading">
+              <span>clients</span>
+              <span>
+                {topology.clients.length} {topology.connected ? "live" : "last known"}
+              </span>
+            </div>
+            {topology.clients.length ? (
+              <ul>
+                {topology.clients.map((client) => (
+                  <li key={client.id}>
+                    <span className="topology-client-kind">{client.kind}</span>
+                    <span title={client.label}>{client.label || client.kind}</span>
+                    <code>{client.id.slice(0, 6)}</code>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No attached clients.</p>
+            )}
+          </div>
+          <p className="topology-policy">
+            The person running or deploying tress assigns the host. Anyone with
+            this private thread link or session ID can join as a browser or
+            terminal client. Clients cannot become the host from this screen yet.
+          </p>
+        </section>
       ) : null}
     </>
   );

@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DemoConfig } from "../lib/demo-config";
 import { Thread } from "./Thread";
-import { ThreadSidebar, type ThreadSummary } from "./ThreadSidebar";
+import {
+  ThreadSidebar,
+  type SessionTopology,
+  type ThreadSummary,
+} from "./ThreadSidebar";
 import { TerminalIcon } from "./terminal/TerminalIcon";
 
 export function Threads() {
@@ -15,6 +19,7 @@ export function Threads() {
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [working, setWorking] = useState(false);
+  const [topology, setTopology] = useState<SessionTopology | null>(null);
   const drafts = useRef(new Map<string, string>());
   const action = useRef(false);
   const naming = useRef(new Set<string>());
@@ -57,6 +62,7 @@ export function Threads() {
         new URL(window.location.href).searchParams.get("session") ?? undefined;
       if (next === currentToken.current) return;
       setConfig(null);
+      setTopology(null);
       setWorking(false);
       setSelected(next);
     };
@@ -109,6 +115,7 @@ export function Threads() {
     return run(async () => {
       const data = await request(id ? `/${id}` : "", "POST");
       setConfig(null);
+      setTopology(null);
       setWorking(false);
       window.history.pushState(null, "", `${data.session.browserUrl}#demo`);
       setSelected(data.session.attachId);
@@ -157,6 +164,7 @@ export function Threads() {
           loaded={loaded}
           busy={busy}
           error={error}
+          topology={topology}
           onRetry={refresh}
           onSelect={select}
           onUpdate={update}
@@ -167,6 +175,7 @@ export function Threads() {
         session={selected}
         onReady={ready}
         onActivity={activity}
+        onTopology={setTopology}
         drafts={drafts.current}
         toolbar={
           config?.session ? (
