@@ -93,6 +93,12 @@ main() {
     *--session*) ;;
     *) fail 'This CLI build does not support demo sessions yet. Please retry after the updated CLI is published.' ;;
   esac
+  # Keep instructions accurate when installing a pinned release from before
+  # hosted setup was added. Do not run setup or change user configuration here.
+  next_command='tress --help'
+  case "$help" in
+    *'tress setup'*) next_command='tress setup' ;;
+  esac
 
   mkdir -p "$install_dir"
   staged=$(mktemp "$install_dir/.tress.XXXXXX")
@@ -102,8 +108,8 @@ main() {
   staged=
   printf 'Installed tress to %s/tress\n' "$install_dir"
   case ":$PATH:" in
-    *":$install_dir:"*) printf '%s\n' 'Run: tress --help' ;;
-    *) printf 'Add %s to your PATH, then run: tress --help\n' "$install_dir" ;;
+    *":$install_dir:"*) printf 'Run: %s\n' "$next_command" ;;
+    *) printf 'Add %s to your PATH, then run: %s\n' "$install_dir" "$next_command" ;;
   esac
 }
 

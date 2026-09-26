@@ -40,7 +40,9 @@ The hero uses the current site's origin automatically, for example
 The script installs a checksummed GitHub release binary for macOS or Linux,
 on ARM64 or x86-64, into `~/.local/bin`. It prints PATH instructions if needed
 and never edits shell profiles or uses sudo. Set `TRESS_INSTALL_DIR` to change
-the destination or `TRESS_VERSION` to pin a release tag.
+the destination or `TRESS_VERSION` to pin a release tag. For v0.2.0 and newer,
+it suggests `tress setup` to connect to a host using the host's model
+credentials. Pinned older versions keep their compatible `tress --help` hint.
 
 Before the first binary release exists, it builds merged `main` with an
 existing Cargo toolchain. Without Cargo it explains that Rust is needed until
@@ -49,11 +51,10 @@ an existing installation. It also verifies the CLI can run and supports `--sessi
 before replacing anything, so an older build cannot break the site's attach command.
 
 The repository's **Release CLI** workflow runs when a `v*` tag is pushed. The
-tag must match the workspace version in `Cargo.toml` (for example `v0.1.0`).
-It tests and builds all four targets, then publishes their binaries and
-`SHA256SUMS` together. Push a version tag after the installer and release workflow
-and the current CLI's `-s` support are merged to enable installation without Rust.
-Test the installer locally with
+tag must match the workspace version in `Cargo.toml`. It tests and builds all
+four targets, verifies hosted setup and hidden-key entry with each release
+binary, then publishes their binaries and `SHA256SUMS` together. See the
+[release steps](../docs/releasing.md). Test the installer locally with
 `npm run test:install`; the tests use fake downloads and never install real software.
 
 ## A two-window demo

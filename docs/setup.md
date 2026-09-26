@@ -15,13 +15,27 @@ curl -fsSL https://tress-theta.vercel.app/tress.sh | sh
 The installer downloads a binary, verifies its checksum, and installs to
 `~/.local/bin`. Follow its PATH instructions if needed.
 
-**Release availability:** the new setup commands are available from source;
-the published v0.1.0 binary still requires an explicit host URL for attachment.
-Until the next release, build this checkout with Rust:
+Hosted setup requires **v0.2.0 or newer**. Check `tress --version` after
+installation. Until v0.2.0 is published, the installer still downloads v0.1.0;
+build this checkout with Rust to use hosted setup now:
 
 ```sh
 cargo install --locked --path crates/tress
 ```
+
+## Upgrade from v0.1.0
+
+Once v0.2.0 is published, rerun the install command to upgrade. The installer
+replaces the executable and leaves your configuration and files untouched.
+
+The default changes in v0.2.0: `tress` and `tress ask` connect to a host. Run
+`tress setup` once to choose that host and session. Existing commands using
+`tress attach <url> -s <id>` keep working without setup.
+
+For the previous local behavior, use `tress --local` or
+`tress --local ask "your task"` with your existing `ANTHROPIC_API_KEY`. Run
+`tress setup --local` to save local mode as your default. The CLI never switches
+to a personal model key when a host connection fails.
 
 ## Connect to a host
 
