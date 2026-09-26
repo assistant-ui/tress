@@ -668,6 +668,17 @@ h1 {
 .status-client-id {
   color: var(--muted);
 }
+.status-detail-note {
+  margin-left: 8px;
+  color: var(--dim);
+  font-size: 10px;
+}
+.status-role-note {
+  max-width: 58ch;
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
 .command-help {
   border-top: 1px solid var(--line);
   padding-top: 12px;
@@ -1315,7 +1326,7 @@ footer > span {
   position: absolute;
   right: calc(100% + 24px);
   top: 0;
-  width: 184px;
+  width: 220px;
   color: var(--muted);
   font-size: 12px;
   text-align: left;
@@ -1461,6 +1472,102 @@ footer > span {
   font-size: 11px;
   line-height: 1.7;
 }
+.session-topology {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.session-topology h3 {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.topology-role {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+.topology-role-label,
+.topology-client-kind {
+  display: inline-block;
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 5px;
+  color: var(--dim);
+  font-size: 9px;
+  line-height: 1.8;
+  text-transform: uppercase;
+}
+.topology-role strong,
+.topology-role span,
+.topology-role small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.topology-role strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+}
+.topology-role div > span,
+.topology-role small {
+  color: var(--dim);
+  font-size: 9px;
+  line-height: 1.6;
+}
+.topology-clients {
+  margin-top: 13px;
+}
+.topology-clients-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.topology-clients ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.topology-clients li {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  min-height: 27px;
+}
+.topology-clients li > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 10px;
+}
+.topology-clients code {
+  color: var(--dim);
+  font-size: 9px;
+}
+.topology-clients > p,
+.topology-policy {
+  margin: 7px 0 0;
+  color: var(--dim);
+  font-size: 9px;
+  line-height: 1.65;
+}
+.topology-policy {
+  margin-top: 14px;
+}
 .threads-error {
   color: #cf9a8b;
 }
@@ -1482,6 +1589,8 @@ footer > span {
 }
 .thread-sidebar-content {
   min-height: 100%;
+  max-height: 100dvh;
+  overflow-y: auto;
   padding: 16px 20px;
 }
 .thread-drawer .thread-select {

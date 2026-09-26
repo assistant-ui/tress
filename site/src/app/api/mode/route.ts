@@ -17,6 +17,7 @@ export const GET = async (request: Request) => {
     const session = await resolveDemoSession(request, true, undefined, owner);
     const workspace = workspaceConfig(session?.thread.id);
     const mode = threadMode(request.url);
+    const configuredHostLabel = process.env.TRESS_HOST_LABEL?.trim();
     const backend =
       process.env.TRESS_SERVERLESS === "1"
         ? undefined
@@ -31,6 +32,10 @@ export const GET = async (request: Request) => {
     return Response.json(
       {
         ...mode,
+        host: {
+          label: configuredHostLabel || new URL(request.url).host,
+          runtime: mode.kind === "cloud" ? "managed" : "local",
+        },
         ...(session
           ? {
               session: sessionInfo(session),

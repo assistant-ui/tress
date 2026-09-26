@@ -103,6 +103,29 @@ the default memory demo instead.
    example files, and reset the run count. Reset is blocked while a run is active. In local, overlay, and remote modes,
 reset clears the conversation and keeps workspace files.
 
+## Host and client roles
+
+The host and clients are different roles:
+
+- The **host** is the tress server at the attach URL. It runs the agent and
+  controls model credentials, thread state, and workspace access.
+- A **client** is a browser tab, `tress attach` terminal, or API connection
+  attached to one thread. Clients can watch and steer that thread.
+
+Open the thread sidebar to see the active host and the live clients by type and
+short connection ID. `/status` presents the same topology in the browser and
+terminal. The host label defaults to the server address, such as
+`localhost:5311`. A deployment may set `TRESS_HOST_LABEL` in `site/.env.local`
+to show friendlier text such as `Alice's Mac` or `team dev server`. This is only
+a display label: it does not change networking, permissions, or who is the host.
+
+The deployment operator currently assigns the host. Anyone holding a private
+thread link or session ID can connect as a client, but clients cannot promote
+themselves into the host role. Peer election or transferring host ownership
+would require a separate coordination and credential-transfer design. The
+[hosting guide](../docs/hosting.md) explains standalone terminal sessions,
+shareable site hosts, labels, and the Statewire communication flow.
+
 ## Slash commands
 
 `tress attach http://localhost:5311 -s <id>` uses plain terminal output by default.
@@ -263,8 +286,9 @@ directly. Existing shared demo history and files are not moved or deleted.
 
 The server chooses the workspace. The browser and `tress attach` keep the same
 protocol and UI in every mode. Set these in `site/.env.local` and restart the
-host after changing modes. Native `tress` without `attach` still uses its own
-current directory and native shell with approvals.
+host after changing modes. Explicit `tress --local` uses the terminal's current
+directory and native shell with approvals; hosted `tress` uses the server's
+workspace and model credentials.
 
 ### Local directory
 
