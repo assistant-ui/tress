@@ -122,7 +122,9 @@ a display label: it does not change networking, permissions, or who is the host.
 The deployment operator currently assigns the host. Anyone holding a private
 thread link or session ID can connect as a client, but clients cannot promote
 themselves into the host role. Peer election or transferring host ownership
-would require a separate coordination and credential-transfer design.
+would require a separate coordination and credential-transfer design. The
+[hosting guide](../docs/hosting.md) explains standalone terminal sessions,
+shareable site hosts, labels, and the Statewire communication flow.
 
 ## Slash commands
 

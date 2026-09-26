@@ -65,7 +65,8 @@ The host label defaults to the server address. `TRESS_HOST_LABEL` can replace
 that text with a friendly display label such as `Alice's Mac`; it does not
 change networking, permissions, or host ownership. The person running or
 deploying tress currently assigns the host. Clients cannot promote themselves
-or transfer the host role.
+or transfer the host role. See [hosting and client communication](docs/hosting.md)
+for the supported modes and complete setup flow.
 
 The optional terminal UI has a persistent `❯` composer, live ready/working status,
 and a file preview toggled with `/files` or Ctrl-F. Your draft stays intact
