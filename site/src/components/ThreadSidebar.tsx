@@ -72,6 +72,16 @@ export function ThreadSidebar(props: Props) {
       <div className="threads-heading">
         <h2>Threads</h2>
         <button
+          className="new-thread"
+          type="button"
+          aria-label="New thread"
+          title="New thread"
+          disabled={busy}
+          onClick={() => void onSelect()}
+        >
+          <span aria-hidden="true">+</span>
+        </button>
+        <button
           ref={closeButton}
           type="button"
           aria-label="Close threads"
@@ -80,14 +90,6 @@ export function ThreadSidebar(props: Props) {
           ×
         </button>
       </div>
-      <button
-        className="new-thread"
-        type="button"
-        disabled={busy}
-        onClick={() => void onSelect()}
-      >
-        <span aria-hidden="true">＋</span> New thread
-      </button>
       <div
         className="thread-list"
         aria-label={archived ? "Archived threads" : "Your threads"}
@@ -148,27 +150,22 @@ export function ThreadSidebar(props: Props) {
                   className="thread-select"
                   disabled={busy}
                   aria-current={currentId === thread.id ? "page" : undefined}
-                  title={thread.title ?? "New thread"}
+                  title={`${thread.title ?? "New thread"}${currentId === thread.id && working ? " · working" : ""}`}
                   onClick={() => void onSelect(thread.id)}
                 >
+                  <span className="thread-marker" aria-hidden="true">
+                    {currentId === thread.id ? (working ? "·" : "›") : ""}
+                  </span>
                   <span className="thread-row-title">
                     {thread.title ?? "New thread"}
-                  </span>
-                  <span className="thread-row-meta">
-                    {currentId === thread.id
-                      ? working
-                        ? "working…"
-                        : "current"
-                      : new Date(thread.createdAt).toLocaleDateString(
-                          undefined,
-                          { month: "short", day: "numeric" },
-                        )}
                   </span>
                 </button>
                 <details
                   className="thread-actions"
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
                       event.currentTarget.open = false;
                       event.currentTarget.querySelector("summary")?.focus();
                     }
@@ -218,17 +215,18 @@ export function ThreadSidebar(props: Props) {
           </button>
         </div>
       ) : null}
-      <button
-        type="button"
-        className="archived-toggle"
-        aria-pressed={archived}
-        onClick={() => setArchived((value) => !value)}
-      >
-        {archived
-          ? "← All threads"
-          : `Archived${threads.some((thread) => thread.archivedAt) ? ` (${threads.filter((thread) => thread.archivedAt).length})` : ""}`}
-      </button>
-      <p className="threads-footnote">Saved in this browser’s thread list.</p>
+      {archived || threads.some((thread) => thread.archivedAt) ? (
+        <button
+          type="button"
+          className="archived-toggle"
+          aria-pressed={archived}
+          onClick={() => setArchived((value) => !value)}
+        >
+          {archived
+            ? "← All threads"
+            : `Archived${threads.some((thread) => thread.archivedAt) ? ` (${threads.filter((thread) => thread.archivedAt).length})` : ""}`}
+        </button>
+      ) : null}
     </>
   );
 

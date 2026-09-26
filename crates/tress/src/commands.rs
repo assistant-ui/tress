@@ -4,6 +4,7 @@
 pub enum Command {
     Help,
     Files,
+    Threads,
     Status,
     Clear,
     Attach,
@@ -34,6 +35,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         name: "/status",
         description: "show connection, clients, workspace, and runs",
         attached_only: false,
+    },
+    CommandInfo {
+        name: "/threads",
+        description: "switch recent terminal threads (ctrl-t)",
+        attached_only: true,
     },
     CommandInfo {
         name: "/attach",
@@ -78,6 +84,7 @@ pub fn parse(input: &str) -> Option<Command> {
     Some(match input.to_ascii_lowercase().as_str() {
         "/" | "/help" => Command::Help,
         "/files" => Command::Files,
+        "/threads" => Command::Threads,
         "/status" => Command::Status,
         "/clear" => Command::Clear,
         "/attach" => Command::Attach,

@@ -185,7 +185,7 @@ async fn main() -> std::process::ExitCode {
                         )
                     );
                 }
-                Command::Attach | Command::Disconnect | Command::Reconnect => {
+                Command::Attach | Command::Threads | Command::Disconnect | Command::Reconnect => {
                     println!(
                         "This is a local session. To join a shared host, run: tress attach <url>"
                     );

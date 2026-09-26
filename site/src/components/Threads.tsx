@@ -101,7 +101,10 @@ export function Threads() {
   };
 
   const select = (id?: string) => {
-    if (id && id === current.current) return Promise.resolve(false);
+    if (id && id === current.current) {
+      if (window.matchMedia("(max-width: 1199px)").matches) setOpen(false);
+      return Promise.resolve(true);
+    }
     return run(async () => {
       const data = await request(id ? `/${id}` : "", "POST");
       setConfig(null);

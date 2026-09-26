@@ -136,6 +136,7 @@ session or plain mode, enter `/` or `/help` to print the commands.
 | --- | --- |
 | `/help` | Show commands. |
 | `/files` | Toggle workspace previews; list file names in plain terminal mode. |
+| `/threads` | In an attached terminal, switch recent threads with `--ui`, or print their attach commands in plain mode. |
 | `/status` | Show connection, run count, workspace status, and live browser/terminal clients. |
 | `/attach` | Show the command for attaching another terminal. |
 | `/disconnect` | Disconnect this client while the host keeps working. |
@@ -147,6 +148,20 @@ session supports `/help`, `/files`, `/status`, `/clear`, and `/exit`; its
 `/clear` resets model context and keeps files on disk. Slash commands are
 handled by the client, including unknown commands, and never sent as model
 prompts in these interactive sessions.
+
+With `--ui`, **Ctrl-T** opens a compact thread list without clearing your draft.
+Use ↑/↓ and Enter to switch, or Escape to close. On narrow terminals, the list
+uses the transcript area while keeping the prompt visible. Each thread keeps its
+own draft when switching, and the host continues any work after you leave it.
+`/status` still shows the detailed connection, run, and client information.
+
+The terminal remembers its last 20 attached threads in
+`$XDG_STATE_HOME/tress/threads.json` (default `~/.local/state/tress/threads.json`).
+The file has owner-only permissions and contains attach URLs and short titles,
+not conversation history. The picker refreshes this local list when opened.
+It lists threads attached through this machine's `--ui` client; browser thread
+ownership and rename/archive controls remain in the browser. A shared `-s` ID
+never grants access to someone else's full browser thread list.
 
 ## Managed Harness and persistence
 

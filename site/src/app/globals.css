@@ -1076,7 +1076,7 @@ footer > span {
   position: absolute;
   right: calc(100% + 24px);
   top: 0;
-  width: 200px;
+  width: 184px;
   color: var(--muted);
   font-size: 12px;
   text-align: left;
@@ -1087,14 +1087,15 @@ footer > span {
 .threads-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   height: 43px;
-  margin-bottom: 10px;
+  margin-bottom: 4px;
 }
 .threads-heading h2 {
+  flex: 1;
   margin: 0;
   font: inherit;
-  color: var(--text);
+  color: var(--muted);
 }
 .threads-heading button {
   border: 1px solid var(--line);
@@ -1105,20 +1106,8 @@ footer > span {
   width: 25px;
   height: 25px;
 }
-.new-thread {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: #101010;
-  padding: 7px 10px;
-  color: var(--text);
-  text-align: left;
-}
 .thread-list {
-  margin: 14px 0;
+  margin: 0 0 8px;
   max-height: min(58vh, 560px);
   overflow-y: auto;
   scrollbar-width: thin;
@@ -1132,31 +1121,27 @@ footer > span {
 .thread-select {
   display: flex;
   flex: 1;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   border: 0;
-  border-left: 2px solid transparent;
   background: none;
   text-align: left;
-  padding: 7px 7px 7px 10px;
+  padding: 6px 0;
   color: var(--muted);
 }
 .thread-select[aria-current] {
-  border-left-color: var(--text);
-  background: #141414;
   color: var(--text);
+}
+.thread-marker {
+  flex: 0 0 8px;
 }
 .thread-row-title {
   display: block;
-  width: 100%;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.thread-row-meta {
-  color: var(--dim);
-  font-size: 10px;
 }
 .thread-actions {
   flex: 0 0 26px;
@@ -1167,6 +1152,16 @@ footer > span {
   cursor: pointer;
   padding: 5px 0;
   color: var(--dim);
+}
+@media (hover: hover) {
+  .thread-actions {
+    opacity: 0;
+  }
+  .thread-row:hover .thread-actions,
+  .thread-row:focus-within .thread-actions,
+  .thread-actions[open] {
+    opacity: 1;
+  }
 }
 .thread-actions summary::-webkit-details-marker {
   display: none;
@@ -1214,16 +1209,14 @@ footer > span {
 }
 .archived-toggle {
   border: 0;
-  border-top: 1px solid var(--line);
-  padding: 10px 0;
+  padding: 6px 14px;
   width: 100%;
   text-align: left;
   background: none;
   color: var(--dim);
 }
 .threads-empty,
-.threads-error,
-.threads-footnote {
+.threads-error {
   margin: 10px 0;
   color: var(--dim);
   font-size: 11px;
@@ -1253,9 +1246,9 @@ footer > span {
   padding: 16px 20px;
 }
 .thread-drawer .thread-select {
+  min-height: 44px;
   padding-block: 10px;
 }
-.thread-drawer .new-thread,
 .thread-drawer .archived-toggle {
   min-height: 44px;
 }

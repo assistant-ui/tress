@@ -1,5 +1,6 @@
 //! A terminal view of the shared thread. Host updates never replace the draft.
 
+use std::collections::BTreeMap;
 use std::io;
 
 use crossterm::event::{
@@ -16,6 +17,7 @@ use ratatui::{
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use super::recent::RecentThread;
 use super::ThreadState;
 use crate::commands;
 
@@ -29,6 +31,8 @@ const ACCENT: Color = Color::Rgb(206, 149, 124);
 
 pub enum Action {
     Submit(String),
+    Threads,
+    Switch(String),
     Exit,
 }
 
@@ -126,6 +130,11 @@ impl Editor {
 #[derive(Default)]
 struct View {
     editor: Editor,
+    drafts: BTreeMap<String, Editor>,
+    threads: Vec<RecentThread>,
+    threads_open: bool,
+    thread_index: usize,
+    thread_url: String,
     menu_index: usize,
     menu_dismissed: bool,
     files_open: bool,
@@ -142,6 +151,19 @@ struct View {
 }
 
 impl View {
+    fn switch(&mut self, previous: &str, next: &str) {
+        self.drafts
+            .insert(previous.to_owned(), std::mem::take(&mut self.editor));
+        self.editor = self.drafts.remove(next).unwrap_or_default();
+        self.threads_open = false;
+        self.menu_dismissed = false;
+        self.menu_index = 0;
+        self.transcript_scroll = None;
+        self.file_index = 0;
+        self.file_scroll = 0;
+        self.notice.clear();
+    }
+
     fn scroll_transcript(&mut self, delta: i16) {
         let top = self.transcript_scroll.unwrap_or(self.transcript_max_scroll);
         let next = top
@@ -151,7 +173,7 @@ impl View {
     }
 
     fn menu_open(&self) -> bool {
-        self.editor.text.starts_with('/') && !self.menu_dismissed
+        !self.threads_open && self.editor.text.starts_with('/') && !self.menu_dismissed
     }
 
     fn event(&mut self, event: Event, file_count: usize) -> Option<Action> {
@@ -188,6 +210,29 @@ impl View {
         let menu = self.menu_open();
         let matches = commands::matching(&self.editor.text);
         let control = key.modifiers.contains(KeyModifiers::CONTROL);
+        if key.code == KeyCode::Char('t') && control {
+            return Some(Action::Threads);
+        }
+        if self.threads_open {
+            match key.code {
+                KeyCode::Esc => self.threads_open = false,
+                KeyCode::Up => self.thread_index = self.thread_index.saturating_sub(1),
+                KeyCode::Down => {
+                    self.thread_index =
+                        (self.thread_index + 1).min(self.threads.len().saturating_sub(1))
+                }
+                KeyCode::Enter => {
+                    self.threads_open = false;
+                    return self
+                        .threads
+                        .get(self.thread_index)
+                        .map(|thread| Action::Switch(thread.url.clone()));
+                }
+                KeyCode::Char('c' | 'd') if control => self.threads_open = false,
+                _ => {}
+            }
+            return None;
+        }
         match key.code {
             KeyCode::Char('d') if control && self.editor.text.is_empty() => {
                 return Some(Action::Exit)
@@ -298,7 +343,10 @@ impl View {
             Block::default().style(Style::default().bg(BG).fg(TEXT)),
             area,
         );
-        let width = area.width.saturating_sub(4).min(110);
+        let width = area
+            .width
+            .saturating_sub(4)
+            .min(if self.threads_open { 134 } else { 110 });
         let area = Rect::new(
             area.x + (area.width - width) / 2,
             area.y,
@@ -323,6 +371,14 @@ impl View {
             }
             return;
         }
+        let area = if self.threads_open && area.width >= 76 {
+            let columns =
+                Layout::horizontal([Constraint::Length(24), Constraint::Min(1)]).split(area);
+            self.draw_threads(frame, columns[0]);
+            columns[1]
+        } else {
+            area
+        };
         let menu = self.menu_open();
         let matches = commands::matching(&self.editor.text);
         let menu_height = if menu {
@@ -357,27 +413,15 @@ impl View {
         } else {
             "ready"
         };
-        let runs = state.map_or(0, |state| state.runs);
-        let clients = state.map_or(0, |state| state.clients.len());
         let header = vec![
             Line::from(vec![
                 Span::styled(
                     "tress",
                     Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(
-                    format!("  v{}  ·  shared thread", env!("CARGO_PKG_VERSION")),
-                    Style::default().fg(MUTED),
-                ),
+                Span::styled(format!("  ·  {status}"), Style::default().fg(MUTED)),
             ]),
-            Line::from(Span::styled(
-                format!(
-                    "{url}  ·  {status}  ·  {runs} {}  ·  {clients} {}",
-                    if runs == 1 { "run" } else { "runs" },
-                    if clients == 1 { "client" } else { "clients" }
-                ),
-                Style::default().fg(MUTED),
-            )),
+            Line::from(Span::styled(safe(url), Style::default().fg(MUTED))),
         ];
         frame.render_widget(
             Paragraph::new(header).block(
@@ -405,12 +449,7 @@ impl View {
                     Style::default().fg(MUTED),
                 ));
                 lines.push(Line::styled(
-                    "Both clients follow the same conversation and files.",
-                    Style::default().fg(MUTED),
-                ));
-                lines.push(Line::raw(""));
-                lines.push(Line::styled(
-                    "try  /files   /status   /attach",
+                    "try  /threads   /files   /attach",
                     Style::default().fg(MUTED),
                 ));
             }
@@ -546,18 +585,63 @@ impl View {
                 input_area.y,
             ));
         }
-        let hint = if self.transcript_scroll.is_some() {
+        let hint = if self.threads_open {
+            "↑↓ choose · enter switch · esc close"
+        } else if self.transcript_scroll.is_some() {
             "history · pgdn or ctrl-end to follow live"
         } else if menu {
             "tab complete · esc close"
         } else if self.files_open {
             "tab next file · alt+pgup/pgdn files · ctrl-f hide"
         } else {
-            "/ commands · ctrl-f files · pgup/pgdn history · drag to select · ctrl-d leave"
+            "/ commands · ctrl-t threads · ctrl-f files"
         };
         frame.render_widget(
-            Paragraph::new(format!("{status}  ·  {hint}")).style(Style::default().fg(MUTED)),
+            Paragraph::new(hint).style(Style::default().fg(MUTED)),
             regions[6],
+        );
+        if self.threads_open && width < 76 {
+            self.draw_threads(
+                frame,
+                Rect::new(area.x, area.y, area.width, area.height.saturating_sub(4)),
+            );
+        }
+    }
+
+    fn draw_threads(&mut self, frame: &mut Frame, area: Rect) {
+        frame.render_widget(Block::default().style(Style::default().bg(BG)), area);
+        frame.render_widget(
+            Paragraph::new("Threads").style(Style::default().fg(MUTED)),
+            Rect::new(area.x, area.y, area.width, 1),
+        );
+        let items = self
+            .threads
+            .iter()
+            .map(|thread| {
+                ListItem::new(short_title(
+                    &thread.title,
+                    area.width.saturating_sub(4) as usize,
+                ))
+                .style(Style::default().fg(if thread.url == self.thread_url {
+                    TEXT
+                } else {
+                    MUTED
+                }))
+            })
+            .collect::<Vec<_>>();
+        let list = List::new(items)
+            .highlight_symbol("› ")
+            .highlight_style(Style::default().fg(TEXT));
+        let rows = Rect::new(
+            area.x,
+            area.y + 2,
+            area.width.saturating_sub(2),
+            area.height.saturating_sub(2),
+        );
+        frame.render_stateful_widget(
+            list,
+            rows,
+            &mut ListState::default().with_selected(Some(self.thread_index)),
         );
     }
 
@@ -621,6 +705,22 @@ fn safe(text: &str) -> String {
         .collect()
 }
 
+fn short_title(text: &str, width: usize) -> String {
+    let text = safe(text);
+    if text.width() <= width {
+        return text;
+    }
+    let mut used = 0;
+    let prefix: String = text
+        .graphemes(true)
+        .take_while(|grapheme| {
+            used += grapheme.width();
+            used < width
+        })
+        .collect();
+    format!("{prefix}…")
+}
+
 pub struct Screen {
     terminal: DefaultTerminal,
     view: View,
@@ -665,6 +765,30 @@ impl Screen {
     }
     pub fn files(&mut self) {
         self.view.files_open = !self.view.files_open;
+    }
+    pub fn threads(&mut self) {
+        self.view.threads_open = !self.view.threads_open;
+    }
+    pub fn set_threads(&mut self, items: &[RecentThread], current: &str) {
+        let selected = self
+            .view
+            .threads
+            .get(self.view.thread_index)
+            .map(|thread| thread.url.clone());
+        self.view.threads = items.to_vec();
+        self.view.thread_url = current.to_owned();
+        let selected = if self.view.threads_open {
+            selected.as_deref().unwrap_or(current)
+        } else {
+            current
+        };
+        self.view.thread_index = items
+            .iter()
+            .position(|thread| thread.url == selected)
+            .unwrap_or(0);
+    }
+    pub fn switch(&mut self, previous: &str, next: &str) {
+        self.view.switch(previous, next);
     }
     pub fn draw(
         &mut self,
@@ -733,6 +857,56 @@ mod tests {
         assert!(output.contains("ready"));
         assert!(output.contains("❯ follow-up draft"));
         assert_eq!(view.editor.text, "follow-up draft");
+    }
+
+    #[test]
+    fn thread_picker_keeps_drafts_and_fits_narrow_terminals() {
+        let clipped = short_title("A long 👩‍💻 thread title", 12);
+        assert!(clipped.ends_with('…'));
+        assert!(clipped.width() <= 12);
+        let mut view = View {
+            threads: vec![
+                RecentThread {
+                    url: "https://example.com/api/sessions/aaaaaaaaaaaa".into(),
+                    title: "First thread".into(),
+                },
+                RecentThread {
+                    url: "https://example.com/api/sessions/bbbbbbbbbbbb".into(),
+                    title: "Second thread".into(),
+                },
+            ],
+            threads_open: true,
+            ..Default::default()
+        };
+        view.editor.insert("Unsent draft");
+        for (width, height) in [(120, 32), (60, 20), (24, 10), (8, 4)] {
+            let output = screen(&mut view, &ThreadState::default(), width, height);
+            assert!(output.contains('❯'), "composer hidden at {width}×{height}");
+            if width > 24 {
+                assert!(output.contains("First thread"));
+            }
+        }
+        press(&mut view, KeyCode::Down);
+        assert!(
+            matches!(press(&mut view, KeyCode::Enter), Some(Action::Switch(url)) if url.ends_with("bbbbbbbbbbbb"))
+        );
+        view.switch("a", "b");
+        assert!(view.editor.text.is_empty());
+        view.editor.insert("Second draft");
+        view.switch("b", "a");
+        assert_eq!(view.editor.text, "Unsent draft");
+        view.threads_open = true;
+        press(&mut view, KeyCode::Esc);
+        assert!(!view.threads_open);
+        assert_eq!(view.editor.text, "Unsent draft");
+        assert!(matches!(
+            view.event(
+                Event::Key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL)),
+                0
+            ),
+            Some(Action::Threads)
+        ));
+        assert_eq!(view.editor.text, "Unsent draft");
     }
 
     #[test]
