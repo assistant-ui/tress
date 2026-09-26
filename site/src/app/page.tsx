@@ -1,5 +1,5 @@
 import React from "react";
-import { Thread } from "../components/Thread";
+import { Threads } from "../components/Threads";
 import { InstallLine } from "../components/InstallLine";
 
 const SOURCE = "https://github.com/assistant-ui/tress";
@@ -21,7 +21,7 @@ export default function HomePage() {
           <a href="#demo">try</a>
           <a href="#about">about</a>
           <a href={`${SOURCE}#readme`}>docs</a>
-          <a href={SOURCE}>source ↗</a>
+          <a href={SOURCE}>github ↗</a>
         </nav>
       </header>
 
@@ -37,7 +37,7 @@ export default function HomePage() {
         </section>
 
         <section id="demo" aria-label="Live terminal demo">
-          <Thread />
+          <Threads />
           <p className="demo-note">
             The agent runs on the host. Close this tab, attach a terminal, or
             open another window — the same thread is waiting.
@@ -94,9 +94,11 @@ export default function HomePage() {
       </main>
 
       <footer>
-        <a href={SOURCE}>source</a>
+        <a href={SOURCE}>github</a>
         <a href="https://github.com/assistant-ui/statewire-rs">statewire</a>
-        <span>MIT · built with farm.js</span>
+        <span>
+          MIT · powered by <a href="https://harness-sdk.dev">harness-sdk</a>
+        </span>
       </footer>
     </div>
   );

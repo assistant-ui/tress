@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -11,10 +12,16 @@ import {
 import { StatewireClient, StatewireHttp } from "statewire";
 import type { ThreadCommands, ThreadState } from "../lib/thread";
 import { observeDemoConfig, type DemoConfig } from "../lib/demo-config";
+import { describeWorkspace } from "../lib/workspace-info";
 import { CopyButton } from "./CopyButton";
 import { SourcePane } from "./SourcePane";
 import { Markdown } from "./Markdown";
 import { ModelBadge } from "./ModelBadge";
+import { Badge } from "./terminal/Badge";
+import { Spinner } from "./terminal/Spinner";
+import { KeyboardShortcuts } from "./terminal/KeyboardShortcuts";
+import { ToolCall } from "./terminal/ToolCall";
+import { TerminalIcon } from "./terminal/TerminalIcon";
 
 const EMPTY: ThreadState = {
   entries: [],
@@ -31,6 +38,10 @@ const COMMANDS = [
   {
     name: "/files",
     description: "browse workspace files",
+  },
+  {
+    name: "/pwd",
+    description: "show the local workspace path",
   },
   {
     name: "/status",
@@ -85,7 +96,19 @@ const LOCAL_SUGGESTIONS = [
 ];
 type Client = StatewireClient<ThreadState | undefined, ThreadCommands>;
 
-export function Thread() {
+export function Thread({
+  session: selectedSession,
+  onReady,
+  onActivity,
+  toolbar,
+  drafts,
+}: {
+  session?: string;
+  onReady?: (config: DemoConfig) => void;
+  onActivity?: (id: string, running: boolean, prompt?: string) => void;
+  toolbar?: ReactNode;
+  drafts?: Map<string, string>;
+} = {}) {
   const [input, setInput] = useState("");
   const [open, setOpen] = useState("retry.js");
   const [showFiles, setShowFiles] = useState(false);
@@ -104,7 +127,7 @@ export function Thread() {
   const [generation, setGeneration] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<ReactNode>("");
   const [origin, setOrigin] = useState("");
   const [config, setConfig] = useState<DemoConfig | null>(null);
   const [configFailed, setConfigFailed] = useState(false);
@@ -113,6 +136,9 @@ export function Thread() {
     null,
   );
   const workspaceInitialized = useRef(false);
+  const pinnedConfigUrl = useRef<string | undefined>(undefined);
+  const draft = useRef(input);
+  draft.current = input;
   const log = useRef<HTMLDivElement>(null);
   const client = useRef<Client | null>(null);
   const submitting = useRef(false);
@@ -121,13 +147,18 @@ export function Thread() {
 
   useEffect(() => {
     setOrigin(window.location.origin);
-    const session = new URL(window.location.href).searchParams.get("session");
+    const session =
+      selectedSession ??
+      new URL(window.location.href).searchParams.get("session");
     const request = observeDemoConfig(
       (result) => {
         setConfigLoading(result.status === "loading");
         if (result.status === "error") setConfigFailed(true);
         if (result.status === "ready") {
           setConfig(result.config);
+          if (result.config.session)
+            pinnedConfigUrl.current = `/api/mode?session=${encodeURIComponent(result.config.session.attachId)}`;
+          onReady?.(result.config);
           setConfigFailed(false);
           if (
             !workspaceInitialized.current &&
@@ -139,7 +170,7 @@ export function Thread() {
           workspaceInitialized.current = true;
         }
       },
-      fetch,
+      (url, init) => fetch(pinnedConfigUrl.current ?? url, init),
       session
         ? `/api/mode?session=${encodeURIComponent(session)}`
         : "/api/mode",
@@ -153,7 +184,7 @@ export function Thread() {
       configRequest.current = null;
       request.dispose();
     };
-  }, []);
+  }, [selectedSession, onReady]);
 
   useEffect(() => {
     if (connection === "connected") void configRequest.current?.retry();
@@ -196,8 +227,27 @@ export function Thread() {
       log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [state.entries, notice, attached, showHelp]);
 
+  useEffect(() => {
+    const id = config?.session?.id;
+    if (!id || !drafts) return;
+    setInput(drafts.get(id) ?? "");
+    return () => {
+      drafts.set(id, draft.current);
+    };
+  }, [config?.session?.id, drafts]);
+
+  const firstPrompt = state.entries.find(
+    (entry) => entry.role === "user",
+  )?.text;
+  useEffect(() => {
+    if (config?.session)
+      onActivity?.(config.session.id, state.status === "running", firstPrompt);
+  }, [config?.session?.id, state.status, firstPrompt, onActivity]);
+
   const demo = !config?.workspace || config.workspace.mode === "memory";
   const localDemo = config?.workspace?.localDemo === true;
+  const workspace = state.workspace ?? config?.workspace;
+  const workspaceDescription = workspace && describeWorkspace(workspace.mode);
   const suggestions =
     localDemo && config?.workspace?.writes
       ? LOCAL_SUGGESTIONS
@@ -298,6 +348,9 @@ export function Thread() {
     setAttached(!attached);
   };
 
+  const connecting =
+    attached && !connected && connection !== "stopped" &&
+    state.harness?.connection !== "stopped";
   const status = !attached
     ? "Disconnected"
     : !connected
@@ -311,6 +364,29 @@ export function Thread() {
           : state.harness
             ? "Cloud connected"
             : "Connected";
+
+  const showWorkspaceInfo = () => {
+    follow.current = true;
+    if (workspace?.mode === "local" && workspace.root) {
+      const root = workspace.root;
+      setNotice(
+        <>
+          Local workspace on the host
+          <div className="workspace-path-notice">
+            <code>{root}</code>
+            <CopyButton text={root} label="Copy local workspace path" />
+          </div>
+        </>,
+      );
+    } else {
+      setNotice(
+        workspace?.mode === "local"
+          ? "The host has not provided its local workspace path."
+          : workspaceDescription?.description ??
+              "Waiting for workspace information. Reconnect and try /pwd again.",
+      );
+    }
+  };
 
   const send = (prompt: string) => {
     const value = prompt.trim();
@@ -327,6 +403,9 @@ export function Thread() {
           break;
         case "/files":
           setShowFiles((visible) => !visible);
+          break;
+        case "/pwd":
+          showWorkspaceInfo();
           break;
         case "/attach":
           if (attachDetails.current) {
@@ -369,54 +448,90 @@ export function Thread() {
   return (
     <div className="playground">
       <div className="terminal-window">
-        <div
-          className={`terminal-titlebar${localDemo ? " has-local-workspace" : ""}`}
-        >
-          <div className="window-dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
+        <div className="terminal-titlebar">
+          {toolbar ?? (
+            <div className="window-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          )}
           <span className="terminal-title">
-            tress{localDemo ? " · local files" : ""}
+            <span>tress{config?.session ? " ·" : ""}</span>
+            {config?.session ? (
+              <span className="terminal-session">
+                <code title={config.session.attachId}>
+                  {config.session.attachId}
+                </code>
+                <CopyButton
+                  text={config.session.attachId}
+                  label="Copy session ID"
+                  compact
+                />
+              </span>
+            ) : null}
           </span>
           <button
             type="button"
             className="files-toggle"
+            aria-label={showFiles ? "Hide files" : "Show files"}
             aria-expanded={showFiles}
             aria-controls="workspace"
             onClick={() => setShowFiles((visible) => !visible)}
           >
-            {showFiles ? "hide files" : "files"}{" "}
-            <span aria-hidden="true">{showFiles ? "−" : "+"}</span>
+            <TerminalIcon name="files" /> <span>files</span>
           </button>
         </div>
 
-        {config?.session ? (
-          <div className="thread-identity">
-            <span>
-              your session <code>{config.session.attachId}</code>
-            </span>
+        <details className="terminal-attach" ref={attachDetails} open>
+          <summary>attach your terminal</summary>
+          <div className="attach-command">
+            <span aria-hidden="true">$</span>
+            <code>{attachCommand}</code>
             <CopyButton
-              text={config.session.attachId}
-              label="Copy session ID"
+              text={attachCommand}
+              label="Copy terminal attach command"
+              disabled={!origin || !config}
+              compact
             />
           </div>
-        ) : null}
-        {localDemo ? (
-          <div className="local-workspace-info" aria-label="Local workspace">
-            <p>Real files on this host. Changes are saved to disk.</p>
-            {config?.workspace?.root ? (
-              <div className="local-workspace-path">
-                <code>{config.workspace.root}</code>
-                <CopyButton
-                  text={config.workspace.root}
-                  label="Copy local workspace path"
-                />
-              </div>
+          <p>
+            Same thread, live in both clients. Add <code>--ui</code> for the
+            full terminal interface.
+          </p>
+        </details>
+
+        <div className="workspace-summary">
+          {workspaceDescription ? (
+            <button
+              type="button"
+              className="workspace-indicator"
+              title={workspaceDescription.description}
+              aria-label={`${workspaceDescription.label} workspace: show details`}
+              onClick={showWorkspaceInfo}
+            >
+              <Badge>{workspaceDescription.label}</Badge> <kbd>/pwd</kbd>
+            </button>
+          ) : (
+            <Badge>workspace</Badge>
+          )}
+          <span className="connection-status" role="status">
+            <Badge
+              bordered={false}
+              variant={connected ? "success" : "warning"}
+            >
+              {connecting || (connected && busy) ? <Spinner /> : (
+                <span className="status-dot" aria-hidden="true" />
+              )}
+              {status.toLowerCase()}
+            </Badge>
+            {connected ? (
+              <span className="client-count">
+                {clients.length} {clients.length === 1 ? "client" : "clients"}
+              </span>
             ) : null}
-          </div>
-        ) : null}
+          </span>
+        </div>
 
         <div
           className="conversation-log"
@@ -444,7 +559,11 @@ export function Thread() {
             </button>
             <span> for commands</span>
           </div>
-          {state.entries.length === 0 ? (
+          {!config ? (
+            <div className="empty-state">
+              <Spinner label="Loading your workspace…" />
+            </div>
+          ) : state.entries.length === 0 ? (
             <div className="empty-state">
               {localDemo ? (
                 <p>
@@ -514,25 +633,23 @@ export function Thread() {
               ) : (
                 <>
                   {entry.tools.length > 0 ? (
-                    <details className="entry-tools">
-                      <summary>
-                        Agent activity · {entry.tools.length}{" "}
-                        {entry.tools.length === 1 ? "tool call" : "tool calls"}
-                      </summary>
-                      <p>Actions requested by the agent in this workspace.</p>
+                    <ToolCall
+                      name={`${entry.tools.length} ${entry.tools.length === 1 ? "tool call" : "tool calls"}`}
+                      isRunning={running && entry.id === state.entries.at(-1)?.id}
+                    >
                       <ul>
                         {entry.tools.map((tool, index) => {
                           const [name, ...parts] = tool.split(" ");
                           const detail = parts.join(" ");
                           return (
                             <li key={index} title={tool}>
-                              <span>{TOOL_LABELS[name] ?? name}</span>
+                              <span title={TOOL_LABELS[name] ?? name}>{name}</span>
                               {detail ? <code>{detail}</code> : null}
                             </li>
                           );
                         })}
                       </ul>
-                    </details>
+                    </ToolCall>
                   ) : null}
                   {entry.error ? (
                     <div className="entry-error-label">run failed</div>
@@ -540,9 +657,7 @@ export function Thread() {
                   {entry.text ? (
                     <Markdown text={entry.text} />
                   ) : running ? (
-                    <div className="thinking">
-                      <span aria-hidden="true">✳</span> working…
-                    </div>
+                    <Spinner label="Working…" />
                   ) : null}
                 </>
               )}
@@ -623,26 +738,15 @@ export function Thread() {
         >
           {menuOpen ? (
             <div className="command-menu" ref={commandMenu}>
-              <div
-                className="command-menu-heading"
-                id={`${commandListId}-label`}
-              >
-                <span>Commands</span>
-                <span className="command-shortcuts" aria-hidden="true">
-                  <span>
-                    <kbd>↑</kbd>
-                    <kbd>↓</kbd>
-                    <span>select</span>
-                  </span>
-                  <span>
-                    <kbd>↵</kbd>
-                    <span>run</span>
-                  </span>
-                  <span>
-                    <kbd>esc</kbd>
-                    <span>close</span>
-                  </span>
-                </span>
+              <div className="command-menu-heading">
+                <span id={`${commandListId}-label`}>Commands</span>
+                <KeyboardShortcuts
+                  shortcuts={[
+                    { key: "↑↓", description: "select" },
+                    { key: "↵", description: "run" },
+                    { key: "esc", description: "close" },
+                  ]}
+                />
               </div>
               <div
                 id={commandListId}
@@ -750,18 +854,17 @@ export function Thread() {
                 !input.trim() || (!input.trim().startsWith("/") && !canSend)
               }
             >
-              ↵
+              <TerminalIcon name="enter" />
             </button>
           </div>
           <div className="composer-hint">
             <ModelBadge model={config?.model} />
-            <span>
-              {!attached
-                ? "offline"
-                : busy
-                  ? "working"
-                  : "/ commands · enter to send"}
-            </span>
+            <KeyboardShortcuts
+              shortcuts={[
+                { key: "/", description: "commands" },
+                { key: "↵", description: "send" },
+              ]}
+            />
           </div>
         </form>
 
@@ -773,18 +876,6 @@ export function Thread() {
       </div>
 
       <div className="session-controls">
-        <span
-          className={`connection-status ${connected ? "is-connected" : "is-offline"}`}
-          role="status"
-        >
-          <span
-            className={`status-dot ${connected && running ? "is-pulsing" : ""}`}
-          />
-          {status.toLowerCase()}
-          {connected
-            ? ` · ${clients.length} ${clients.length === 1 ? "client" : "clients"}`
-            : ""}
-        </span>
         <div>
           <button type="button" onClick={toggleConnection}>
             {attached ? "disconnect" : "reconnect"}
@@ -815,28 +906,6 @@ export function Thread() {
           ) : null}
         </div>
       </div>
-      <details className="terminal-attach" ref={attachDetails}>
-        <summary>attach your terminal</summary>
-        <div className="attach-command">
-          <span aria-hidden="true">$</span>
-          <code>{attachCommand}</code>
-          <CopyButton
-            text={attachCommand}
-            label="Copy terminal attach command"
-            disabled={!origin || !config}
-          />
-        </div>
-        <p>Send a prompt from either client. Both follow the same thread.</p>
-        {config?.session ? (
-          <p>
-            Your session ID lets another client join this thread. A new visitor
-            gets their own.
-          </p>
-        ) : null}
-        <p>
-          Add <code>--ui</code> for the full terminal interface.
-        </p>
-      </details>
     </div>
   );
 }

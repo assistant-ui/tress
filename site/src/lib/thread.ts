@@ -12,6 +12,7 @@ export type ThreadState = {
   status: "idle" | "running";
   files: Record<string, string>;
   runs: number;
+  workspace?: { mode: string; root?: string };
   clients: {
     id: string;
     kind: "browser" | "terminal" | "api";

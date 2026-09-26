@@ -16,7 +16,7 @@ import {
 } from "@tress/workspaces";
 import { openSession } from "./agent";
 import { SEED_FILES } from "./seed";
-import { openWorkspace, workspaceConfig } from "./workspace";
+import { openWorkspace, workspaceConfig, workspaceInfo } from "./workspace";
 import type { Entry, ThreadState } from "../lib/thread";
 import { createPresenceTracker } from "./presence";
 
@@ -40,6 +40,7 @@ const createThreadElement = (presence: ReturnType<typeof createPresenceTracker>,
       files: config.mode === "memory" ? SEED_FILES() : {},
       runs: 0,
       clients: [],
+      workspace: workspaceInfo(scope),
     }));
 
     useEffect(

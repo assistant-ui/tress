@@ -4,6 +4,8 @@
 pub enum Command {
     Help,
     Files,
+    Pwd,
+    Threads,
     Status,
     Clear,
     Attach,
@@ -31,9 +33,19 @@ pub const COMMANDS: &[CommandInfo] = &[
         attached_only: false,
     },
     CommandInfo {
+        name: "/pwd",
+        description: "show the local workspace path",
+        attached_only: false,
+    },
+    CommandInfo {
         name: "/status",
         description: "show connection, clients, workspace, and runs",
         attached_only: false,
+    },
+    CommandInfo {
+        name: "/threads",
+        description: "switch recent terminal threads (ctrl-t)",
+        attached_only: true,
     },
     CommandInfo {
         name: "/attach",
@@ -78,6 +90,8 @@ pub fn parse(input: &str) -> Option<Command> {
     Some(match input.to_ascii_lowercase().as_str() {
         "/" | "/help" => Command::Help,
         "/files" => Command::Files,
+        "/pwd" => Command::Pwd,
+        "/threads" => Command::Threads,
         "/status" => Command::Status,
         "/clear" => Command::Clear,
         "/attach" => Command::Attach,
@@ -109,6 +123,7 @@ mod tests {
         assert_eq!(parse(" /FiLeS \n"), Some(Command::Files));
         assert_eq!(parse("/"), Some(Command::Help));
         assert_eq!(parse("/quit"), Some(Command::Exit));
+        assert_eq!(parse(" /PWD "), Some(Command::Pwd));
     }
 
     #[test]

@@ -104,7 +104,11 @@ const bootstrap = async (cookie) => {
   assert.equal(response.status, 200, await response.clone().text());
   return {
     config: await response.json(),
-    cookie: response.headers.get("set-cookie")?.split(";")[0] ?? cookie,
+    cookie:
+      response.headers
+        .getSetCookie()
+        .map((value) => value.split(";")[0])
+        .join("; ") || cookie,
   };
 };
 const attach = async (config) => {

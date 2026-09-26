@@ -136,6 +136,7 @@ session or plain mode, enter `/` or `/help` to print the commands.
 | --- | --- |
 | `/help` | Show commands. |
 | `/files` | Toggle workspace previews; list file names in plain terminal mode. |
+| `/threads` | In an attached terminal, switch recent threads with `--ui`, or print their attach commands in plain mode. |
 | `/status` | Show connection, run count, workspace status, and live browser/terminal clients. |
 | `/attach` | Show the command for attaching another terminal. |
 | `/disconnect` | Disconnect this client while the host keeps working. |
@@ -147,6 +148,20 @@ session supports `/help`, `/files`, `/status`, `/clear`, and `/exit`; its
 `/clear` resets model context and keeps files on disk. Slash commands are
 handled by the client, including unknown commands, and never sent as model
 prompts in these interactive sessions.
+
+With `--ui`, **Ctrl-T** opens a compact thread list without clearing your draft.
+Use ↑/↓ and Enter to switch, or Escape to close. On narrow terminals, the list
+uses the transcript area while keeping the prompt visible. Each thread keeps its
+own draft when switching, and the host continues any work after you leave it.
+`/status` still shows the detailed connection, run, and client information.
+
+The terminal remembers its last 20 attached threads in
+`$XDG_STATE_HOME/tress/threads.json` (default `~/.local/state/tress/threads.json`).
+The file has owner-only permissions and contains attach URLs and short titles,
+not conversation history. The picker refreshes this local list when opened.
+It lists threads attached through this machine's `--ui` client; browser thread
+ownership and rename/archive controls remain in the browser. A shared `-s` ID
+never grants access to someone else's full browser thread list.
 
 ## Managed Harness and persistence
 
@@ -383,3 +398,26 @@ PORT=5311 node --env-file=.env.local .farm/.output/server/index.mjs
 `npm run wasm` rebuilds the Farm bindings on demand. `npm run wasm:node`
 generates separate CommonJS bindings for standalone Node consumers and the
 workspace package's WASM tests; the site does not load those bindings.
+
+### Thread sidebar
+
+The **threads** button opens a compact sidebar (a drawer on smaller screens).
+Create a thread, switch between workspaces, rename a conversation, or archive and
+restore it. New threads receive separate files and attach IDs. Switching leaves
+runs on the host and keeps unsent drafts in the current tab; archiving only changes
+the list and never deletes history or files. `/clear` keeps its existing behavior.
+
+A separate HttpOnly browser-owner cookie controls the list. Shareable `-s` IDs
+continue granting access to one thread, without exposing the owner's other threads.
+On a normal visit without a session link, an existing session cookie can adopt
+its unclaimed legacy thread. Shared links never grant ownership of the list.
+The database stores hashed owner/attach credentials, titles, and archive timestamps; Harness
+continues storing conversations. Cookie loss means losing access to the browser's
+list, though saved attach IDs still open their individual threads.
+
+Run `npm run db:migrate` for PostgreSQL before starting an updated local server.
+The Vercel build applies the migration automatically. File-backed development uses
+the same API. Titles use the first prompt without another model call. The sidebar
+loads metadata on selection, opening, and window focus; it does not subscribe to
+all threads or poll in the background. The working indicator reflects the open
+thread's live state.

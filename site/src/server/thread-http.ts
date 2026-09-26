@@ -9,6 +9,9 @@ export const stream = async (request: Request) => {
         await import("./serverless-relay")
       ).serverlessStream(request);
     const backend = await getThreadBackend(request);
+    // Reattaching either client also retries a stopped upstream connection.
+    // An active managed run is left alone; only the observer is reconnecting.
+    if ("reconnect" in backend) await backend.reconnect();
     const response = trackStreamPresence(
       request,
       await backend.host.stream(request),

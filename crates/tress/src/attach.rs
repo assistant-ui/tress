@@ -19,6 +19,7 @@ use statewire::{ProtocolOffer, VersionRange, WIRE_VERSION};
 
 use crate::commands::{self, Command};
 
+mod recent;
 mod ui;
 
 /// One message in the thread.
@@ -50,6 +51,36 @@ struct ThreadState {
     clients: Vec<ConnectedClient>,
     #[serde(default)]
     harness: Option<ManagedHarness>,
+    #[serde(default)]
+    workspace: Option<WorkspaceInfo>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct WorkspaceInfo {
+    mode: String,
+    root: Option<String>,
+}
+
+impl WorkspaceInfo {
+    fn label(&self) -> &str {
+        match self.mode.as_str() {
+            "vercel" => "sandbox",
+            mode => mode,
+        }
+    }
+
+    fn path_notice(&self) -> String {
+        match self.mode.as_str() {
+            "local" => self.root.as_ref().map_or_else(
+                || "The host has not provided its local workspace path.".into(),
+                |root| format!("Local workspace on the host: {root}"),
+            ),
+            "vercel" => "Sandbox workspace: files live remotely, not on this host.".into(),
+            "memory" => "Virtual files in memory; there is no local disk path.".into(),
+            "overlay" => "Overlay workspace: reads local files; edits stay in memory. No writable local folder.".into(),
+            _ => "This workspace does not expose a local disk path.".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -143,11 +174,11 @@ pub async fn run(
     ui_requested: bool,
     session: Option<&str>,
 ) -> Result<(), String> {
-    let url = match session {
+    let mut url = match session {
         Some(id) => session_url(input, id)?,
         None => thread_url(input),
     };
-    let display_url = session.map_or_else(
+    let mut display_url = session.map_or_else(
         || url.clone(),
         |id| {
             format!(
@@ -156,7 +187,7 @@ pub async fn run(
             )
         },
     );
-    let attach_command = session.map_or_else(
+    let mut attach_command = session.map_or_else(
         || format!("tress attach {input}"),
         |id| format!("tress attach {input} -s {id}"),
     );
@@ -174,6 +205,12 @@ pub async fn run(
         None
     };
     let mut keyboard = interactive.then(crossterm::event::EventStream::new);
+    let mut recent = recent::RecentThreads::load();
+    recent.remember(&url, None);
+    let mut remembered = false;
+    if let Some(screen) = &mut screen {
+        screen.set_threads(&recent.items, &url);
+    }
     let (lines_tx, mut lines_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
     if !interactive {
         println!(
@@ -244,6 +281,36 @@ pub async fn run(
                 match action {
                     Some(ui::Action::Exit) => break,
                     Some(ui::Action::Submit(line)) => Some(line),
+                    Some(ui::Action::Threads) => {
+                        recent = recent::RecentThreads::load();
+                        recent.remember(&url, None);
+                        let screen = screen.as_mut().unwrap();
+                        screen.set_threads(&recent.items, &url);
+                        screen.threads();
+                        None
+                    }
+                    Some(ui::Action::Switch(next_url)) => {
+                        if next_url != url {
+                            match connect(&next_url, connection_config()).await {
+                                Ok((next, next_events)) => {
+                                    screen.as_mut().unwrap().switch(&url, &next_url);
+                                    client = Some(next);
+                                    events = next_events;
+                                    url = next_url;
+                                    display_url = recent::location(&url);
+                                    attach_command = recent::attach_command(&url);
+                                    snapshot = None;
+                                    pending = None;
+                                    cloud_error = None;
+                                    remembered = false;
+                                    recent.remember(&url, None);
+                                    screen.as_mut().unwrap().set_threads(&recent.items, &url);
+                                }
+                                Err(error) => notice(&mut screen, &format!("Couldn’t switch threads: {error}")),
+                            }
+                        }
+                        None
+                    }
                     None => None,
                 }
             }
@@ -259,6 +326,17 @@ pub async fn run(
                         let value = client.as_ref().unwrap().main_value(PROTOCOL).await;
                         if let Some(value) = value {
                             snapshot = serde_json::from_value(value.clone()).ok();
+                            if interactive {
+                                let title = snapshot.as_ref().and_then(|state| state.entries.iter().find(|entry| entry.role == "user")).map(|entry| entry.text.as_str());
+                                let changed = recent.remember(&url, title);
+                                if changed || !remembered {
+                                    if let Err(error) = recent.save() {
+                                        notice(&mut screen, &format!("Couldn’t save recent threads: {error}"));
+                                    }
+                                    remembered = true;
+                                    screen.as_mut().unwrap().set_threads(&recent.items, &url);
+                                }
+                            }
                             let error = snapshot.as_ref().and_then(|state| state.harness.as_ref()).and_then(|cloud| cloud.error.clone());
                             if error != cloud_error {
                                 if let Some(message) = &error {
@@ -307,6 +385,29 @@ pub async fn run(
             }
             Some(Command::Exit) => break,
             Some(Command::Attach) => notice(&mut screen, &attach_command),
+            Some(Command::Pwd) => {
+                let detail = snapshot.as_ref().and_then(|state| state.workspace.as_ref()).map_or_else(
+                    || "Workspace information is unavailable. Reconnect to an updated host and try /pwd again.".into(),
+                    WorkspaceInfo::path_notice,
+                );
+                notice(&mut screen, &detail);
+            }
+            Some(Command::Threads) => {
+                recent = recent::RecentThreads::load();
+                recent.remember(&url, None);
+                if let Some(screen) = &mut screen {
+                    screen.set_threads(&recent.items, &url);
+                }
+                if screen.is_none() {
+                    for thread in &recent.items {
+                        println!(
+                            "  {}\n    {}",
+                            thread.title,
+                            recent::attach_command(&thread.url)
+                        );
+                    }
+                }
+            }
             Some(Command::Files) => {
                 if screen.is_none() {
                     if let Some(state) = &snapshot {
@@ -339,6 +440,9 @@ pub async fn run(
                                 " · managed harness · {} · {}",
                                 cloud.id, cloud.connection
                             ));
+                        }
+                        if let Some(workspace) = &state.workspace {
+                            detail.push_str(&format!(" · {} workspace", workspace.label()));
                         }
                         detail.push_str(" · ");
                         detail.push_str(&client_status(&state.clients, connected));
@@ -410,6 +514,9 @@ pub async fn run(
                 }
                 if command == Some(Command::Files) {
                     screen.files();
+                }
+                if command == Some(Command::Threads) {
+                    screen.threads();
                 }
             }
         }
@@ -542,7 +649,28 @@ fn emit(entry: &Entry, printed: &mut Printed, style: &crate::Style, complete: bo
 
 #[cfg(test)]
 mod tests {
-    use super::{client_status, render, session_url, thread_url, ConnectedClient, Printed};
+    use super::{
+        client_status, render, session_url, thread_url, ConnectedClient, Printed, WorkspaceInfo,
+    };
+
+    #[test]
+    fn pwd_uses_the_hosts_scoped_root_and_does_not_claim_virtual_files_are_local() {
+        let workspace = WorkspaceInfo {
+            mode: "local".into(),
+            root: Some("/host/threads/visitor-a".into()),
+        };
+        assert_eq!(
+            workspace.path_notice(),
+            "Local workspace on the host: /host/threads/visitor-a"
+        );
+        for mode in ["memory", "overlay", "vercel"] {
+            let remote = WorkspaceInfo {
+                mode: mode.into(),
+                root: workspace.root.clone(),
+            };
+            assert!(!remote.path_notice().contains("/host/threads/visitor-a"));
+        }
+    }
 
     #[test]
     fn session_id_selects_the_scoped_endpoint() {
