@@ -2,17 +2,19 @@
 
 [![CI](https://github.com/assistant-ui/tress/actions/workflows/ci.yaml/badge.svg)](https://github.com/assistant-ui/tress/actions/workflows/ci.yaml)
 
-A tiny coding agent that works in your project directory. One native binary, no background service, shell-style output.
+A tiny coding agent with a shared thread. Its native terminal client and browser connect to the same host, which supplies the model and workspace.
 
 ```sh
-tress setup              # choose a model and save a private API key
-tress                    # start a session here
-tress ask "fix the failing test in parser.rs"
+tress setup              # connect to a host; no personal API key needed
+tress                    # join your saved thread
+tress attach -s <id>     # join another thread on that host
 ```
 
 [Install and configuration guide](docs/setup.md). The new setup commands are
 available from source; the published v0.1.0 binary still uses
-`ANTHROPIC_API_KEY` directly until the next release.
+an explicit URL with `tress attach` until the next release.
+
+For standalone work in your own project, choose `tress setup --local`:
 
 ```
 tress 0.1.0 · ~/oss/tress · claude-sonnet-5
@@ -28,7 +30,7 @@ Done — greet.py works, it printed "hello, tress".
 ## Slash commands
 
 Enter `/` or `/help` in an interactive session to see commands. `/files` lists
-workspace files, `/pwd` shows the local workspace path, `/status` shows the
+workspace files, `/pwd` describes the workspace path, `/status` shows the
 session status, `/clear` starts a fresh conversation without changing files
 on disk, and `/exit` (or `/quit`) leaves.
 
@@ -60,17 +62,13 @@ See [demo setup and PostgreSQL metadata storage](site/README.md).
 
 ### Host and clients
 
-The **host** is the tress server named by the attach URL. It owns the agent
-loop, model credentials, thread state, and workspace access. A browser tab,
-`tress attach` terminal, or API connection is a **client**: it can watch and
-steer the hosted thread but does not own the workspace. The browser thread
-sidebar and `/status` show the host separately from every live client, including
-each client's type and short connection ID.
+The **host** owns the agent loop, model credentials, thread state, and workspace.
+Browsers and attached terminals are **clients** that watch and steer that thread.
+Both use the host's model configuration. Neither needs a personal model key.
 
-The person running or deploying tress assigns the host. Set `TRESS_HOST_NAME`
-on the server to display a friendly name; otherwise the site shows its URL host.
-Anyone holding the private thread link or session ID can join as a client.
-Client-to-host promotion or peer-elected hosting is not implemented yet.
+The server operator supplies the host address. Anyone holding a private thread
+link or session ID can join that thread. Setup connects to an existing host;
+it does not deploy a server or turn the terminal into a shareable host.
 
 The optional terminal UI has a persistent `❯` composer, live ready/working status,
 and a file preview toggled with `/files` or Ctrl-F. Your draft stays intact
@@ -92,8 +90,8 @@ attached to that host. See [managed setup](site/README.md#managed-harness-and-pe
 
 ## What it does
 
-- **Five tools**: `read`, `write`, `edit`, `ls`, `bash`. File tools are scoped to the directory you started in and refuse paths that escape it.
-- **You approve shell commands.** Every `bash` call asks before it runs; answer `a` to stop being asked for the rest of the session. With no terminal attached (a pipe, CI), gated calls are denied rather than silently run.
+- **Five tools**: `read`, `write`, `edit`, `ls`, `bash`. Files belong to the host workspace; explicit local mode scopes them to the directory you started in.
+- **You approve native shell commands.** In local mode, every `bash` call asks before it runs; answer `a` to stop being asked for the rest of the session. With no terminal attached (a pipe, CI), gated calls are denied rather than silently run.
 - **Streaming**: replies appear as they are generated; tool activity stays inline in the transcript.
 - **Portable core**: the engine, tools, and message assembly build for `wasm32` — the HTTP transport and terminal are the only native-only parts.
 
@@ -149,24 +147,17 @@ interrupted by a host crash still requires application work.
 
 ## Configuration
 
-Run `tress setup` once, then `tress` inside any project. `tress config` shows
-resolved settings and their sources; `tress doctor --check-api` checks setup
-and model access without generating a response.
+Run `tress setup` to save a host connection. The host holds model and Harness
+credentials; the terminal does not need either key. `tress config` shows the
+selected mode and connection, and `tress doctor --check-api` checks the host.
+`tress ask <prompt>` sends a task to that host and exits when it finishes.
 
-Optional project defaults in `.tress.json`:
+Use `tress setup --local` to select standalone execution with your own Anthropic
+key, or `tress --local` for one invocation. Only local mode reads model settings
+from environment variables and an optional project `.tress.json`. Flags override
+environment, project defaults, and personal settings.
 
-```json
-{ "model": "claude-sonnet-5", "max_steps": 64 }
-```
-
-Flags override environment variables, then project settings, then personal
-settings. API keys are stored separately outside the project. Existing
-`ANTHROPIC_API_KEY`, `TRESS_MODEL`, and `ANTHROPIC_BASE_URL` environments keep
-working; `TRESS_MAX_STEPS` sets the per-prompt model request limit.
-
-See [configuration, credential storage, and troubleshooting](docs/setup.md).
-These settings apply to the native CLI; attached clients use their host's
-configuration.
+See [setup, configuration, credential storage, and troubleshooting](docs/setup.md).
 
 ## Develop
 

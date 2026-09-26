@@ -1,172 +1,162 @@
 # Set up tress
 
-Start a local coding session in three steps: install, configure your model,
-then run `tress` inside a project. The native CLI uses Anthropic's Messages API.
-It does not require a database, a web server, or a Harness account.
+Tress connects to a host by default. The host supplies the model, runs tools,
+and owns the workspace. Browser and terminal clients share its thread.
+Your terminal does not need an Anthropic key or a Harness key.
 
 ## Install
 
-The macOS/Linux installer downloads a prebuilt binary and verifies its checksum:
+On macOS/Linux:
 
 ```sh
 curl -fsSL https://tress-theta.vercel.app/tress.sh | sh
 ```
 
-Follow the installer's PATH instructions if `~/.local/bin` is not already on your
-PATH. The installer does not modify your shell profile or require sudo.
+The installer downloads a binary, verifies its checksum, and installs to
+`~/.local/bin`. Follow its PATH instructions if needed.
 
-**Release availability:** `setup`, `config`, and `doctor` are new source features;
-the published v0.1.0 binary does not include them. Until a new release is
-published, build this checkout with Rust:
+**Release availability:** the new setup commands are available from source;
+the published v0.1.0 binary still requires an explicit host URL for attachment.
+Until the next release, build this checkout with Rust:
 
 ```sh
 cargo install --locked --path crates/tress
 ```
 
-## First run
+## Connect to a host
 
 ```sh
 tress setup
-cd your-project
-tress doctor --check-api
 tress
 ```
 
-Setup asks for a model ID (Enter accepts the displayed default) and an Anthropic
-API key. Key input is hidden. Get a key from the
-[Anthropic console](https://platform.claude.com/settings/keys).
-The default model is `claude-sonnet-5`; choose a model available to your account.
+Setup asks for the host address, defaulting to the public demo at
+`https://tress-theta.vercel.app`. Enter a session ID from the site to join an
+existing conversation, or press Enter to create a fresh thread. Setup prints
+a browser link to that same thread and saves the connection privately.
+On repeat setup, Enter keeps the saved session; type `new` for a fresh one.
 
-`tress` works in the directory where you start it. File tools read and write
-there, and shell commands ask for approval. A native CLI conversation lasts for
-the current process. Setup does **not** turn it into a shared, durable host.
-
-You can also run a single task:
+You can also supply the connection directly:
 
 ```sh
-tress ask "explain the tests in this project"
-tress ask --model claude-sonnet-5 --max-steps 16 "fix the failing test"
+tress setup --host https://your-tress-host.example -s <session-id>
 ```
 
-Flags go before the prompt; once prompt text begins, later words remain part of
-it. Use `--` for a prompt that begins with a dash. Run `tress --help` for usage.
+Then use:
 
-## Small, predictable configuration
+```sh
+tress                           # join the saved thread
+tress --ui                      # opt into the full terminal interface
+tress ask "explain these files"  # send a hosted prompt and exit
+tress attach -s <session-id>     # another thread on the saved host
+```
 
-Settings resolve in this order:
+Explicit attachment still works without setup:
 
-1. Command-line flags
-2. Environment variables
-3. `.tress.json` in the directory where you start tress
-4. Personal configuration
-5. Built-in defaults
+```sh
+tress attach https://your-tress-host.example -s <session-id>
+```
 
-`tress config` shows the effective values and where each came from. Use
-`tress config --json` for machine-readable output. Neither prints API keys.
-Configuration and help commands work before you have configured a key.
+Files belong to the host's workspace, which may be a local directory on that
+host, virtual files, or a sandbox. Connecting from a project directory does not
+upload that directory. `/pwd` describes the host's workspace. Client disconnects
+do not stop a host run.
 
-Personal settings live in `$XDG_CONFIG_HOME/tress/config.json`, or
-`~/.config/tress/config.json` if `XDG_CONFIG_HOME` is unset:
+`TRESS_HOST` overrides the saved host address. A saved session ID is reused only
+when the normalized host matches; changing hosts never implicitly forwards a
+session capability from another host. Use `-s` to choose the new host's session.
+
+## Credentials and storage
+
+For the managed demo, the server holds two separate credentials:
+
+- `HARNESS_API_KEY` connects the host to managed Harness.
+- The host's model credential pays for inference (currently `ANTHROPIC_API_KEY`).
+
+Harness supplies the shared-thread infrastructure; the host operator configures
+and pays for model access. Neither key is copied to the terminal or browser.
+A host error never falls back to your personal model key.
+
+Personal settings live in `$XDG_CONFIG_HOME/tress/`, or `~/.config/tress/` when
+`XDG_CONFIG_HOME` is unset. `config.json` records the selected mode.
+`connection.json` stores the host and session capability in a mode `0600` file
+inside a `0700` directory on macOS/Linux. Treat session links and IDs as private.
+Saved connections are private plaintext files, not an encrypted keychain.
+
+## Inspect and diagnose
+
+```sh
+tress config                # selected mode and connection; session ID hidden
+tress config --json         # machine-readable settings
+tress doctor                # local configuration checks, no network call
+tress doctor --check-api    # check the host's configuration endpoint
+```
+
+Hosted diagnostics confirm reachability and whether the host reports a model
+credential configured. They do not generate a completion or prove that the
+provider will accept a future request. A 401/403 can indicate host access or
+Vercel deployment protection; a 404 can indicate an invalid session. Ask the
+host operator to fix missing model credentials. Local credentials are not used
+as a fallback.
+
+## Explicit local execution
+
+Use local mode when you want the native agent to work in the terminal's current
+directory with your own Anthropic key:
+
+```sh
+tress setup --local
+cd your-project
+tress                       # uses the explicitly selected local mode
+```
+
+Or choose local mode for one invocation with an existing environment key:
+
+```sh
+tress --local
+tress --local ask "fix the failing test"
+```
+
+Run `tress setup` again to select hosted mode. `tress attach` always connects to
+a host, regardless of the saved mode. Local mode does not start a shareable
+server or persist its conversation through a process restart.
+
+Local setup hides key input and saves it separately in `credentials.json`
+(mode `0600`). Enter preserves an existing saved or environment key; an
+existing environment key is not copied to disk automatically. For automation,
+pipe the key from your secret manager into `tress setup --local --key-stdin`.
+There is no key argument in the process command line.
+
+Optional local defaults in the project's `.tress.json`:
 
 ```json
-{
-  "model": "claude-sonnet-5",
-  "max_steps": 64,
-  "base_url": "https://api.anthropic.com"
-}
+{ "model": "claude-sonnet-5", "max_steps": 64 }
 ```
 
-All fields are optional. `max_steps` is the maximum number of model requests
-per prompt, including the final answer (1–1024, default 64). A request may
-contain several tool calls. If the limit is reached, tress reports it and
-keeps the tool results in the current conversation. You can send another
-prompt to continue.
+Only `model` and `max_steps` are accepted there. Project files cannot set the
+mode, host, credentials, API destination, or shell approvals. Hosted execution
+does not read project configuration.
 
-For shared project defaults, create `.tress.json`:
+Local settings resolve as flags > environment > current directory's
+`.tress.json` > personal `config.json` > defaults. Personal config accepts
+`mode`, `model`, `max_steps`, and `base_url`.
 
-```json
-{
-  "model": "claude-sonnet-5",
-  "max_steps": 16
-}
-```
-
-Only `model` and `max_steps` are accepted in project files. They cannot set an
-API destination, credentials, workspace root, or automatic shell approvals.
-Tress reads only the current directory's file, not parent directories.
-Unknown fields and malformed settings report an error with the file location.
-
-| Environment | Equivalent flag | Purpose |
+| Environment | Flag | Purpose in local mode |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | — | Overrides the saved API key |
-| `TRESS_MODEL` | `--model` | Model ID |
-| `TRESS_MAX_STEPS` | `--max-steps` | Model requests per prompt |
+| `TRESS_MODEL` | `--model` | Model ID (default `claude-sonnet-5`) |
+| `TRESS_MAX_STEPS` | `--max-steps` | Model requests per prompt, 1–1024 (default 64) |
 | `ANTHROPIC_BASE_URL` | `--base-url` | Anthropic-compatible API base URL |
 
-Existing environment-only setups still work. An explicitly empty API key is
-an error, rather than silently falling back to a different credential.
-Custom API destinations belong in personal config, environment variables,
-or explicit flags. HTTP is supported for local development; use HTTPS for a
-remote API. Redirects are not followed with API credentials.
+Put flags before the prompt; use `--` for a prompt beginning with a dash.
+Reaching the step limit reports an error and preserves tool results in the
+current conversation. Send another prompt to continue.
 
-## Credentials and automation
+`tress config --local` shows local values and sources. `tress doctor --local
+--check-api` checks the Anthropic Models API without generating a completion.
+Compatible proxies may not support that metadata endpoint. Use HTTPS for
+remote APIs; credential-bearing redirects are not followed.
 
-Setup stores the key separately in `credentials.json` beside your personal
-config. On macOS/Linux, this file is mode `0600` inside a `0700` directory.
-It is a private **plaintext file**, not an encrypted keychain. Do not commit it.
-Credential symlinks and files readable by other users are rejected. Environment
-credentials are supported on other platforms; saving keys is currently limited
-to macOS/Linux.
-
-Run `tress setup` again to change your model or replace the saved key. Enter
-keeps an existing key. An existing `ANTHROPIC_API_KEY` is never copied to disk
-unless you explicitly supply a key, and it continues to override saved keys.
-To remove a saved credential, delete that personal `credentials.json` file.
-
-For automation, prefer an environment variable from your secret manager.
-To save a key without a terminal, pipe your secret manager's output into:
-
-```sh
-# Feed only the key on stdin, optionally followed by a newline.
-tress setup --key-stdin --model claude-sonnet-5
-```
-
-There is no API-key command-line argument, so keys do not appear in process
-arguments. Setup validates input before saving and atomically replaces each
-file. Ctrl-C or Escape during hidden key entry cancels without saving.
-
-## Diagnose setup
-
-```sh
-tress doctor                # local checks only; no network call
-tress doctor --check-api    # also check access to the configured model
-```
-
-The optional network check calls the
-[Anthropic Models API](https://platform.claude.com/docs/en/api/http/models/retrieve).
-It does not generate a completion or run tools. A successful check confirms
-model metadata access, not that every generation request will succeed.
-
-- **No key:** run `tress setup` or set `ANTHROPIC_API_KEY`.
-- **401/403:** check the key and your account's model access. An environment key
-  takes priority even after replacing the saved key.
-- **404/405:** check the model ID. A compatible proxy may support Messages but
-  not the Models API; this check cannot confirm that proxy's model access.
-- **Unexpected response / redirect:** check the configured API base URL.
-- **Invalid configuration:** fix the reported file; `--help` remains available.
-- **Wrong effective model:** `tress config` identifies the overriding source.
-
-## Join the web demo
-
-The web demo supplies its own model configuration. Joining it does not require
-local setup or a personal API key:
-
-```sh
-tress attach https://tress-theta.vercel.app -s <session-id>
-tress attach https://tress-theta.vercel.app -s <session-id> --ui
-```
-
-Copy the session ID from the site to use the same thread and workspace.
-The attached terminal operates on the **host's** files, not its local directory.
-Native CLI settings do not reconfigure that host. See the
-[demo host guide](../site/README.md) for Harness, storage, and workspace adapters.
+See the [site host guide](../site/README.md) for server credentials, Harness,
+storage, and workspace adapters. Setup connects to an existing host; it does
+not deploy one.

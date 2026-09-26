@@ -22,7 +22,7 @@ FAKE_KEY = b"pty-dummy-private-key"
 
 def setup(home, *, cancel=False, environment_key=False):
     env = os.environ.copy()
-    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "TRESS_MODEL", "TRESS_MAX_STEPS"):
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "TRESS_MODEL", "TRESS_MAX_STEPS", "TRESS_HOST"):
         env.pop(name, None)
     env.update(HOME=home, XDG_CONFIG_HOME=f"{home}/config", TERM="xterm-256color")
     if environment_key:
@@ -30,7 +30,7 @@ def setup(home, *, cancel=False, environment_key=False):
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(home)
-        os.execve(str(BINARY), [str(BINARY), "setup"], env)
+        os.execve(str(BINARY), [str(BINARY), "setup", "--local"], env)
     output = bytearray()
     done = False
 

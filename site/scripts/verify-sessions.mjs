@@ -119,6 +119,31 @@ const attach = async (config) => {
   await wait(() => client.state?.files["notes.md"], "scoped stream and files");
   return client;
 };
+const cli = new URL("../../target/debug/tress", import.meta.url).pathname;
+const clientEnv = {
+  ...process.env,
+  HOME: join(root, "client-home"),
+  XDG_CONFIG_HOME: join(root, "client-config"),
+  XDG_STATE_HOME: join(root, "client-state"),
+  TRESS_HOST: "",
+  // Hosted clients must work even if personal model configuration is invalid.
+  ANTHROPIC_API_KEY: "",
+  ANTHROPIC_BASE_URL: "not-a-provider-url",
+  TRESS_MODEL: "invalid model",
+};
+delete clientEnv.TRESS_HOST;
+const runCli = async (args) => {
+  const child = spawn(cli, args, { env: clientEnv, stdio: ["ignore", "pipe", "pipe"] });
+  let text = "";
+  child.stdout.on("data", (chunk) => (text += chunk));
+  child.stderr.on("data", (chunk) => (text += chunk));
+  const timer = setTimeout(() => child.kill(), 20000);
+  try {
+    const [code] = await once(child, "exit");
+    assert.equal(code, 0, text);
+    return text;
+  } finally { clearTimeout(timer); }
+};
 try {
   await start();
   const a = await bootstrap();
@@ -141,11 +166,20 @@ try {
   assert.equal(first.state.files["notes.md"], "Visitor A's private file\n");
   assert.equal(second.state.entries.length, 0);
   assert(!second.state.files["notes.md"].includes("Visitor A"));
+  const setup = await runCli(["setup", "--host", url, "-s", a.config.session.attachId]);
+  assert(setup.includes("No personal API key needed"));
+  const config = JSON.parse(await runCli(["config", "--json"]));
+  assert.equal(config.mode, "host");
+  assert(!JSON.stringify(config).includes(a.config.session.attachId));
+  const reply = await runCli(["ask", "Write another note from the terminal"]);
+  assert.equal(reply.split("Saved only in your workspace.").length - 1, 1, "one-shot output excludes old replies");
+  await wait(() => first.state.runs === 2, "browser sees the terminal's hosted run");
+  assert.equal(second.state.entries.length, 0);
   let output = "";
   terminal = spawn(
-    new URL("../../target/debug/tress", import.meta.url).pathname,
-    ["attach", url, "-s", a.config.session.attachId],
-    { stdio: ["pipe", "pipe", "pipe"] },
+    cli,
+    ["attach", "-s", a.config.session.attachId],
+    { env: clientEnv, stdio: ["pipe", "pipe", "pipe"] },
   );
   terminal.stdout.on("data", (chunk) => (output += chunk));
   terminal.stderr.on("data", (chunk) => (output += chunk));
@@ -196,7 +230,7 @@ try {
     "Visitor A's private file\n",
   );
   console.log(
-    "✓ isolated visitors: separate history/files/presence, exact terminal attachment, access checks, and disk identity/files survive restart",
+    "✓ isolated visitors: separate history/files/presence, hosted CLI setup/ask/shorthand attachment without personal keys, access checks, and disk identity/files survive restart",
   );
 } finally {
   clients.forEach((client) => client.dispose());

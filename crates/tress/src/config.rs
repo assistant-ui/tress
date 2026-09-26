@@ -15,9 +15,22 @@ pub const DEFAULT_MODEL: &str = "claude-sonnet-5";
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 const MAX_FILE_BYTES: u64 = 65_536;
 
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    Host,
+    Local,
+}
+
+pub fn local_mode(paths: &Paths, explicit: bool) -> Result<bool, String> {
+    Ok(explicit || paths.read_user()?.mode == Some(Mode::Local))
+}
+
 #[derive(Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct UserConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<Mode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -136,12 +149,13 @@ impl Resolved {
 
     pub fn key(&self) -> Result<&str, String> {
         self.api_key.as_deref().ok_or_else(|| {
-            "No Anthropic API key. Run `tress setup` or set ANTHROPIC_API_KEY.".into()
+            "No Anthropic API key. Run `tress setup --local` or set ANTHROPIC_API_KEY for local execution.".into()
         })
     }
 
     pub fn public_view(&self, paths: &Paths, root: &Path) -> Value {
         json!({
+            "mode": "local",
             "model": { "value": self.model.value, "source": self.model.source },
             "max_steps": { "value": self.max_steps.value.get(), "source": self.max_steps.source },
             "base_url": { "value": self.base_url.value, "source": self.base_url.source },
@@ -261,6 +275,10 @@ pub fn parse_flags<'a>(
 ) -> Result<&'a [String], String> {
     while let Some(flag) = args.first() {
         match flag.as_str() {
+            "--local" => {
+                flags.mode = Some(Mode::Local);
+                args = &args[1..];
+            }
             "--model" | "--max-steps" | "--base-url" => {
                 let value = args.get(1).ok_or_else(|| format!("{flag} needs a value"))?;
                 match flag.as_str() {
@@ -279,7 +297,10 @@ pub fn parse_flags<'a>(
     Ok(args)
 }
 
-fn read_json<T: DeserializeOwned>(path: &Path, private: bool) -> Result<Option<T>, String> {
+pub(crate) fn read_json<T: DeserializeOwned>(
+    path: &Path,
+    private: bool,
+) -> Result<Option<T>, String> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -292,10 +313,7 @@ fn read_json<T: DeserializeOwned>(path: &Path, private: bool) -> Result<Option<T
     if private {
         use std::os::unix::fs::PermissionsExt;
         if metadata.permissions().mode() & 0o077 != 0 {
-            return Err(format!(
-                "{} must be private (chmod 600), or use ANTHROPIC_API_KEY",
-                path.display()
-            ));
+            return Err(format!("{} must be private (chmod 600)", path.display()));
         }
     }
     let file =
@@ -308,12 +326,17 @@ fn read_json<T: DeserializeOwned>(path: &Path, private: bool) -> Result<Option<T
         return Err(format!("{} is too large (maximum 64 KiB)", path.display()));
     }
     serde_json::from_slice(&bytes).map(Some).map_err(|error| {
-        let keys = if private {
+        let keys = if path
+            .file_name()
+            .is_some_and(|name| name == "connection.json")
+        {
+            "host, session"
+        } else if private {
             "anthropic_api_key"
         } else if path.file_name().is_some_and(|name| name == ".tress.json") {
             "model, max_steps"
         } else {
-            "model, max_steps, base_url"
+            "mode, model, max_steps, base_url"
         };
         // Serde's full error can contain input values; never echo them.
         format!(
@@ -338,6 +361,24 @@ pub fn save(paths: &Paths, config: &UserConfig, key: Option<&str>) -> Result<(),
     if let Some(key) = key {
         validate_key(key)?;
     }
+    let dir = private_directory(paths)?;
+    #[cfg(not(unix))]
+    if key.is_some() {
+        return Err("Saving credentials currently requires macOS or Linux; use ANTHROPIC_API_KEY on this platform.".into());
+    }
+    // Write each file atomically: an interruption never truncates an existing key.
+    if let Some(key) = key {
+        write_json(
+            &dir.join("credentials.json"),
+            &Credentials {
+                anthropic_api_key: key.to_owned(),
+            },
+        )?;
+    }
+    write_json(&dir.join("config.json"), config)
+}
+
+pub(crate) fn private_directory(paths: &Paths) -> Result<&Path, String> {
     let dir = paths
         .directory
         .as_ref()
@@ -357,23 +398,10 @@ pub fn save(paths: &Paths, config: &UserConfig, key: Option<&str>) -> Result<(),
         fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
             .map_err(|error| format!("Cannot make config directory private: {error}"))?;
     }
-    #[cfg(not(unix))]
-    if key.is_some() {
-        return Err("Saving credentials currently requires macOS or Linux; use ANTHROPIC_API_KEY on this platform.".into());
-    }
-    // Write each file atomically: an interruption never truncates an existing key.
-    if let Some(key) = key {
-        write_json(
-            &dir.join("credentials.json"),
-            &Credentials {
-                anthropic_api_key: key.to_owned(),
-            },
-        )?;
-    }
-    write_json(&dir.join("config.json"), config)
+    Ok(dir)
 }
 
-fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
+pub(crate) fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()

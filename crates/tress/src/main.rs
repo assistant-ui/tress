@@ -13,6 +13,7 @@ use config::DEFAULT_MODEL;
 mod attach;
 mod commands;
 mod config;
+mod host;
 mod onboarding;
 
 pub mod ansi {
@@ -41,21 +42,25 @@ fn usage() -> String {
     format!(
         "tress {}\n\n\
          usage:\n  \
-         tress setup           configure Anthropic and save your API key\n  \
+         tress setup           connect to a host; use its model credentials\n  \
          tress config          show effective settings (--json for JSON)\n  \
          tress doctor          check setup (--check-api to verify access)\n  \
-         tress                 start a session in the current directory\n  \
-         tress ask <prompt>    run one prompt and exit\n  \
+         tress                 join your saved host and session\n  \
+         tress ask <prompt>    send a prompt to the host and exit\n  \
+         tress --local        run the standalone agent in this directory\n  \
+         tress setup --local  configure your own Anthropic key\n  \
+         tress attach -s <id>  join a thread on the saved host\n  \
          tress attach <url>    join a thread with plain terminal output\n  \
          tress attach <url> -s <id>  join your demo session (--session also works)\n  \
          tress attach <url> --ui  opt into the full terminal interface\n  \
          tress --help          this text\n\n\
          environment:\n  \
-         ANTHROPIC_API_KEY     overrides the saved API key\n  \
+         TRESS_HOST            override the saved host address\n  \
+         ANTHROPIC_API_KEY     local mode only; overrides the saved API key\n  \
          TRESS_MODEL           model id (default {DEFAULT_MODEL})\n  \
          TRESS_MAX_STEPS       maximum model requests per turn (default 64)\n  \
          ANTHROPIC_BASE_URL    Anthropic-compatible API endpoint\n\n\
-         session options: --model <id>, --max-steps <n>, --base-url <url>\n\
+         local options: --model <id>, --max-steps <n>, --base-url <url>\n\
          precedence: flags > environment > .tress.json > personal config > defaults\n",
         env!("CARGO_PKG_VERSION")
     )
@@ -83,6 +88,21 @@ async fn main() -> std::process::ExitCode {
         on: std::io::stdout().is_terminal(),
     };
 
+    let root = match std::env::current_dir() {
+        Ok(root) => root,
+        Err(error) => {
+            eprintln!("cannot read the current directory: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+
+    let paths = match config::Paths::discover(&root) {
+        Ok(paths) => paths,
+        Err(error) => {
+            eprintln!("tress: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
     if args.first().is_some_and(|arg| arg == "attach") {
         let (url, ui, session) = match attach_options(&args[1..]) {
             Ok(options) => options,
@@ -91,7 +111,14 @@ async fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::FAILURE;
             }
         };
-        return match attach::run(url, &style, ui, session).await {
+        let target = match host::target(&paths, url, session) {
+            Ok(target) => target,
+            Err(error) => {
+                eprintln!("tress attach: {error}");
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+        return match attach::run(&target.host, &style, ui, target.session.as_deref()).await {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("{}", style.paint(ansi::RED, &format!("error: {error}")));
@@ -99,14 +126,6 @@ async fn main() -> std::process::ExitCode {
             }
         };
     }
-
-    let root = match std::env::current_dir() {
-        Ok(root) => root,
-        Err(error) => {
-            eprintln!("cannot read the current directory: {error}");
-            return std::process::ExitCode::FAILURE;
-        }
-    };
 
     if let Some(command @ ("setup" | "config" | "doctor")) = args.first().map(String::as_str) {
         return match onboarding::run(command, &args[1..], &root).await {
@@ -116,6 +135,30 @@ async fn main() -> std::process::ExitCode {
                 std::process::ExitCode::FAILURE
             }
         };
+    }
+    let mut selected = config::UserConfig::default();
+    let selection = (|| -> Result<bool, String> {
+        let rest = config::parse_flags(&args, &mut selected)?;
+        if rest.first().is_some_and(|arg| arg == "ask") {
+            config::parse_flags(&rest[1..], &mut selected)?;
+        }
+        config::local_mode(&paths, selected.mode == Some(config::Mode::Local))
+    })();
+    match selection {
+        Ok(false) => {
+            return match hosted_session(&args, &paths, &style).await {
+                Ok(()) => std::process::ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("tress: {error}");
+                    std::process::ExitCode::FAILURE
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("tress: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+        Ok(true) => {}
     }
     let (flags, one_shot) = match session_options(&args) {
         Ok(options) => options,
@@ -219,6 +262,43 @@ async fn main() -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
+async fn hosted_session(
+    args: &[String],
+    paths: &config::Paths,
+    style: &Style,
+) -> Result<(), String> {
+    let mut options = Vec::new();
+    let mut rest = args;
+    let mut ask = false;
+    while let Some(arg) = rest.first() {
+        match arg.as_str() {
+            "ask" if !ask => { ask = true; rest = &rest[1..]; }
+            "--" => { rest = &rest[1..]; break; }
+            "--ui" | "--plain" => { options.push(arg.clone()); rest = &rest[1..]; }
+            "--host" | "-s" | "--session" => {
+                let value = rest.get(1).ok_or_else(|| format!("{arg} needs a value"))?;
+                options.extend([arg.clone(), value.clone()]); rest = &rest[2..];
+            }
+            flag if flag.starts_with('-') => return Err("Hosted sessions use the host's model settings. Use `tress --local` for standalone options; see `tress --help`.".into()),
+            _ => break,
+        }
+    }
+    let prompt = (!rest.is_empty()).then(|| rest.join(" "));
+    if ask
+        && prompt
+            .as_ref()
+            .is_none_or(|prompt| prompt.trim().is_empty())
+    {
+        return Err("tress ask needs a prompt".into());
+    }
+    let (url, ui, session) = attach_options(&options)?;
+    let target = host::target(paths, url, session)?;
+    match prompt {
+        Some(prompt) => attach::ask(&target.host, style, target.session.as_deref(), &prompt).await,
+        None => attach::run(&target.host, style, ui, target.session.as_deref()).await,
+    }
+}
+
 fn configured_engine(
     settings: &config::Resolved,
     root: &std::path::Path,
@@ -255,14 +335,20 @@ fn session_options(args: &[String]) -> Result<(config::UserConfig, Option<String
     Ok((flags, Some(rest.join(" "))))
 }
 
-fn attach_options(args: &[String]) -> Result<(&str, bool, Option<&str>), String> {
-    let mut url = None;
+fn attach_options(args: &[String]) -> Result<(Option<&str>, bool, Option<&str>), String> {
+    let mut url: Option<&str> = None;
     let mut ui = false;
     let mut plain = false;
     let mut session = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--host" => {
+                if url.is_some() {
+                    return Err("provide the host only once".into());
+                }
+                url = Some(args.next().ok_or("--host needs a URL")?.as_str());
+            }
             "--ui" => ui = true,
             "--plain" => plain = true, // Keep the earlier explicit plain option working.
             "-s" | "--session" => {
@@ -287,7 +373,7 @@ fn attach_options(args: &[String]) -> Result<(&str, bool, Option<&str>), String>
     if ui && plain {
         return Err("choose --ui or --plain, not both".into());
     }
-    Ok((url.ok_or("needs a host URL")?, ui, session))
+    Ok((url, ui, session))
 }
 
 async fn run_turn(
@@ -395,7 +481,7 @@ mod cli_tests {
             let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
             assert_eq!(
                 attach_options(&args),
-                Ok(("localhost:5311", expected, None))
+                Ok((Some("localhost:5311"), expected, None))
             );
         }
     }
@@ -403,7 +489,6 @@ mod cli_tests {
     #[test]
     fn invalid_attach_options_fail_before_connecting() {
         for args in [
-            vec!["--ui"],
             vec!["host", "--ui", "--plain"],
             vec!["host", "--other"],
             vec!["one", "two"],
@@ -436,7 +521,10 @@ mod cli_tests {
                     (vec!["--ui", "localhost:5311", flag, id], true),
                 ] {
                     let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
-                    assert_eq!(attach_options(&args), Ok(("localhost:5311", ui, Some(id))));
+                    assert_eq!(
+                        attach_options(&args),
+                        Ok((Some("localhost:5311"), ui, Some(id)))
+                    );
                 }
             }
         }

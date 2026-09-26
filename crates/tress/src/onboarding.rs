@@ -6,13 +6,14 @@ use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 
-use crate::config::{self, Paths, Resolved, UserConfig};
+use crate::config::{self, Mode, Paths, Resolved, UserConfig};
+use crate::host;
 
 pub fn help(command: &str) -> &'static str {
     match command {
-        "setup" => "usage: tress setup [--model <id>] [--max-steps <n>] [--base-url <url>] [--key-stdin]\n\nGuided Anthropic setup. The API key is hidden and saved privately outside your project.\nUse --key-stdin to read a key from a pipe without an interactive prompt.\n",
-        "config" => "usage: tress config [--json] [--model <id>] [--max-steps <n>] [--base-url <url>]\n\nShow effective settings and their sources. Credentials are never printed.\nPrecedence: flags > environment > .tress.json > personal config > defaults.\n",
-        _ => "usage: tress doctor [--check-api] [--model <id>] [--max-steps <n>] [--base-url <url>]\n\nCheck local setup. --check-api also verifies access to the configured model using\nthe Anthropic Models API; it does not generate a response or run tools.\n",
+        "setup" => "usage: tress setup [--host <url>] [-s <id>]\n       tress setup --local [--model <id>] [--max-steps <n>] [--base-url <url>] [--key-stdin]\n\nDefault: connect to a tress host using its model credentials. No personal API key needed.\nUse --local explicitly to configure standalone Anthropic execution.\n",
+        "config" => "usage: tress config [--json] [--local]\n\nShow the saved host connection, or local settings when local mode is selected.\nCredentials and saved session IDs are never printed.\n",
+        _ => "usage: tress doctor [--check-api] [--local]\n\nCheck the selected host connection or explicit local setup. --check-api also contacts\nthe host (or Anthropic Models API in local mode); it does not generate a response.\n",
     }
 }
 
@@ -26,12 +27,24 @@ pub async fn run(command: &str, mut args: &[String], root: &Path) -> Result<(), 
     }
     let mut flags = UserConfig::default();
     let mut special = false;
+    let mut host_url = None;
+    let mut session = None;
     while !args.is_empty() {
         args = config::parse_flags(args, &mut flags)?;
         let Some(arg) = args.first() else { break };
         match (command, arg.as_str()) {
             ("setup", "--key-stdin") | ("config", "--json") | ("doctor", "--check-api") => {
                 special = true
+            }
+            ("setup", "--host") | ("setup", "-s" | "--session") => {
+                let value = args.get(1).ok_or_else(|| format!("{arg} needs a value"))?;
+                if arg == "--host" {
+                    host_url = Some(host::validate_host(value)?);
+                } else {
+                    host::validate_session(value)?;
+                    session = Some(value.clone());
+                }
+                args = &args[1..];
             }
             _ => {
                 return Err(format!(
@@ -42,8 +55,28 @@ pub async fn run(command: &str, mut args: &[String], root: &Path) -> Result<(), 
         args = &args[1..];
     }
     let paths = Paths::discover(root)?;
+    let explicit_local = flags.mode == Some(Mode::Local);
+    if command == "setup" && !explicit_local {
+        if special || flags.model.is_some() || flags.max_steps.is_some() || flags.base_url.is_some()
+        {
+            return Err("Model settings and --key-stdin require `tress setup --local`. Hosted setup uses the host's credentials.".into());
+        }
+        return setup_host(&paths, host_url, session).await;
+    }
+    if host_url.is_some() || session.is_some() {
+        return Err("Choose hosted setup or --local, not both".into());
+    }
     if command == "setup" {
         return setup(&paths, flags, special);
+    }
+    if !config::local_mode(&paths, explicit_local)? {
+        if flags.model.is_some() || flags.max_steps.is_some() || flags.base_url.is_some() {
+            return Err(
+                "Model settings are managed by the host. Use --local for standalone settings."
+                    .into(),
+            );
+        }
+        return inspect_host(command, &paths, special).await;
     }
     let resolved = Resolved::load(&paths, &flags)?;
     if command == "config" {
@@ -90,13 +123,106 @@ pub async fn run(command: &str, mut args: &[String], root: &Path) -> Result<(), 
     Ok(())
 }
 
+async fn setup_host(
+    paths: &Paths,
+    host_url: Option<String>,
+    session: Option<String>,
+) -> Result<(), String> {
+    if paths.directory.is_none() {
+        return Err("Set HOME or XDG_CONFIG_HOME before running setup".into());
+    }
+    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    if !interactive && host_url.is_none() && session.is_none() {
+        return Err("Setup needs a terminal, or supply `tress setup --host <url> [-s <id>]`. No personal API key is required.".into());
+    }
+    let saved = host::configured_host(paths)?;
+    let default_host = saved
+        .as_ref()
+        .map_or(host::DEFAULT_HOST, |saved| saved.host.as_str());
+    let host = match host_url {
+        Some(host) => host,
+        None if interactive => {
+            println!("tress setup\n\nConnect to a host. The host supplies the model and workspace; API keys stay there.\n");
+            prompt(&format!("Host [{default_host}]: "))?.unwrap_or_else(|| default_host.to_owned())
+        }
+        None => default_host.to_owned(),
+    };
+    let host = host::validate_host(&host)?;
+    let previous = saved
+        .filter(|saved| saved.host == host)
+        .and_then(|saved| saved.session);
+    let session = match session {
+        Some(session) => Some(session),
+        None if interactive => {
+            let label = if previous.is_some() {
+                "Session ID [Enter to keep saved; 'new' for a fresh thread]: "
+            } else {
+                "Session ID [Enter for a fresh thread]: "
+            };
+            match prompt(label)? {
+                Some(value) if value == "new" => None,
+                Some(value) => Some(value),
+                None => previous,
+            }
+        }
+        None => previous,
+    };
+    let connection = host::discover(&host, session.as_deref()).await?;
+    let mut user = paths.read_user()?;
+    user.mode = Some(Mode::Host);
+    connection.save(paths)?;
+    config::save(paths, &user, None)?;
+    println!("\nConnected to {}", connection.host);
+    println!("Model and workspace are managed by the host. No personal API key needed.");
+    println!("Browser: {}", connection.browser_url());
+    println!("\nRun `tress` to join this thread, or `tress --ui` for the terminal interface.");
+    println!("To join another thread: tress attach -s <id>");
+    Ok(())
+}
+
+async fn inspect_host(command: &str, paths: &Paths, special: bool) -> Result<(), String> {
+    let connection = host::configured_host(paths)?;
+    if command == "config" {
+        let value = connection.as_ref().map_or_else(
+            || serde_json::json!({"mode":"host", "host":null, "session":"not configured", "credentials":"managed by host", "next":"tress setup"}),
+            host::Connection::public_view,
+        );
+        if special {
+            println!("{}", serde_json::to_string_pretty(&value).unwrap());
+        } else {
+            println!(
+                "Mode        host\nHost        {}\nSession     {}\nCredentials managed by host",
+                value["host"]
+                    .as_str()
+                    .unwrap_or("not configured; run tress setup"),
+                value["session"].as_str().unwrap_or("not configured")
+            );
+            println!("Workspace   on host");
+        }
+        return Ok(());
+    }
+    let connection = connection
+        .ok_or("No host configured. Run `tress setup`. A personal model key is not required.")?;
+    println!(
+        "ok  Host: {}\nok  Model credentials are managed by the host",
+        connection.host
+    );
+    if special {
+        host::discover(&connection.host, connection.session.as_deref()).await?;
+        println!("ok  Host is reachable and reports model credentials configured (no generation performed)");
+    } else {
+        println!("Host access not checked. Run `tress doctor --check-api` to verify.");
+    }
+    Ok(())
+}
+
 fn setup(paths: &Paths, flags: UserConfig, key_stdin: bool) -> Result<(), String> {
     if paths.directory.is_none() {
         return Err("Set HOME or XDG_CONFIG_HOME before running setup".into());
     }
     if !key_stdin && (!std::io::stdin().is_terminal() || !std::io::stdout().is_terminal()) {
         return Err(
-            "Setup needs a terminal. For automation, pipe a key into `tress setup --key-stdin`."
+            "Setup needs a terminal. For automation, pipe a key into `tress setup --local --key-stdin`."
                 .into(),
         );
     }
@@ -155,6 +281,7 @@ fn setup(paths: &Paths, flags: UserConfig, key_stdin: bool) -> Result<(), String
     if flags.base_url.is_some() {
         user.base_url = flags.base_url;
     }
+    user.mode = Some(Mode::Local);
     config::save(paths, &user, key.as_deref())?;
     println!("\nSaved {}", paths.user_config().unwrap().display());
     if key.is_some() {

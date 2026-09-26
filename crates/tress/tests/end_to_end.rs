@@ -128,6 +128,7 @@ fn isolated_command(dir: &Path) -> Command {
     command
         .current_dir(dir)
         .env("XDG_CONFIG_HOME", dir.join("config"))
+        .env_remove("TRESS_HOST")
         .env_remove("TRESS_MODEL")
         .env_remove("TRESS_MAX_STEPS")
         .env_remove("ANTHROPIC_API_KEY")
@@ -138,6 +139,7 @@ fn isolated_command(dir: &Path) -> Command {
 fn run(dir: &Path, base_url: &str, prompt: &str) -> std::process::Output {
     isolated_command(dir)
         .arg("ask")
+        .arg("--local")
         .arg(prompt)
         .current_dir(dir)
         .env("ANTHROPIC_API_KEY", "test-key")
@@ -184,6 +186,7 @@ fn interactive_commands_do_not_call_the_model_or_change_files() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let mut child = isolated_command(scratch.path())
+        .arg("--local")
         .env("ANTHROPIC_API_KEY", "test-key")
         .env(
             "ANTHROPIC_BASE_URL",
@@ -349,6 +352,7 @@ fn a_missing_key_fails_with_a_clear_message() {
     let scratch = Scratch::new("nokey");
     let output = isolated_command(scratch.path())
         .arg("ask")
+        .arg("--local")
         .arg("hi")
         .current_dir(scratch.path())
         .env_remove("ANTHROPIC_API_KEY")
@@ -365,6 +369,7 @@ fn saved_settings_are_used_after_clearing_a_conversation() {
     let mut setup = isolated_command(scratch.path())
         .args([
             "setup",
+            "--local",
             "--key-stdin",
             "--model",
             "saved-model",
@@ -419,7 +424,7 @@ fn configured_step_limit_stops_the_real_binary() {
     let scratch = Scratch::new("step-limit");
     let (url, server) = serve(vec![tool_reply("ls", serde_json::json!({}))]);
     let output = isolated_command(scratch.path())
-        .args(["ask", "--max-steps", "1", "list files"])
+        .args(["ask", "--local", "--max-steps", "1", "list files"])
         .env("ANTHROPIC_API_KEY", "test-key")
         .env("ANTHROPIC_BASE_URL", url)
         .output()

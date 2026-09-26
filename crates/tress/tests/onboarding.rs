@@ -36,7 +36,8 @@ impl Home {
             .env_remove("ANTHROPIC_API_KEY")
             .env_remove("ANTHROPIC_BASE_URL")
             .env_remove("TRESS_MODEL")
-            .env_remove("TRESS_MAX_STEPS");
+            .env_remove("TRESS_MAX_STEPS")
+            .env_remove("TRESS_HOST");
         command
     }
     fn run(&self, args: &[&str]) -> Output {
@@ -45,14 +46,14 @@ impl Home {
     fn setup(&self, extra: &[&str], key: &[u8]) -> Output {
         let mut child = self
             .command()
-            .args(["setup", "--key-stdin"])
+            .args(["setup", "--local", "--key-stdin"])
             .args(extra)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        child.stdin.take().unwrap().write_all(key).unwrap();
+        let _ = child.stdin.take().unwrap().write_all(key);
         child.wait_with_output().unwrap()
     }
     fn user(&self, value: Value) {
@@ -83,7 +84,7 @@ fn settings(output: Output) -> Value {
 #[test]
 fn config_precedence_and_sources_are_visible_without_a_key() {
     let home = Home::new();
-    let defaults = settings(home.run(&["config", "--json"]));
+    let defaults = settings(home.run(&["config", "--local", "--json"]));
     assert_eq!(
         defaults["model"],
         json!({"value":"claude-sonnet-5", "source":"default"})
@@ -97,11 +98,11 @@ fn config_precedence_and_sources_are_visible_without_a_key() {
     home.user(
         json!({"model":"personal-model", "max_steps":8, "base_url":"http://localhost:9876/proxy/"}),
     );
-    let user = settings(home.run(&["config", "--json"]));
+    let user = settings(home.run(&["config", "--local", "--json"]));
     assert_eq!(user["model"]["source"], "user");
     assert_eq!(user["max_steps"]["value"], 8);
     home.project(json!({"model":"project-model", "max_steps":4}));
-    let project = settings(home.run(&["config", "--json"]));
+    let project = settings(home.run(&["config", "--local", "--json"]));
     assert_eq!(
         project["model"],
         json!({"value":"project-model", "source":"project"})
@@ -109,7 +110,7 @@ fn config_precedence_and_sources_are_visible_without_a_key() {
     assert_eq!(project["max_steps"]["value"], 4);
     let env = settings(
         home.command()
-            .args(["config", "--json"])
+            .args(["config", "--local", "--json"])
             .env("TRESS_MODEL", "env-model")
             .env("TRESS_MAX_STEPS", "2")
             .output()
@@ -124,6 +125,7 @@ fn config_precedence_and_sources_are_visible_without_a_key() {
         home.command()
             .args([
                 "config",
+                "--local",
                 "--json",
                 "--model",
                 "flag-model",
@@ -181,7 +183,11 @@ fn setup_saves_private_files_and_diagnostics_never_print_keys() {
             0o700
         );
     }
-    for args in [vec!["config"], vec!["config", "--json"], vec!["doctor"]] {
+    for args in [
+        vec!["config", "--local"],
+        vec!["config", "--local", "--json"],
+        vec!["doctor", "--local"],
+    ] {
         let output = home.run(&args);
         success(&output);
         assert!(!String::from_utf8_lossy(&output.stdout).contains("fake-secret"));
@@ -189,7 +195,7 @@ fn setup_saves_private_files_and_diagnostics_never_print_keys() {
     }
     let from_env = settings(
         home.command()
-            .args(["config", "--json"])
+            .args(["config", "--local", "--json"])
             .env("ANTHROPIC_API_KEY", "env-secret")
             .output()
             .unwrap(),
@@ -197,7 +203,7 @@ fn setup_saves_private_files_and_diagnostics_never_print_keys() {
     assert_eq!(from_env["credential"]["source"], "environment");
     let empty_env = home
         .command()
-        .args(["config"])
+        .args(["config", "--local"])
         .env("ANTHROPIC_API_KEY", "")
         .output()
         .unwrap();
@@ -214,7 +220,7 @@ fn setup_saves_private_files_and_diagnostics_never_print_keys() {
         2,
         "temporary files cleaned up"
     );
-    let current = settings(home.run(&["config", "--json"]));
+    let current = settings(home.run(&["config", "--local", "--json"]));
     assert_eq!(
         current["model"]["value"], "saved-model",
         "setup preserves existing preferences"
@@ -236,7 +242,7 @@ fn invalid_inputs_leave_existing_credentials_unchanged() {
         assert!(!output.status.success());
         assert_eq!(fs::read(&path).unwrap(), before);
     }
-    let output = home.run(&["setup"]);
+    let output = home.run(&["setup", "--local"]);
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("needs a terminal"));
     assert_eq!(fs::read(path).unwrap(), before);
@@ -254,7 +260,7 @@ fn project_config_cannot_redirect_keys_or_disable_approvals() {
         home.project(value);
         let output = home
             .command()
-            .arg("config")
+            .args(["config", "--local"])
             .env("ANTHROPIC_API_KEY", "private-test-key")
             .output()
             .unwrap();
@@ -279,8 +285,13 @@ fn invalid_settings_and_unknown_cli_flags_fail_before_network_access() {
         vec!["ask", "--model"],
         vec!["ask", "--max-steps", "0", "hello"],
         vec!["ask"],
-        vec!["doctor", "--json"],
-        vec!["config", "--base-url", "https://user:secret@host.test"],
+        vec!["doctor", "--local", "--json"],
+        vec![
+            "config",
+            "--local",
+            "--base-url",
+            "https://user:secret@host.test",
+        ],
     ] {
         let output = home.run(&args);
         assert!(!output.status.success());
@@ -296,7 +307,7 @@ fn invalid_settings_and_unknown_cli_flags_fail_before_network_access() {
         json!({"base_url":"https://host.test?key=secret"}),
     ] {
         home.user(config);
-        assert!(!home.run(&["config"]).status.success());
+        assert!(!home.run(&["config", "--local"]).status.success());
     }
 }
 
@@ -308,13 +319,13 @@ fn insecure_or_symlinked_credentials_are_rejected() {
     success(&home.setup(&[], b"private-secret\n"));
     let path = home.0.join("config/tress/credentials.json");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
-    let output = home.run(&["doctor"]);
+    let output = home.run(&["doctor", "--local"]);
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("chmod 600"));
     let target = home.0.join("target.json");
     fs::rename(&path, &target).unwrap();
     symlink(&target, &path).unwrap();
-    assert!(!home.run(&["doctor"]).status.success());
+    assert!(!home.run(&["doctor", "--local"]).status.success());
     success(&home.setup(&[], b"replacement\n"));
     assert!(fs::symlink_metadata(&path).unwrap().is_file());
     assert!(
@@ -328,14 +339,14 @@ fn insecure_or_symlinked_credentials_are_rejected() {
 #[test]
 fn doctor_offline_does_not_contact_the_api_and_missing_key_is_actionable() {
     let home = Home::new();
-    let missing = home.run(&["doctor"]);
+    let missing = home.run(&["doctor", "--local"]);
     assert!(!missing.status.success());
     assert!(String::from_utf8_lossy(&missing.stderr).contains("tress setup"));
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let output = home
         .command()
-        .arg("doctor")
+        .args(["doctor", "--local"])
         .env("ANTHROPIC_API_KEY", "test-key")
         .env(
             "ANTHROPIC_BASE_URL",
@@ -372,6 +383,7 @@ fn doctor_checks_the_models_api_without_generation_or_secret_disclosure() {
                     Err(error) => panic!("No doctor request: {error}"),
                 }
             };
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
@@ -394,7 +406,7 @@ fn doctor_checks_the_models_api_without_generation_or_secret_disclosure() {
         });
         let output = home
             .command()
-            .args(["doctor", "--check-api", "--model", "test-model"])
+            .args(["doctor", "--local", "--check-api", "--model", "test-model"])
             .env("ANTHROPIC_API_KEY", "test-secret-must-not-leak")
             .env("ANTHROPIC_BASE_URL", format!("http://{address}/proxy"))
             .output()
@@ -425,7 +437,7 @@ fn home_fallback_and_environment_only_use_work() {
     let home = Home::new();
     let fallback = settings(
         home.command()
-            .args(["config", "--json"])
+            .args(["config", "--local", "--json"])
             .env_remove("XDG_CONFIG_HOME")
             .output()
             .unwrap(),
@@ -439,7 +451,7 @@ fn home_fallback_and_environment_only_use_work() {
     );
     let env_only = settings(
         home.command()
-            .args(["config", "--json"])
+            .args(["config", "--local", "--json"])
             .env_remove("XDG_CONFIG_HOME")
             .env_remove("HOME")
             .env("ANTHROPIC_API_KEY", "test-key")
@@ -448,4 +460,210 @@ fn home_fallback_and_environment_only_use_work() {
     );
     assert!(env_only["user_config"].is_null());
     assert_eq!(env_only["credential"]["source"], "environment");
+}
+
+fn serve_host(status: u16, body: Value) -> (String, std::thread::JoinHandle<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let host = format!("http://{}", listener.local_addr().unwrap());
+    let handle = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock
+                        && Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                Err(error) => panic!("Missing host request: {error}"),
+            }
+        };
+        stream.set_nonblocking(false).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut request = String::new();
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
+                break;
+            }
+            request.push_str(&line);
+        }
+        let body = body.to_string();
+        write!(stream, "HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        request
+    });
+    (host, handle)
+}
+
+#[test]
+fn default_mode_is_host_and_does_not_load_or_request_personal_keys() {
+    let home = Home::new();
+    // Even a present but invalid local key must not select or block hosted mode.
+    let output = home
+        .command()
+        .args(["config", "--json"])
+        .env("ANTHROPIC_API_KEY", "")
+        .env("TRESS_MODEL", "invalid model")
+        .output()
+        .unwrap();
+    let value = settings(output);
+    assert_eq!(value["mode"], "host");
+    assert_eq!(value["credentials"], "managed by host");
+    let output = home
+        .command()
+        .env("ANTHROPIC_API_KEY", "local-secret")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(error.contains("No host configured"));
+    assert!(!error.contains("ANTHROPIC_API_KEY"));
+    assert!(!home.0.join("config").exists());
+    assert!(!home.run(&["setup", "--key-stdin"]).status.success());
+}
+
+#[test]
+fn hosted_setup_creates_a_session_saves_no_provider_key_and_hides_capabilities() {
+    let home = Home::new();
+    let id = "abcdef123456";
+    let (host, server) = serve_host(
+        200,
+        json!({"kind":"cloud", "configured":true, "session":{"attachId":id}}),
+    );
+    let output = home
+        .command()
+        .args(["setup", "--host", &host])
+        .env("ANTHROPIC_API_KEY", "must-not-forward")
+        .env("HARNESS_API_KEY", "harness-must-not-forward")
+        .output()
+        .unwrap();
+    success(&output);
+    let request = server.join().unwrap();
+    assert!(request.starts_with("GET /api/mode HTTP/1.1"));
+    assert!(!request.contains("must-not-forward"));
+    assert!(!request.to_lowercase().contains("x-api-key"));
+    assert!(!request.to_lowercase().contains("authorization:"));
+    assert!(!home.0.join("config/tress/credentials.json").exists());
+    let connection = home.0.join("config/tress/connection.json");
+    let saved: Value = serde_json::from_slice(&fs::read(&connection).unwrap()).unwrap();
+    assert_eq!(saved["host"], host);
+    assert_eq!(saved["session"], id);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            fs::metadata(&connection).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let value = settings(home.run(&["config", "--json"]));
+    assert_eq!(value["mode"], "host");
+    assert!(!value.to_string().contains(id));
+    success(&home.run(&["doctor"]));
+}
+
+#[test]
+fn hosted_setup_joins_the_requested_session_and_doctor_uses_host_configuration() {
+    let home = Home::new();
+    let id = "session12345";
+    let (host, server) = serve_host(
+        200,
+        json!({"kind":"cloud", "configured":true, "session":{"attachId":id}}),
+    );
+    success(&home.run(&["setup", "--host", &host, "-s", id]));
+    assert!(server
+        .join()
+        .unwrap()
+        .starts_with(&format!("GET /api/mode?session={id} HTTP/1.1")));
+    // A fresh listener represents the same saved host for the diagnostic.
+    let (next_host, server) = serve_host(
+        200,
+        json!({"kind":"cloud", "configured":true, "session":{"attachId":id}}),
+    );
+    let path = home.0.join("config/tress/connection.json");
+    fs::write(&path, json!({"host":next_host, "session":id}).to_string()).unwrap();
+    let output = home.run(&["doctor", "--check-api"]);
+    success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Host is reachable"));
+    assert!(server
+        .join()
+        .unwrap()
+        .contains(&format!("/api/mode?session={id}")));
+}
+
+#[test]
+fn failed_host_checks_do_not_fall_back_to_a_personal_key_or_save_configuration() {
+    for (status, body, message) in [
+        (403, json!({"error":"do-not-echo"}), "requires access"),
+        (404, json!({}), "not found"),
+        (302, json!({}), "redirected"),
+        (
+            200,
+            json!({"kind":"cloud", "configured":false}),
+            "host has no model credential",
+        ),
+        (
+            200,
+            json!({"kind":"cloud", "configured":true, "session":{"attachId":"bad"}}),
+            "Invalid session",
+        ),
+        (
+            200,
+            json!({"kind":"cloud", "configured":true}),
+            "did not confirm",
+        ),
+        (
+            200,
+            json!({"kind":"cloud", "configured":true, "session":{"attachId":"different123"}}),
+            "did not confirm",
+        ),
+    ] {
+        let home = Home::new();
+        let (host, server) = serve_host(status, body);
+        let output = home
+            .command()
+            .args(["setup", "--host", &host, "-s", "session12345"])
+            .env("ANTHROPIC_API_KEY", "do-not-use-this")
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(error.contains(message), "{error}");
+        assert!(!error.contains("do-not-echo"));
+        assert!(!home.0.join("config").exists());
+        assert!(!server.join().unwrap().contains("do-not-use-this"));
+    }
+}
+
+#[test]
+fn a_host_override_never_reuses_another_hosts_saved_session() {
+    let home = Home::new();
+    let (host, server) = serve_host(
+        200,
+        json!({"kind":"cloud", "configured":true, "session":{"attachId":"session12345"}}),
+    );
+    success(&home.run(&["setup", "--host", &host]));
+    server.join().unwrap();
+    let value = settings(
+        home.command()
+            .args(["config", "--json"])
+            .env("TRESS_HOST", "https://another-host.example")
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(value["host"], "https://another-host.example");
+    assert_ne!(value["session"], "saved (hidden)");
+    for forbidden in [
+        json!({"mode":"local"}),
+        json!({"host":"https://untrusted.example"}),
+    ] {
+        home.project(forbidden);
+        // Hosted execution does not inspect project settings at all.
+        assert_eq!(settings(home.run(&["config", "--json"]))["host"], host);
+    }
 }
