@@ -427,32 +427,32 @@ pub async fn run(
             }
             Some(Command::Status) => {
                 let detail = snapshot.as_ref().map_or_else(
-                    || "waiting for workspace".to_owned(),
+                    || format!("{connection}\nWaiting for workspace"),
                     |state| {
                         let mut detail = format!(
-                            "{} · {} completed runs · {} workspace files",
+                            "{connection}\nAgent      {}\nRuns       {} completed\nFiles      {}",
                             state.status,
                             state.runs,
                             state.files.len()
                         );
                         if let Some(cloud) = &state.harness {
                             detail.push_str(&format!(
-                                " · managed harness · {} · {}",
+                                "\nThread     {}\nCloud      {}",
                                 cloud.id, cloud.connection
                             ));
                         }
                         if let Some(workspace) = &state.workspace {
-                            detail.push_str(&format!(" · {} workspace", workspace.label()));
+                            detail.push_str(&format!("\nWorkspace  {}", workspace.label()));
                         }
-                        detail.push_str(" · ");
+                        detail.push_str("\n\n");
                         detail.push_str(&client_status(&state.clients, connected));
+                        if !connected {
+                            detail.push_str("\nUse /reconnect to sync.");
+                        }
                         detail
                     },
                 );
-                notice(
-                    &mut screen,
-                    &format!("{connection} · {detail} · {display_url}"),
-                );
+                notice(&mut screen, &detail);
             }
             Some(Command::Disconnect) => {
                 client = None; // Drop the transport; the shared host keeps running.
@@ -548,14 +548,14 @@ fn client_status(clients: &[ConnectedClient], live: bool) -> String {
             };
             let short_id: String = client.id.chars().take(6).collect();
             if short_id.is_empty() {
-                label.to_owned()
+                format!("  - {label}")
             } else {
-                format!("{label} [{short_id}]")
+                format!("  - {label} [{short_id}]")
             }
         })
         .collect::<Vec<_>>()
-        .join(", ");
-    format!("{} {prefix} {noun}: {labels}", clients.len())
+        .join("\n");
+    format!("{} {prefix} {noun}\n{labels}", clients.len())
 }
 
 fn notice(screen: &mut Option<ui::Screen>, message: &str) {
@@ -709,9 +709,9 @@ mod tests {
         ];
         assert_eq!(
             client_status(&clients, true),
-            "2 connected clients: Chrome on macOS [abcdef], tress terminal [123456]"
+            "2 connected clients\n  - Chrome on macOS [abcdef]\n  - tress terminal [123456]"
         );
-        assert!(client_status(&clients, false).starts_with("2 last known clients:"));
+        assert!(client_status(&clients, false).starts_with("2 last known clients\n"));
     }
 
     #[test]

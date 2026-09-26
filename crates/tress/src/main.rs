@@ -168,7 +168,10 @@ async fn main() -> std::process::ExitCode {
                     let result = engine.tools_mut().execute("ls", &serde_json::json!({}));
                     println!("{}", result.content);
                 }
-                Command::Status => println!("local session · {} · {model} · idle", root.display()),
+                Command::Status => println!(
+                    "Local session\nStatus     idle\nWorkspace  {}\nModel      {model}",
+                    root.display()
+                ),
                 Command::Pwd => println!("{}", root.display()),
                 Command::Clear => {
                     engine = Engine::new(

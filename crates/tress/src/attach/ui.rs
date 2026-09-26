@@ -391,15 +391,20 @@ impl View {
         } else {
             0
         };
-        let notice = Paragraph::new(safe(&self.notice))
-            .style(Style::default().fg(MUTED))
-            .wrap(Wrap { trim: false });
+        let notice = Paragraph::new(
+            self.notice
+                .lines()
+                .map(|line| Line::from(safe(line)))
+                .collect::<Vec<_>>(),
+        )
+        .style(Style::default().fg(MUTED))
+        .wrap(Wrap { trim: false });
         let notice_height = if self.notice.is_empty() {
             0
         } else {
-            notice
-                .line_count(area.width)
-                .min((area.height / 3).max(1) as usize) as u16
+            // Reserve the header, composer, footer, and a transcript line.
+            let available = area.height.saturating_sub(8 + files_height + menu_height);
+            notice.line_count(area.width).min(available as usize) as u16
         };
         let regions = Layout::vertical([
             Constraint::Length(3),
@@ -864,6 +869,20 @@ mod tests {
         let output = screen(&mut view, &ThreadState::default(), 40, 24);
         let compact: String = output.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(compact.contains(path));
+        assert!(output.contains("Ask anything"));
+    }
+
+    #[test]
+    fn status_notice_preserves_rows_and_keeps_the_composer_visible() {
+        let mut view = View {
+            notice: "connected\nAgent      idle\nRuns       1 completed\nFiles      2\nThread     tress-example\nCloud      connected\nWorkspace  local\n\n4 connected clients\n  - Chrome [first]\n  - Chrome [second]\n  - Chrome [third]\n  - terminal [fourth]".into(),
+            ..Default::default()
+        };
+        let output = screen(&mut view, &ThreadState::default(), 80, 24);
+        let rows: Vec<_> = output.lines().map(str::trim).collect();
+        assert!(rows.contains(&"connected"));
+        assert!(rows.contains(&"Agent      idle"));
+        assert!(rows.contains(&"- terminal [fourth]"));
         assert!(output.contains("Ask anything"));
     }
 

@@ -22,6 +22,7 @@ import { Spinner } from "./terminal/Spinner";
 import { KeyboardShortcuts } from "./terminal/KeyboardShortcuts";
 import { ToolCall } from "./terminal/ToolCall";
 import { TerminalIcon } from "./terminal/TerminalIcon";
+import { TressWordmark } from "./TressWordmark";
 
 const EMPTY: ThreadState = {
   entries: [],
@@ -414,12 +415,41 @@ export function Thread({
           }
           break;
         case "/status": {
-          const clientNoun = clients.length === 1 ? "client" : "clients";
-          const clientList = clients
-            .map((client) => `${client.label} [${client.id.slice(0, 6)}]`)
-            .join(", ");
           setNotice(
-            `${status}.${state.harness ? ` Thread: ${state.harness.threadId}.` : ""} ${state.runs} completed ${state.runs === 1 ? "run" : "runs"}. ${Object.keys(state.files).length} workspace files. ${clients.length} ${connected ? "connected" : "last known"} ${clientNoun}${clientList ? `: ${clientList}.` : "."}${!connected ? " Use /reconnect to sync." : ""}`,
+            <>
+              {status}
+              <dl className="status-details">
+                {state.harness ? (
+                  <>
+                    <dt>Thread</dt>
+                    <dd>
+                      <code>{state.harness.threadId}</code>
+                    </dd>
+                  </>
+                ) : null}
+                <dt>Runs</dt>
+                <dd>{state.runs} completed</dd>
+                <dt>Files</dt>
+                <dd>{Object.keys(state.files).length}</dd>
+                <dt>Clients</dt>
+                <dd>
+                  {clients.length} {connected ? "connected" : "last known"}
+                  {clients.length > 0 ? (
+                    <ul>
+                      {clients.map((client) => (
+                        <li key={client.id}>
+                          {client.label || client.kind}
+                          <code className="status-client-id">
+                            {client.id.slice(0, 6)}
+                          </code>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </dd>
+              </dl>
+              {!connected ? "Use /reconnect to sync." : null}
+            </>,
           );
           break;
         }
@@ -457,7 +487,8 @@ export function Thread({
             </div>
           )}
           <span className="terminal-title">
-            <span>tress{config?.session ? " ·" : ""}</span>
+            <TressWordmark />
+            {config?.session ? <span aria-hidden="true">·</span> : null}
             {config?.session ? (
               <span className="terminal-session">
                 <code title={config.session.attachId}>

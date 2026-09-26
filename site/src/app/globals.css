@@ -80,9 +80,21 @@ a {
 .wordmark {
   color: #e2e2dd;
   font-size: 21px;
-  font-style: italic;
   letter-spacing: -1px;
   font-weight: 600;
+}
+.tress-wordmark {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  line-height: 1;
+}
+.tress-mark {
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+  margin-right: 0.04em;
 }
 .nav-divider {
   color: #555550;
@@ -623,6 +635,35 @@ h1 {
   color: var(--accent);
   font-size: 12px;
   margin-top: 18px;
+}
+.status-details {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 18px;
+  margin: 10px 0 0;
+  color: var(--text);
+}
+.status-details dt {
+  color: var(--muted);
+}
+.status-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.status-details ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.status-details li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 10px;
+}
+.status-client-id {
+  color: var(--muted);
 }
 .command-help {
   border-top: 1px solid var(--line);

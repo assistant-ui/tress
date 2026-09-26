@@ -1,6 +1,7 @@
 import React from "react";
 import { Threads } from "../components/Threads";
 import { InstallLine } from "../components/InstallLine";
+import { TressWordmark } from "../components/TressWordmark";
 
 const SOURCE = "https://github.com/assistant-ui/tress";
 
@@ -12,7 +13,7 @@ export default function HomePage() {
       </a>
       <header className="site-header">
         <a className="wordmark" href="#" aria-label="tress home">
-          tress
+          <TressWordmark />
         </a>
         <span className="nav-divider" aria-hidden="true">
           /
