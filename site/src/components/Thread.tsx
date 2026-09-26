@@ -876,7 +876,6 @@ export function Thread({
       </div>
 
       <div className="session-controls">
-        <span className="session-controls-label">one thread, every client</span>
         <div>
           <button type="button" onClick={toggleConnection}>
             {attached ? "disconnect" : "reconnect"}

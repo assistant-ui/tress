@@ -831,7 +831,7 @@ h1 {
 }
 .session-controls {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   align-items: center;
   margin-top: 10px;
@@ -842,10 +842,6 @@ h1 {
   align-items: center;
   gap: 6px;
   color: var(--muted);
-}
-.session-controls-label {
-  color: var(--dim);
-  font-size: 10px;
 }
 .session-controls button,
 .session-controls a {
@@ -1194,9 +1190,6 @@ footer > span {
   .session-controls {
     font-size: 10px;
     justify-content: flex-end;
-  }
-  .session-controls-label {
-    display: none;
   }
   .session-controls > div {
     gap: 5px;
