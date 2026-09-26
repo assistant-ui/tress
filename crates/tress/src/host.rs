@@ -8,6 +8,70 @@ use crate::config::{self, Paths};
 
 pub const DEFAULT_HOST: &str = "https://tress-theta.vercel.app";
 
+#[derive(Deserialize)]
+pub struct HealthReport {
+    pub ok: bool,
+    pub checks: Vec<HealthCheck>,
+}
+
+#[derive(Deserialize)]
+pub struct HealthCheck {
+    pub name: String,
+    pub status: String,
+    pub message: String,
+}
+
+/// Diagnostics use only server-held credentials and never generate a completion.
+pub async fn diagnose(connection: &Connection) -> Result<HealthReport, String> {
+    let mut url =
+        reqwest::Url::parse(&format!("{}/api/health", validate_host(&connection.host)?)).unwrap();
+    if let Some(id) = &connection.session {
+        validate_session(id)?;
+        url.query_pairs_mut().append_pair("session", id);
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| "Cannot create host client")?;
+    let mut response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| "Cannot reach host diagnostics. Check the host address and connection.")?;
+    if !response.status().is_success() && response.status().as_u16() != 503 {
+        return Err(match response.status().as_u16() {
+            404 => "Host diagnostics are unavailable. Update the host or check the saved session.".into(),
+            410 => "This demo session has expired. Run `tress setup` and choose a new session.".into(),
+            401 | 403 => "Host diagnostics require access. Check host authentication or deployment protection.".into(),
+            _ => format!("Host diagnostics failed (HTTP {}).", response.status()),
+        });
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "Cannot read host diagnostics")?
+    {
+        if body.len() + chunk.len() > 65_536 {
+            return Err("Host diagnostics are too large".into());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let report: HealthReport =
+        serde_json::from_slice(&body).map_err(|_| "Invalid host diagnostics response")?;
+    if report.checks.is_empty()
+        || report.checks.len() > 10
+        || report
+            .checks
+            .iter()
+            .any(|item| !matches!(item.status.as_str(), "ok" | "error" | "unknown"))
+    {
+        return Err("Invalid host diagnostics response".into());
+    }
+    Ok(report)
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Connection {
@@ -105,6 +169,8 @@ pub async fn discover(host: &str, session: Option<&str>) -> Result<Connection, S
         let hint = match status.as_u16() {
             401 | 403 => "The host requires access. Check its login or deployment protection with the host operator.",
             404 => "The host or session was not found. Copy the host and session ID from the site.",
+            410 => "This demo session has expired. Run `tress setup` and choose a new session.",
+            429 => "The demo's daily new-session limit has been reached. Try again after midnight UTC.",
             300..=399 => "The host redirected. Use its final address; session IDs are not forwarded through redirects.",
             _ => "The host is unavailable. Try again later.",
         };

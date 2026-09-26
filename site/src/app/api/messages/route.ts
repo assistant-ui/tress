@@ -5,7 +5,11 @@
 // on a static deploy — the page says which mode it is in.
 
 const SCRIPT_HEADER = "x-tress-mode";
-import { resolveDemoSession, sessionResponse } from "../../../server/demo-session";
+import {
+  resolveDemoSession,
+  sessionResponse,
+} from "../../../server/demo-session";
+import { admitRun } from "../../../server/demo-policy";
 
 type Block =
   | { kind: "text"; text: string }
@@ -167,14 +171,25 @@ function turnIndex(messages: { role: string }[]): number {
 }
 
 export async function POST(request: Request) {
-  try { await resolveDemoSession(request); }
-  catch (error) { return sessionResponse(error); }
+  let session;
+  try {
+    session = await resolveDemoSession(request);
+  } catch (error) {
+    return sessionResponse(error);
+  }
   const body = await request.text();
   const key = process.env.ANTHROPIC_API_KEY;
   const parsedBody = JSON.parse(body) as {
     messages: { role: string; content: unknown }[];
     probe?: boolean;
   };
+  if (key) {
+    try {
+      await admitRun(session?.thread);
+    } catch (error) {
+      return sessionResponse(error);
+    }
+  }
 
   // The page asks once on load which mode it is in. A key that the API
   // rejects reports as rejected rather than live, so a bad key is visible
@@ -204,8 +219,9 @@ export async function POST(request: Request) {
   }
 
   const recording =
-    RECORDED.find((entry) => entry.match.test(firstPrompt(parsedBody.messages))) ??
-    RECORDED[RECORDED.length - 1];
+    RECORDED.find((entry) =>
+      entry.match.test(firstPrompt(parsedBody.messages)),
+    ) ?? RECORDED[RECORDED.length - 1];
   const turn =
     recording.turns[
       Math.min(turnIndex(parsedBody.messages), recording.turns.length - 1)

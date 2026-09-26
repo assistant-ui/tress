@@ -249,9 +249,10 @@ skip the import step.
 
 `src/server/thread-store.ts` exposes `ThreadStore` and file/PostgreSQL adapters.
 Replace session resolution in `src/server/demo-session.ts` to use your own login
-and ownership checks. A public hosted demo should add request/run quotas, session
-expiry, and idle host cleanup. The sample keeps live hosts in one Node process;
-PostgreSQL alone does not coordinate multiple execution hosts.
+and ownership checks. The demo includes configurable run/session limits, session
+expiry, and idle managed-connection cleanup; see Host diagnostics and demo limits
+below. Use PostgreSQL for counters shared across workers. Local in-memory threads
+still require a single long-lived host; PostgreSQL alone does not persist them.
 
 For a trusted single shared demo, set `TRESS_DEMO_SHARED=1`. That compatibility
 mode uses `tress attach <host>` without an ID, honors `HARNESS_THREAD_ID`, stores
@@ -329,6 +330,52 @@ and tool history in Harness, including file content returned by tools. File
 persistence alone does not resume a tool interrupted by a host crash.
 
 ## Checks and production build
+
+### Host diagnostics and demo limits
+
+Use `/doctor` in the browser or `tress doctor --check-api` from a configured
+terminal. `/api/health?session=<id>` checks the existing session's storage,
+model metadata access, and managed Harness thread stream. Checks use server
+credentials and generate no completions. Unknown metadata support is reported
+separately from rejected credentials. Responses contain no keys, database URLs,
+or upstream error bodies, and are cached for 30 seconds per session.
+
+The hosted demo uses these defaults. Set a value to `0` to disable that limit.
+
+| Server environment variable | Default | Meaning |
+| --- | --- | --- |
+| `TRESS_RUNS_PER_OWNER_DAY` | `50` | Model-run attempts per anonymous owner each UTC day |
+| `TRESS_RUNS_PER_HOST_DAY` | `500` | Model-run attempts across the host each UTC day |
+| `TRESS_SESSIONS_PER_OWNER_DAY` | `10` | New-session attempts per owner each UTC day |
+| `TRESS_SESSIONS_PER_HOST_DAY` | `100` | New-session attempts across the host each UTC day |
+| `TRESS_SESSION_TTL_HOURS` | `168` | Session access lifetime from creation (seven days) |
+| `TRESS_HOST_IDLE_MINUTES` | `10` | Evict a managed connection after it has no clients or active run |
+
+Run `npm run db:migrate` before starting a database-backed host. Migration 004
+adds shared usage counters. Admissions are atomic across PostgreSQL workers;
+the file store serializes admissions inside a single Node process. The database
+and file counters survive restarts and reset at midnight UTC. Older counters
+are pruned during admission. Database failures deny new runs rather than
+bypassing limits. Archive, rename, reconnect, and `/clear` do not reset budgets.
+
+Budgets are reserved before model execution, so failed attempts and backend
+retries count too. Every paid call through the legacy `/api/messages` route,
+including its old key probe, also consumes a run admission. A 429 response
+includes `Retry-After`; it never switches the client to a personal key.
+Anonymous visitors can obtain another identity, so the host-wide budget is the
+shared ceiling. Accounts and billing are separate integrations.
+
+Expiry returns 410 for explicit links and blocks new turns. Opening `/` with an
+expired session cookie creates a fresh session if budget allows. Expiry does
+not delete Harness history, database records, local files, or remote sandboxes,
+and does not interrupt an admitted run. Idle cleanup closes long-lived managed
+connections and listeners; reconnect loads the saved thread. In-process local
+conversation state and workspace caches are retained to avoid losing work.
+Serverless connections continue using their existing bounded lease lifecycle.
+
+Test these rules with `npm run test:policy`. Set
+`TRESS_RELAY_TEST_DATABASE_URL` to a disposable PostgreSQL database to include
+the concurrent-worker checks. CI runs them against its test database.
 
 ### Vercel
 

@@ -62,6 +62,7 @@ export const createPresenceTracker = () => {
   };
 
   return {
+    count: () => snapshot().length,
     setRemote(clients: Client[]) {
       remote = clients;
       publish();

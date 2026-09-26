@@ -208,8 +208,26 @@ async fn inspect_host(command: &str, paths: &Paths, special: bool) -> Result<(),
         connection.host
     );
     if special {
-        host::discover(&connection.host, connection.session.as_deref()).await?;
-        println!("ok  Host is reachable and reports model credentials configured (no generation performed)");
+        let report = host::diagnose(&connection).await?;
+        let safe = |value: &str| {
+            value
+                .chars()
+                .filter(|ch| !ch.is_control())
+                .take(1000)
+                .collect::<String>()
+        };
+        for check in &report.checks {
+            println!(
+                "{}  {}: {}",
+                check.status,
+                safe(&check.name),
+                safe(&check.message)
+            );
+        }
+        println!("Credentials stay on the host. No completion was generated.");
+        if !report.ok || report.checks.iter().any(|check| check.status != "ok") {
+            return Err("The host needs attention; see the checks above.".into());
+        }
     } else {
         println!("Host access not checked. Run `tress doctor --check-api` to verify.");
     }

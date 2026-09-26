@@ -1,7 +1,17 @@
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { constants } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { Pool } from "pg";
+import type { UsageBucket } from "./demo-policy";
 
 export type DemoThread = {
   id: string;
@@ -18,6 +28,8 @@ export type ThreadPatch = { title?: string; archivedAt?: string | null };
 
 /** Replace this store to integrate your own accounts/database. Tokens stay hashed. */
 export interface ThreadStore {
+  check(): Promise<void>;
+  consume(buckets: UsageBucket[], now: number): Promise<boolean>;
   get(accessHash: string): Promise<DemoThread | undefined>;
   create(thread: DemoThread): Promise<void>;
   addAccess(accessHash: string, aliasHash: string): Promise<void>;
@@ -64,6 +76,49 @@ export const createFileThreadStore = (directory: string): ThreadStore => {
   const ownerPath = (hash: string) =>
     join(directory, "owners", basename(path(hash)));
   const store: ThreadStore = {
+    async check() {
+      let parent = resolve(directory);
+      for (;;) {
+        try {
+          if (!(await stat(parent)).isDirectory())
+            throw new Error("Storage path is not a directory.");
+          await access(parent, constants.R_OK | constants.W_OK);
+          return;
+        } catch (error) {
+          if (
+            (error as NodeJS.ErrnoException).code !== "ENOENT" ||
+            dirname(parent) === parent
+          )
+            throw error;
+          parent = dirname(parent);
+        }
+      }
+    },
+    async consume(buckets, now) {
+      const target = join(directory, "usage.json");
+      return editFile(target, async () => {
+        const day = new Date(now).toISOString().slice(0, 10);
+        let usage: { day: string; counts: Record<string, number> } = {
+          day,
+          counts: {},
+        };
+        try {
+          usage = JSON.parse(await readFile(target, "utf8"));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+        if (usage.day !== day) usage = { day, counts: {} };
+        if (buckets.some(({ key, limit }) => (usage.counts[key] ?? 0) >= limit))
+          return false;
+        for (const { key } of buckets)
+          usage.counts[key] = (usage.counts[key] ?? 0) + 1;
+        await mkdir(directory, { recursive: true });
+        const temporary = `${target}.${randomUUID()}.tmp`;
+        await writeFile(temporary, JSON.stringify(usage), { mode: 0o600 });
+        await rename(temporary, target);
+        return true;
+      });
+    },
     async owner(hash) {
       try {
         return JSON.parse(await readFile(ownerPath(hash), "utf8")).id;
@@ -217,6 +272,44 @@ const fromRow = (row: DemoThread) => ({
 });
 
 export const createPostgresThreadStore = (pool: Pool): ThreadStore => ({
+  async check() {
+    await pool.query(
+      "SELECT id, owner_id, harness_thread_id, files FROM tress_demo_threads LIMIT 0",
+    );
+    await pool.query("SELECT bucket, day, used FROM tress_demo_usage LIMIT 0");
+  },
+  async consume(buckets, now) {
+    const day = new Date(now).toISOString().slice(0, 10);
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      // Stable order serializes shared host/owner budgets across serverless workers.
+      for (const { key, limit } of [...buckets].sort((a, b) =>
+        a.key.localeCompare(b.key),
+      )) {
+        const result = await db.query(
+          `INSERT INTO tress_demo_usage (bucket, day, used) VALUES ($1, $2::date, 1)
+           ON CONFLICT (bucket, day) DO UPDATE SET used = tress_demo_usage.used + 1
+           WHERE tress_demo_usage.used < $3 RETURNING used`,
+          [key, day, limit],
+        );
+        if (!result.rowCount) {
+          await db.query("ROLLBACK");
+          return false;
+        }
+      }
+      await db.query("DELETE FROM tress_demo_usage WHERE day < $1::date - 1", [
+        day,
+      ]);
+      await db.query("COMMIT");
+      return true;
+    } catch (error) {
+      await db.query("ROLLBACK");
+      throw error;
+    } finally {
+      db.release();
+    }
+  },
   async owner(hash) {
     const { rows } = await pool.query(
       "SELECT id FROM tress_demo_owners WHERE access_hash = $1",
@@ -328,7 +421,7 @@ export const createPostgresThreadStore = (pool: Pool): ThreadStore => ({
   },
 });
 
-const key = Symbol.for("tress.demo.thread-store.v3");
+const key = Symbol.for("tress.demo.thread-store.v4");
 type Holder = { store?: ThreadStore };
 const holder = ((globalThis as Record<symbol, unknown>)[key] ??= {}) as Holder;
 export const threadStore = () =>
