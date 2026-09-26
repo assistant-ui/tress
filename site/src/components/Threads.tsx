@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DemoConfig } from "../lib/demo-config";
 import { Thread } from "./Thread";
 import { ThreadSidebar, type ThreadSummary } from "./ThreadSidebar";
+import { TerminalIcon } from "./terminal/TerminalIcon";
 
 export function Threads() {
   const [selected, setSelected] = useState<string>();
@@ -172,6 +173,7 @@ export function Threads() {
             <button
               type="button"
               className="threads-toggle"
+              aria-label="Threads"
               aria-expanded={open}
               aria-controls="thread-sidebar"
               onClick={() => {
@@ -179,7 +181,7 @@ export function Threads() {
                 if (!open) void refresh();
               }}
             >
-              <span aria-hidden="true">☰</span> threads
+              <TerminalIcon name="threads" /> <span>threads</span>
             </button>
           ) : undefined
         }

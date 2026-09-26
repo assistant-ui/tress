@@ -17,6 +17,11 @@ import { CopyButton } from "./CopyButton";
 import { SourcePane } from "./SourcePane";
 import { Markdown } from "./Markdown";
 import { ModelBadge } from "./ModelBadge";
+import { Badge } from "./terminal/Badge";
+import { Spinner } from "./terminal/Spinner";
+import { KeyboardShortcuts } from "./terminal/KeyboardShortcuts";
+import { ToolCall } from "./terminal/ToolCall";
+import { TerminalIcon } from "./terminal/TerminalIcon";
 
 const EMPTY: ThreadState = {
   entries: [],
@@ -343,6 +348,9 @@ export function Thread({
     setAttached(!attached);
   };
 
+  const connecting =
+    attached && !connected && connection !== "stopped" &&
+    state.harness?.connection !== "stopped";
   const status = !attached
     ? "Disconnected"
     : !connected
@@ -458,6 +466,7 @@ export function Thread({
                 <CopyButton
                   text={config.session.attachId}
                   label="Copy session ID"
+                  compact
                 />
               </span>
             ) : null}
@@ -465,12 +474,12 @@ export function Thread({
           <button
             type="button"
             className="files-toggle"
+            aria-label={showFiles ? "Hide files" : "Show files"}
             aria-expanded={showFiles}
             aria-controls="workspace"
             onClick={() => setShowFiles((visible) => !visible)}
           >
-            {showFiles ? "hide files" : "files"}{" "}
-            <span aria-hidden="true">{showFiles ? "−" : "+"}</span>
+            <TerminalIcon name="files" /> <span>files</span>
           </button>
         </div>
 
@@ -483,6 +492,7 @@ export function Thread({
               text={attachCommand}
               label="Copy terminal attach command"
               disabled={!origin || !config}
+              compact
             />
           </div>
           <p>
@@ -491,8 +501,8 @@ export function Thread({
           </p>
         </details>
 
-        {workspaceDescription ? (
-          <div className="workspace-summary">
+        <div className="workspace-summary">
+          {workspaceDescription ? (
             <button
               type="button"
               className="workspace-indicator"
@@ -500,10 +510,28 @@ export function Thread({
               aria-label={`${workspaceDescription.label} workspace: show details`}
               onClick={showWorkspaceInfo}
             >
-              {workspaceDescription.label} <span>/pwd</span>
+              <Badge>{workspaceDescription.label}</Badge> <kbd>/pwd</kbd>
             </button>
-          </div>
-        ) : null}
+          ) : (
+            <Badge>workspace</Badge>
+          )}
+          <span className="connection-status" role="status">
+            <Badge
+              bordered={false}
+              variant={connected ? "success" : "warning"}
+            >
+              {connecting || (connected && busy) ? <Spinner /> : (
+                <span className="status-dot" aria-hidden="true" />
+              )}
+              {status.toLowerCase()}
+            </Badge>
+            {connected ? (
+              <span className="client-count">
+                {clients.length} {clients.length === 1 ? "client" : "clients"}
+              </span>
+            ) : null}
+          </span>
+        </div>
 
         <div
           className="conversation-log"
@@ -531,7 +559,11 @@ export function Thread({
             </button>
             <span> for commands</span>
           </div>
-          {state.entries.length === 0 ? (
+          {!config ? (
+            <div className="empty-state">
+              <Spinner label="Loading your workspace…" />
+            </div>
+          ) : state.entries.length === 0 ? (
             <div className="empty-state">
               {localDemo ? (
                 <p>
@@ -601,25 +633,23 @@ export function Thread({
               ) : (
                 <>
                   {entry.tools.length > 0 ? (
-                    <details className="entry-tools">
-                      <summary>
-                        Agent activity · {entry.tools.length}{" "}
-                        {entry.tools.length === 1 ? "tool call" : "tool calls"}
-                      </summary>
-                      <p>Actions requested by the agent in this workspace.</p>
+                    <ToolCall
+                      name={`${entry.tools.length} ${entry.tools.length === 1 ? "tool call" : "tool calls"}`}
+                      isRunning={running && entry.id === state.entries.at(-1)?.id}
+                    >
                       <ul>
                         {entry.tools.map((tool, index) => {
                           const [name, ...parts] = tool.split(" ");
                           const detail = parts.join(" ");
                           return (
                             <li key={index} title={tool}>
-                              <span>{TOOL_LABELS[name] ?? name}</span>
+                              <span title={TOOL_LABELS[name] ?? name}>{name}</span>
                               {detail ? <code>{detail}</code> : null}
                             </li>
                           );
                         })}
                       </ul>
-                    </details>
+                    </ToolCall>
                   ) : null}
                   {entry.error ? (
                     <div className="entry-error-label">run failed</div>
@@ -627,9 +657,7 @@ export function Thread({
                   {entry.text ? (
                     <Markdown text={entry.text} />
                   ) : running ? (
-                    <div className="thinking">
-                      <span aria-hidden="true">✳</span> working…
-                    </div>
+                    <Spinner label="Working…" />
                   ) : null}
                 </>
               )}
@@ -710,26 +738,15 @@ export function Thread({
         >
           {menuOpen ? (
             <div className="command-menu" ref={commandMenu}>
-              <div
-                className="command-menu-heading"
-                id={`${commandListId}-label`}
-              >
-                <span>Commands</span>
-                <span className="command-shortcuts" aria-hidden="true">
-                  <span>
-                    <kbd>↑</kbd>
-                    <kbd>↓</kbd>
-                    <span>select</span>
-                  </span>
-                  <span>
-                    <kbd>↵</kbd>
-                    <span>run</span>
-                  </span>
-                  <span>
-                    <kbd>esc</kbd>
-                    <span>close</span>
-                  </span>
-                </span>
+              <div className="command-menu-heading">
+                <span id={`${commandListId}-label`}>Commands</span>
+                <KeyboardShortcuts
+                  shortcuts={[
+                    { key: "↑↓", description: "select" },
+                    { key: "↵", description: "run" },
+                    { key: "esc", description: "close" },
+                  ]}
+                />
               </div>
               <div
                 id={commandListId}
@@ -837,18 +854,17 @@ export function Thread({
                 !input.trim() || (!input.trim().startsWith("/") && !canSend)
               }
             >
-              ↵
+              <TerminalIcon name="enter" />
             </button>
           </div>
           <div className="composer-hint">
             <ModelBadge model={config?.model} />
-            <span>
-              {!attached
-                ? "offline"
-                : busy
-                  ? "working"
-                  : "/ commands · enter to send"}
-            </span>
+            <KeyboardShortcuts
+              shortcuts={[
+                { key: "/", description: "commands" },
+                { key: "↵", description: "send" },
+              ]}
+            />
           </div>
         </form>
 
@@ -860,18 +876,7 @@ export function Thread({
       </div>
 
       <div className="session-controls">
-        <span
-          className={`connection-status ${connected ? "is-connected" : "is-offline"}`}
-          role="status"
-        >
-          <span
-            className={`status-dot ${connected && running ? "is-pulsing" : ""}`}
-          />
-          {status.toLowerCase()}
-          {connected
-            ? ` · ${clients.length} ${clients.length === 1 ? "client" : "clients"}`
-            : ""}
-        </span>
+        <span className="session-controls-label">one thread, every client</span>
         <div>
           <button type="button" onClick={toggleConnection}>
             {attached ? "disconnect" : "reconnect"}

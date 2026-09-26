@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { TerminalIcon } from "./terminal/TerminalIcon";
 
 export function CopyButton({
   text,
   label = "Copy command",
   disabled = false,
+  compact = false,
 }: {
   text: string;
   label?: string;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   const [status, setStatus] = useState<"idle" | "copied" | "error">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -29,7 +32,7 @@ export function CopyButton({
   return (
     <button
       type="button"
-      className="copy-button"
+      className={`copy-button${compact ? " copy-button-compact" : ""}`}
       disabled={disabled}
       onClick={copy}
       aria-label={status === "copied" ? "Copied" : label}
@@ -39,7 +42,11 @@ export function CopyButton({
           : label
       }
     >
-      <span aria-live="polite">
+      <TerminalIcon name={status === "copied" ? "check" : "copy"} />
+      <span
+        className={compact ? "visually-hidden" : undefined}
+        aria-live="polite"
+      >
         {status === "copied"
           ? "Copied ✓"
           : status === "error"
