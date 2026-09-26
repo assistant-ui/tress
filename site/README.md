@@ -285,8 +285,9 @@ directly. Existing shared demo history and files are not moved or deleted.
 
 The server chooses the workspace. The browser and `tress attach` keep the same
 protocol and UI in every mode. Set these in `site/.env.local` and restart the
-host after changing modes. Native `tress` without `attach` still uses its own
-current directory and native shell with approvals.
+host after changing modes. Explicit `tress --local` uses the terminal's current
+directory and native shell with approvals; hosted `tress` uses the server's
+workspace and model credentials.
 
 ### Local directory
 

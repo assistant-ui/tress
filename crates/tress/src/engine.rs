@@ -39,10 +39,12 @@ pub enum Approval {
 pub enum EngineError {
     #[error(transparent)]
     Provider(#[from] ProviderError),
+    #[error("stopped after {0} model steps; send another prompt to continue or raise max_steps")]
+    StepLimit(usize),
 }
 
 /// Stops a run from looping forever on a misbehaving model.
-const MAX_STEPS: usize = 64;
+pub const DEFAULT_MAX_STEPS: usize = 64;
 
 pub const SYSTEM_PROMPT: &str = "\
 You are tress, a coding agent. The working directory is the user's project,
@@ -67,6 +69,7 @@ pub struct Engine<P: Provider, T: Tools> {
     messages: Vec<Value>,
     system: String,
     always_allowed: Vec<String>,
+    max_steps: std::num::NonZeroUsize,
 }
 
 impl<P: Provider, T: Tools> Engine<P, T> {
@@ -77,11 +80,18 @@ impl<P: Provider, T: Tools> Engine<P, T> {
             messages: Vec::new(),
             system: SYSTEM_PROMPT.to_owned(),
             always_allowed: Vec::new(),
+            max_steps: std::num::NonZeroUsize::new(DEFAULT_MAX_STEPS).unwrap(),
         }
     }
 
     pub fn with_system(mut self, system: impl Into<String>) -> Self {
         self.system = system.into();
+        self
+    }
+
+    /// Limit model requests per user turn, including the final reply.
+    pub fn with_max_steps(mut self, max_steps: std::num::NonZeroUsize) -> Self {
+        self.max_steps = max_steps;
         self
     }
 
@@ -119,7 +129,7 @@ impl<P: Provider, T: Tools> Engine<P, T> {
             .push(json!({"role": "user", "content": prompt}));
         let schemas = self.tools.schemas();
 
-        for _ in 0..MAX_STEPS {
+        for _ in 0..self.max_steps.get() {
             let turn = self
                 .provider
                 .turn(&self.system, &self.messages, &schemas, &mut |delta| {
@@ -134,7 +144,8 @@ impl<P: Provider, T: Tools> Engine<P, T> {
 
             let calls: Vec<Value> = turn.tool_uses().cloned().collect();
             if calls.is_empty() {
-                break;
+                on_event(Event::Idle);
+                return Ok(());
             }
 
             let mut results = Vec::with_capacity(calls.len());
@@ -185,7 +196,7 @@ impl<P: Provider, T: Tools> Engine<P, T> {
         }
 
         on_event(Event::Idle);
-        Ok(())
+        Err(EngineError::StepLimit(self.max_steps.get()))
     }
 
     fn is_gated(&self, name: &str, input: &Value) -> bool {
@@ -300,6 +311,38 @@ mod tests {
         assert_eq!(events.last(), Some(&Event::Idle));
         assert!(calls.lock().unwrap().is_empty());
         assert_eq!(engine.messages().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn step_limit_reports_failure_keeps_results_and_allows_continuation() {
+        let (mut engine, calls, seen) = engine(
+            vec![
+                tool_turn("read", json!({"path": "a.rs"})),
+                tool_turn("read", json!({"path": "b.rs"})),
+                text_turn("continued"),
+            ],
+            vec![],
+        );
+        engine = engine.with_max_steps(std::num::NonZeroUsize::new(2).unwrap());
+        let mut events = Vec::new();
+        let result = engine
+            .send("go", &mut |event| events.push(event), &mut |_, _| {
+                Approval::Once
+            })
+            .await;
+        assert!(matches!(result, Err(EngineError::StepLimit(2))));
+        assert_eq!(calls.lock().unwrap().len(), 2);
+        assert_eq!(seen.lock().unwrap().len(), 2);
+        assert_eq!(events.last(), Some(&Event::Idle));
+        assert_eq!(
+            engine.messages().last().unwrap()["content"][0]["type"],
+            "tool_result"
+        );
+        engine
+            .send("continue", &mut |_| {}, &mut |_, _| Approval::Once)
+            .await
+            .unwrap();
+        assert_eq!(seen.lock().unwrap().len(), 3);
     }
 
     #[tokio::test]

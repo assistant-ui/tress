@@ -8,15 +8,21 @@ is not necessarily the host.
 
 | Command or app | Host | Clients | Shareable? |
 | --- | --- | --- | --- |
-| `tress` | The native terminal process | That terminal only | No |
-| `tress ask <prompt>` | The native process for one run | None | No |
+| `tress` after `tress setup` | The saved site host | Terminal and other attached clients | Yes |
+| `tress ask <prompt>` in hosted mode | The saved site host | Sends one prompt, then exits; other clients stay attached | Yes |
+| `tress --local` | The native terminal process | That terminal only | No |
+| `tress --local ask <prompt>` | The native process for one run | None | No |
 | tress site | The Node/Farm server | Browser tabs, `tress attach`, and API connections | Yes |
 | Embedded engine | The integrating application | Defined by that application | Application-specific |
 
-Running `tress` normally makes the terminal process responsible for the model
-credential, agent loop, and current directory. It is a local standalone host in
-that limited sense, but it does not start a network endpoint. A browser or
-another terminal cannot attach to it.
+By default, `tress` connects to the saved host and session. Run `tress setup`
+once to choose them; the terminal does not need a personal model or Harness
+key. See the [setup guide](setup.md) for installation and release availability.
+
+Explicit `tress --local` makes the terminal process responsible for the model
+credential, agent loop, and current directory. It does not start a network
+endpoint. A browser or another terminal cannot attach to it. You can save
+local mode as your default with `tress setup --local`.
 
 Running `tress attach <url>` always makes that terminal a client. The current
 CLI does not have a `tress serve` command for turning a terminal session into a
@@ -51,6 +57,13 @@ the same thread:
 
 ```sh
 tress attach https://your-tress-host.example -s <private-session-id>
+```
+
+To save that host and thread for future invocations:
+
+```sh
+tress setup --host https://your-tress-host.example -s <private-session-id>
+tress
 ```
 
 The session ID grants access to the thread. Treat the complete browser link and
@@ -100,4 +113,3 @@ The sample uses private session IDs for access. A public production deployment
 should also add authentication, authorization, TLS, request and run quotas,
 session expiration, and idle-host cleanup. PostgreSQL can persist session
 metadata, but it does not by itself coordinate multiple execution hosts.
-
