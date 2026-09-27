@@ -1647,7 +1647,7 @@ dependencies = [
 
 [[package]]
 name = "tress"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "crossterm",
  "futures-util",
@@ -1665,7 +1665,7 @@ dependencies = [
 
 [[package]]
 name = "tress-wasm"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "js-sys",
  "serde_json",
