@@ -15,8 +15,9 @@ curl -fsSL https://tress-theta.vercel.app/tress.sh | sh
 The installer downloads a binary, verifies its checksum, and installs to
 `~/.local/bin`. Follow its PATH instructions if needed.
 
-Hosted setup requires **v0.2.0 or newer**. Check `tress --version` after
-installation. To build the current checkout with Rust instead:
+Use **v0.2.1 or newer** for hosted setup and complete `tress ask` replies.
+Check `tress --version` after installation. To build the current checkout
+with Rust instead:
 
 ```sh
 cargo install --locked --path crates/tress

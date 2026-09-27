@@ -4,6 +4,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
+import { Readable } from "node:stream";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { build } from "esbuild";
 
 process.env.NODE_ENV = "test";
@@ -69,7 +73,7 @@ const config = {
 };
 
 // The cloud is a real Harness protocol host; only the model stream is scripted.
-const scriptedFactory = (hosts, histories) => {
+const scriptedFactory = (hosts, histories, beforeReply = async () => {}) => {
   const factory = (threadId) => {
     if (!hosts.has(threadId)) {
       const open = async ({ history }) => {
@@ -77,6 +81,7 @@ const scriptedFactory = (hosts, histories) => {
         return new ReadableStream({
           async start(controller) {
             controller.enqueue({ type: "start" });
+            await beforeReply(history);
             controller.enqueue({ type: "text-start", id: "text" });
             controller.enqueue({
               type: "text-delta",
@@ -114,6 +119,94 @@ const scriptedFactory = (hosts, histories) => {
   };
   return factory;
 };
+
+for (const fail of [false, true]) {
+  test(`hosted CLI waits after managed admission for the ${fail ? "failure" : "complete reply"}`, async () => {
+    const hosts = new Map();
+    const histories = [];
+    let finish;
+    const gate = new Promise((resolve) => (finish = resolve));
+    const factory = scriptedFactory(hosts, histories, async (history) => {
+      if (history.length === 1) return;
+      await gate;
+      if (fail) throw new Error("delayed model failed");
+    });
+    const gateway = await createManagedGateway(
+      { ...config, initialThreadId: `cli-${randomUUID()}` },
+      factory,
+    );
+    const browser = new StatewireClient({ transport: transport(gateway.host) });
+    const server = createServer(async (request, response) => {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      const input = new Request(`http://localhost${request.url}`, {
+        method: request.method,
+        headers: request.headers,
+        ...(body ? { body } : {}),
+      });
+      const reply = request.url.endsWith("/frames")
+        ? await gateway.host.frames(input)
+        : await gateway.host.stream(input);
+      response.writeHead(reply.status, Object.fromEntries(reply.headers));
+      if (!reply.body) return response.end();
+      const stream = Readable.fromWeb(reply.body);
+      stream.on("error", () => response.destroy());
+      response.on("close", () => stream.destroy());
+      stream.pipe(response);
+    });
+    let terminal;
+    try {
+      await wait(() => browser.state?.harness?.connection === "connected", "gateway ready");
+      await browser.commands.send("Earlier prompt");
+      await wait(() => browser.state.runs === 1, "previous conversation");
+      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const cli = process.env.TRESS_TEST_CLI ?? new URL("../../target/debug/tress", import.meta.url).pathname;
+      terminal = spawn(cli, ["ask", "Wait for this managed reply"], {
+        cwd: directory,
+        env: {
+          PATH: process.env.PATH,
+          HOME: directory,
+          XDG_CONFIG_HOME: join(directory, `cli-${randomUUID()}`),
+          TRESS_HOST: `http://127.0.0.1:${server.address().port}`,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let output = "";
+      terminal.stdout.on("data", (chunk) => (output += chunk));
+      terminal.stderr.on("data", (chunk) => (output += chunk));
+      const exited = once(terminal, "exit");
+      await wait(() => output.includes("Wait for this managed reply"), "accepted CLI prompt");
+      assert.equal(
+        await Promise.race([
+          exited.then(() => true),
+          new Promise((resolve) => setTimeout(() => resolve(false), 150)),
+        ]),
+        false,
+        "Admission must not end the CLI before the model completes",
+      );
+      finish();
+      await wait(() => terminal.exitCode !== null, "CLI completion");
+      const [code] = await exited;
+      if (fail) {
+        assert.notEqual(code, 0, output);
+        assert.match(output, /delayed model failed/);
+      } else {
+        assert.equal(code, 0, output);
+        assert.equal(output.split("Managed reply").length - 1, 1, "print the new reply exactly once without history");
+        assert.equal(browser.state.entries.at(-1).text, "Managed reply");
+        assert.equal(browser.state.runs, 2);
+      }
+    } finally {
+      finish();
+      terminal?.kill();
+      browser.dispose();
+      gateway.dispose();
+      hosts.forEach((host) => host.dispose());
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+}
 
 test("managed gateway shares, resumes and rotates persisted threads in development strict mode", async () => {
   const hosts = new Map();

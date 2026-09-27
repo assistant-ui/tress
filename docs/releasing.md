@@ -32,8 +32,8 @@ From a clean checkout of the merged `main`, create and push a tag matching
 ```sh
 git fetch origin main --tags
 git switch --detach origin/main
-git tag -a v0.2.0 -m "tress v0.2.0"
-git push origin v0.2.0
+git tag -a v0.2.1 -m "tress v0.2.1"
+git push origin v0.2.1
 ```
 
 The workflow builds macOS and Linux binaries for ARM64 and x86-64. Each target
@@ -42,7 +42,7 @@ release with four binaries and `SHA256SUMS`. A failed build leaves the previous
 release as the installer's default. Fix a failed release without moving an
 already published tag.
 
-After the workflow succeeds, verify `gh release view v0.2.0` lists all five
+After the workflow succeeds, verify `gh release view v0.2.1` lists all five
 assets. Test the production installer into a temporary directory:
 
 ```sh

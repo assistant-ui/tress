@@ -266,8 +266,33 @@ async fn run_inner(
     let mut pending = None;
     let mut plain_prompt = false;
     let mut cloud_error: Option<String> = None;
+    let mut runs_before_send = None;
+    let mut sent_thread = None;
+    let mut send_acknowledged = false;
 
     loop {
+        // Managed hosts acknowledge admission before generation finishes. Wait
+        // for the replicated run to settle, regardless of frame ordering.
+        if one_shot && send_acknowledged {
+            if let (Some(state), Some(before)) = (&snapshot, runs_before_send) {
+                if let Some(error) = state
+                    .harness
+                    .as_ref()
+                    .and_then(|cloud| cloud.error.as_ref())
+                {
+                    return Err(format!("Managed Harness: {error}"));
+                }
+                if state.harness.as_ref().map(|cloud| &cloud.id) != sent_thread.as_ref() {
+                    return Err("The host switched threads before the reply completed. Reattach to check the run.".into());
+                }
+                if state.status != "running" && state.runs > before {
+                    if state.entries.last().is_some_and(|entry| entry.error) {
+                        return Err("The host reported a failed run".into());
+                    }
+                    return Ok(());
+                }
+            }
+        }
         let connected = match &client {
             Some(current) => current.with_session(|session| session.is_connected()).await,
             None => false,
@@ -311,6 +336,8 @@ async fn run_inner(
                 }
                 printed.first_id = state.entries.first().map(|entry| entry.id.clone());
                 printed.done = state.entries.len();
+                runs_before_send = Some(state.runs);
+                sent_thread = state.harness.as_ref().map(|cloud| cloud.id.clone());
                 pending = Some(
                     client
                         .as_ref()
@@ -414,13 +441,11 @@ async fn run_inner(
                             if answer.verdict != Some(Verdict::Result) {
                                 return Err(format!("Command failed: {}", answer.message.as_deref().unwrap_or("the host rejected the command")));
                             }
+                            send_acknowledged = true;
                             if let Some(value) = client.as_ref().unwrap().main_value(PROTOCOL).await {
                                 render(&value, &mut printed, style);
-                                if let Ok(state) = serde_json::from_value::<ThreadState>(value) {
-                                    if state.entries.last().is_some_and(|entry| entry.error) { return Err("The host reported a failed run".into()); }
-                                }
+                                snapshot = serde_json::from_value(value).ok();
                             }
-                            return Ok(());
                         }
                         if answer.verdict.is_some_and(|verdict| verdict != Verdict::Result) {
                             notice(&mut screen, &format!("Command failed: {}", answer.message.as_deref().unwrap_or("the host rejected the command")));
