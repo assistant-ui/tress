@@ -33,6 +33,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Check release version
         run: |
           python3 - <<'PY'
@@ -57,7 +60,8 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
-          "target/$TARGET/release/tress" --version
+          python3 scripts/verify-cli-release.py "target/$TARGET/release/tress"
+          python3 scripts/test-setup-pty.py "target/$TARGET/release/tress"
           mkdir dist
           cp "target/$TARGET/release/tress" "dist/tress-$TARGET"
       - uses: actions/upload-artifact@v4

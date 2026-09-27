@@ -686,7 +686,7 @@ export function Thread({
           }}
         >
           <div className="session-heading">
-            <strong>tress</strong> <span>v0.1.0 · </span>
+            <strong>tress</strong> <span>v0.2.0 · </span>
             <button
               type="button"
               onClick={() => setShowHelp((visible) => !visible)}

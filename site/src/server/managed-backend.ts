@@ -1,6 +1,23 @@
 import type { ThreadMode } from "./config";
 import { accessHash } from "./demo-session";
 import { threadStore, type ThreadStore } from "./thread-store";
+import { randomUUID } from "node:crypto";
+import { HARNESS_PROTOCOL } from "harness-sdk";
+
+/** Read-only probes still negotiate the Statewire wire and Harness protocols. */
+export const managedStreamHeaders = (
+  config: Extract<ThreadMode, { kind: "cloud" }>,
+  backendUrl = config.backendUrl,
+) => ({
+  Authorization: `Bearer ${process.env.HARNESS_API_KEY}`,
+  "Aui-Workspace-Id": config.workspaceId,
+  "Aui-Backend-Url": backendUrl,
+  "Statewire-Client-Id": `tress-probe-${randomUUID()}`,
+  // Statewire 0.19's wire version; a real host contract test catches drift.
+  "Statewire-Version": '"2026-09-13"',
+  "Statewire-Protocol": `${HARNESS_PROTOCOL.name}; version="${HARNESS_PROTOCOL.version}"; min-version="${HARNESS_PROTOCOL.minVersion}"`,
+  Accept: "text/event-stream",
+});
 
 /** Harness pins a callback URL for life; display/attach aliases can change. */
 export const managedBackendUrl = async (
@@ -18,12 +35,7 @@ export const managedBackendUrl = async (
     // Open only the state stream, never a run. Resolve the pin before mounting
     // either the cloud client or its local callback tunnel.
     response = await fetcher(new URL(`/threads/${id}/stream`, origin), {
-      headers: {
-        Authorization: `Bearer ${process.env.HARNESS_API_KEY}`,
-        "Aui-Workspace-Id": config.workspaceId,
-        "Aui-Backend-Url": proposed.href,
-        Accept: "text/event-stream",
-      },
+      headers: managedStreamHeaders(config, proposed.href),
       cache: "no-store",
       redirect: "error",
       signal: AbortSignal.timeout(5000),

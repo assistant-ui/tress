@@ -5,7 +5,7 @@ import {
   type DemoSession,
 } from "./demo-session";
 import { threadStore, type ThreadStore } from "./thread-store";
-import { managedBackendUrl } from "./managed-backend";
+import { managedBackendUrl, managedStreamHeaders } from "./managed-backend";
 import { demoLimits } from "./demo-policy";
 
 type Check = {
@@ -147,12 +147,7 @@ export const checkHost = async (
       return await probe(
         "Harness",
         url,
-        {
-          Authorization: `Bearer ${process.env.HARNESS_API_KEY}`,
-          "Aui-Workspace-Id": mode.workspaceId,
-          "Aui-Backend-Url": backend,
-          Accept: "text/event-stream",
-        },
+        managedStreamHeaders(mode, backend),
         fetcher,
       );
     } catch {

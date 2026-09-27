@@ -8,11 +8,14 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const installer = fileURLToPath(new URL("../public/tress.sh", import.meta.url));
-const binary = "#!/bin/sh\nprintf 'tress fixture --session <id>\\n'\n";
-const checksum = createHash("sha256").update(binary).digest("hex");
+const binary = "#!/bin/sh\nprintf 'tress fixture --session <id>\\ntress setup\\n'\n";
+const legacyBinary = "#!/bin/sh\nprintf 'tress fixture --session <id>\\n'\n";
 const repository = "https://github.com/assistant-ui/tress";
 
 async function fixture(t, options = {}) {
+  const releaseBinary = options.legacy ? legacyBinary : binary;
+  const checksum = createHash("sha256").update(releaseBinary).digest("hex");
+  const version = options.version ?? "v0.2.0";
   const root = await mkdtemp(join(tmpdir(), "tress installer "));
   t.after(() => rm(root, { recursive: true, force: true }));
   const bin = join(root, "tools");
@@ -40,13 +43,13 @@ async function fixture(t, options = {}) {
     if (process.env.TEST_MODE === 'offline') process.exit(7);
     if (url === '${repository}/releases/latest') {
       process.stdout.write(process.env.TEST_MODE === 'unreleased'
-        ? '404 ' + url : '200 ${repository}/releases/tag/v0.1.0');
-    } else if (url === '${repository}/releases/download/v0.1.0/SHA256SUMS') {
+        ? '404 ' + url : '200 ${repository}/releases/tag/${version}');
+    } else if (url === '${repository}/releases/download/${version}/SHA256SUMS') {
       const hash = process.env.TEST_MODE === 'corrupt' ? '0'.repeat(64) : '${checksum}';
       fs.writeFileSync(args[args.indexOf('--output') + 1], hash + '  ' + process.env.TEST_ASSET + '\\n');
-    } else if (url === '${repository}/releases/download/v0.1.0/' + process.env.TEST_ASSET) {
+    } else if (url === '${repository}/releases/download/${version}/' + process.env.TEST_ASSET) {
       if (process.env.TEST_MODE === 'missing') process.exit(22);
-      fs.writeFileSync(args[args.indexOf('--output') + 1], ${JSON.stringify(binary)});
+      fs.writeFileSync(args[args.indexOf('--output') + 1], ${JSON.stringify(releaseBinary)});
     } else throw new Error('Unexpected URL: ' + url);
   `);
   if (options.cargo) {
@@ -58,11 +61,11 @@ async function fixture(t, options = {}) {
       fs.mkdirSync(root + '/bin', {recursive:true});
       fs.writeFileSync(root + '/bin/tress', process.env.TEST_OLD_CLI === '1'
         ? "#!/bin/sh\\nprintf 'old tress without sessions\\\\n'\\n"
-        : ${JSON.stringify(binary)});
+        : ${JSON.stringify(releaseBinary)});
     `);
   }
   const env = {
-    PATH: bin,
+    PATH: options.onPath ? `${bin}:${destination}` : bin,
     HOME: root,
     TMPDIR: root,
     TRESS_INSTALL_DIR: destination,
@@ -95,15 +98,27 @@ for (const [os, arch, target] of [
     assert.equal(result.status, 0, result.stderr);
     assert.equal(await f.installed(), binary);
     assert.match(result.stdout, /Installed tress/);
-    assert.match(await f.requests(), new RegExp(`/v0.1.0/tress-${target}`));
+    assert.match(result.stdout, /Add .* to your PATH, then run: tress setup/);
+    assert.match(await f.requests(), new RegExp(`/v0.2.0/tress-${target}`));
   });
 }
 
-test("a pinned release does not resolve latest", async (t) => {
-  const f = await fixture(t, { version: "v0.1.0" });
+test("a pinned legacy release keeps compatible instructions and does not resolve latest", async (t) => {
+  const f = await fixture(t, { version: "v0.1.0", legacy: true });
   const result = f.run();
   assert.equal(result.status, 0, result.stderr);
+  assert.equal(await f.installed(), legacyBinary);
+  assert.match(result.stdout, /then run: tress --help/);
+  assert.doesNotMatch(result.stdout, /tress setup/);
   assert.doesNotMatch(await f.requests(), /releases\/latest/);
+});
+
+test("an installation already on PATH points directly to setup", async (t) => {
+  const f = await fixture(t, { onPath: true });
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Run: tress setup/);
+  assert.doesNotMatch(result.stdout, /Add .* to your PATH/);
 });
 
 test("before the first release, builds merged main in a temporary Cargo root", async (t) => {
