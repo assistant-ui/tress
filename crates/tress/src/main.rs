@@ -13,6 +13,7 @@ use config::DEFAULT_MODEL;
 mod attach;
 mod commands;
 mod config;
+mod connect;
 mod host;
 mod onboarding;
 
@@ -53,6 +54,7 @@ fn usage() -> String {
          tress attach <url>    join a thread with plain terminal output\n  \
          tress attach <url> -s <id>  join your demo session (--session also works)\n  \
          tress attach <url> --ui  opt into the full terminal interface\n  \
+         tress connect --site <url> [--root <path>] [--allow-write]\n  \
          tress --help          this text\n\n\
          environment:\n  \
          TRESS_HOST            override the saved host address\n  \
@@ -103,6 +105,15 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if args.first().is_some_and(|arg| arg == "connect") {
+        return match connect::run(&args[1..]).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress connect: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     if args.first().is_some_and(|arg| arg == "attach") {
         let (url, ui, session) = match attach_options(&args[1..]) {
             Ok(options) => options,

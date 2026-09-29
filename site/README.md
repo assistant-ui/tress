@@ -189,6 +189,10 @@ never grants access to someone else's full browser thread list.
 
 ## Managed Harness and persistence
 
+The public demo can also pair an opt-in native folder without sharing its
+Harness project key. See [connected folders](../docs/connected-folder.md) for
+visitor steps, permissions, and operator requirements.
+
 Set `HARNESS_API_KEY` in `site/.env.local` to connect this demo to managed Harness.
 The key stays on the server. Both the website and `tress attach` connect through
 the session selected by `-s <id>`. `/status` shows its cloud thread ID.

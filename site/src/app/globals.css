@@ -982,6 +982,78 @@ h1 {
   font-size: 11px;
   text-align: left;
 }
+.local-connect {
+  margin: 0 18px 8px;
+  padding: 2px 0 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+.local-connect-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+.local-connect-head > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.local-connect-head strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.local-connect-head span {
+  overflow-wrap: anywhere;
+}
+.local-connect button {
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+}
+.local-connect-steps p {
+  margin: 8px 0;
+}
+.local-connect-steps form {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.local-connect-steps label {
+  width: 100%;
+  color: var(--text);
+}
+.local-connect-steps input {
+  flex: 1;
+  min-width: 160px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #111;
+  color: var(--text);
+}
+.local-connect-error {
+  color: #d3a18a;
+}
+.local-connect-viewer {
+  margin: 8px 0 0;
+  color: var(--dim);
+}
+.local-files-note {
+  margin: 0;
+  padding: 14px 18px;
+  color: var(--muted);
+  font-size: 11px;
+}
 .demo-note {
   color: var(--dim);
   font-size: 11px;
