@@ -44,6 +44,9 @@ owner cookie is lost.
 
 ## Operator setup
 
+For the complete credential, database, and deployment flow, see the
+[managed demo guide](public-demo.md).
+
 Use managed Harness mode with an allowed public HTTPS `/api/chat` backend,
 `HARNESS_API_KEY`, a model provider credential, and `TRESS_DATABASE_URL` on
 the site server. Run the site's PostgreSQL migrations, including

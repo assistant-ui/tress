@@ -58,7 +58,8 @@ tress attach http://localhost:5311 -s <id> --ui
 
 Use the full session ID shown on the page to join the same conversation and
 workspace from another client. The ID grants access to that anonymous session.
-See [demo setup and PostgreSQL metadata storage](site/README.md).
+See [managed demo setup, credentials, and visitor steps](docs/public-demo.md)
+or the [site reference](site/README.md) for storage details.
 
 The managed public demo can also use a visitor's local folder without giving
 the visitor a Harness key. Run `tress connect --site <site-url> --root .` in

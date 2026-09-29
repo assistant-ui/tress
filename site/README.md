@@ -6,6 +6,10 @@ The Rust agent runs as WebAssembly **on the server**. Browsers and attached
 terminals subscribe to the same statewire thread, so closing a client does not
 stop the run.
 
+For the operator-to-visitor path—getting credentials, deploying the host,
+receiving a private session ID, and connecting a terminal or folder—start with
+the [managed demo guide](../docs/public-demo.md).
+
 ## Run locally
 
 ```sh
