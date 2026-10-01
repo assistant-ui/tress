@@ -304,6 +304,7 @@ workspace and model credentials.
 ```dotenv
 TRESS_WORKSPACE=local
 TRESS_WORKSPACE_ROOT=/absolute/path/to/project
+TRESS_WORKSPACE_ENVIRONMENT=device
 TRESS_ALLOW_WRITES=1
 TRESS_VISIBLE_FILES=["src","README.md"]
 ```
@@ -319,6 +320,11 @@ just-bash's simulated shell over the selected directory; it doesn't launch
 native host binaries. `TRESS_WORKSPACE=overlay` reads that directory but keeps
 edits in memory, which is useful for a preview. Overlay mode permits virtual
 writes by default.
+Set `TRESS_WORKSPACE_ENVIRONMENT=sandbox` instead when the site process itself
+runs inside a sandbox and this root is local to that sandbox. If unset, the
+public workspace descriptor says `unknown`; a path alone cannot identify the
+physical device. `/api/mode` exposes the descriptor's environment, access,
+storage, shell, and effective write permission without publishing a credential.
 
 ### Existing Vercel sandbox
 
@@ -339,6 +345,10 @@ sandbox, set `TRESS_DEMO_SHARED=1` and use its existing name.
 SDK file/command operations can resume it. Real `bash`, installed runtimes,
 and test runners execute **inside the VM**. Your app owns sandbox lifecycle
 and network policy. No live cloud provisioning is part of the test suite.
+This is a connected remote sandbox; its files are not on the browser or the
+site host. The paired native-folder connector is another connected workspace,
+but is labeled `device`, has no shell, and is read-only unless explicitly shared
+for writes. Its live status is available through `/api/connect/status`.
 
 ### Customize in your own application
 

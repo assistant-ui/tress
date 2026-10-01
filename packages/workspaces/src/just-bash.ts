@@ -36,6 +36,14 @@ export function createBashWorkspace(
   const ready = bash.fs.mkdir(root, { recursive: true });
   return {
     kind: "just-bash",
+    details: {
+      environment: "virtual",
+      access: "in-process",
+      storage: "memory",
+      shell: "simulated",
+      writable: true,
+      label: "virtual workspace",
+    },
     async readFile(path) {
       await ready;
       return bash.fs.readFile(resolve(filePath(path)));

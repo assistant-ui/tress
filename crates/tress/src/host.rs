@@ -138,15 +138,35 @@ pub fn validate_host(input: &str) -> Result<String, String> {
 
 pub fn configured_host(paths: &Paths) -> Result<Option<Connection>, String> {
     let saved = Connection::load(paths)?;
+    let session = std::env::var("TRESS_SESSION")
+        .map(Some)
+        .or_else(|error| match error {
+            std::env::VarError::NotPresent => Ok(None),
+            _ => Err("TRESS_SESSION must be valid UTF-8"),
+        })?;
+    if let Some(id) = &session {
+        validate_session(id)?;
+    }
     if let Some(value) = std::env::var_os("TRESS_HOST") {
         let host = validate_host(value.to_str().ok_or("TRESS_HOST must be valid UTF-8")?)?;
         // A session capability never travels to a different host implicitly.
-        let session = saved
+        let saved_session = saved
             .filter(|saved| saved.host == host)
             .and_then(|saved| saved.session);
-        return Ok(Some(Connection { host, session }));
+        return Ok(Some(Connection {
+            host,
+            session: session.or(saved_session),
+        }));
     }
-    Ok(saved)
+    if session.is_some() && saved.is_none() {
+        return Err("TRESS_SESSION requires TRESS_HOST or a saved host connection".into());
+    }
+    Ok(saved.map(|mut connection| {
+        if session.is_some() {
+            connection.session = session;
+        }
+        connection
+    }))
 }
 
 /// Read the site's public configuration. Without an ID, setup creates a fresh

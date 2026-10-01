@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CopyButton } from "./CopyButton";
+import type { WorkspaceDetails } from "@tress/workspaces";
 
 export type LocalDevice = {
   id: string;
@@ -9,6 +10,7 @@ export type LocalDevice = {
   rootLabel: string;
   writable: boolean;
   online: boolean;
+  details?: WorkspaceDetails;
 };
 
 export function LocalConnection({

@@ -9,6 +9,7 @@ import {
 } from "./connect-store";
 import { resolveDemoOwner, resolveDemoSession, SessionError, sessionResponse } from "./demo-session";
 import { threadStore, type ThreadStore } from "./thread-store";
+import type { WorkspaceDetails } from "@tress/workspaces";
 
 const jsonHeaders = {
   "Cache-Control": "private, no-store",
@@ -113,6 +114,14 @@ const validResult = (value: unknown): value is DeviceResult => {
   }
   return typeof result.error === "string" && result.error.length <= 1000;
 };
+const deviceDetails = (label: string, writable: boolean): WorkspaceDetails => ({
+  environment: "device",
+  access: "connected",
+  storage: "filesystem",
+  shell: "none",
+  writable,
+  label,
+});
 
 /** The public browser owns a thread; the CLI owns only a revocable device token. */
 export const connectRequest = async (
@@ -158,6 +167,7 @@ export const connectRequest = async (
         rootLabel: device.rootLabel,
         writable: device.writable,
         online: deviceOnline(device),
+        details: deviceDetails(device.label, device.writable),
       } }, { headers: jsonHeaders });
     }
     if (action === "status" && ["GET", "DELETE"].includes(request.method)) {
@@ -188,6 +198,7 @@ export const connectRequest = async (
         rootLabel: device.rootLabel,
         writable: device.writable,
         online: deviceOnline(device),
+        details: deviceDetails(device.label, device.writable),
       } : null, manageable }, { headers: jsonHeaders });
     }
     if (action === "poll" && request.method === "POST") {

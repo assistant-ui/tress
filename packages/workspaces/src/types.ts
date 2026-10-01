@@ -6,9 +6,23 @@ export type CommandResult = {
 
 export type FileEntry = { name: string; type: "file" | "directory" };
 
+/** Public, non-secret description of where a workspace's operations happen. */
+export type WorkspaceDetails = {
+  /** "unknown" avoids assuming an in-process directory is a person's laptop. */
+  environment: "device" | "sandbox" | "virtual" | "unknown";
+  /** A connected device is remote from the agent even when its files are local there. */
+  access: "in-process" | "connected";
+  storage: "filesystem" | "overlay" | "memory";
+  shell: "none" | "simulated" | "native";
+  /** Adapter capability; the agent's authorization policy may further restrict it. */
+  writable: boolean;
+  label: string;
+};
+
 /** All file paths are relative to the workspace root. No browser state here. */
 export interface Workspace {
   readonly kind: string;
+  readonly details?: WorkspaceDetails;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
   listFiles(path?: string): Promise<FileEntry[]>;

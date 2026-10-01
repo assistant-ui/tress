@@ -58,11 +58,13 @@ fn usage() -> String {
          tress --help          this text\n\n\
          environment:\n  \
          TRESS_HOST            override the saved host address\n  \
+         TRESS_SESSION         select a thread on TRESS_HOST or the saved host\n  \
          ANTHROPIC_API_KEY     local mode only; overrides the saved API key\n  \
          TRESS_MODEL           model id (default {DEFAULT_MODEL})\n  \
          TRESS_MAX_STEPS       maximum model requests per turn (default 64)\n  \
          ANTHROPIC_BASE_URL    Anthropic-compatible API endpoint\n\n\
          local options: --model <id>, --max-steps <n>, --base-url <url>\n\
+         with no saved mode, ANTHROPIC_API_KEY starts native local mode automatically\n\
          precedence: flags > environment > .tress.json > personal config > defaults\n",
         env!("CARGO_PKG_VERSION")
     )
@@ -188,6 +190,9 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if std::env::var_os("HARNESS_API_KEY").is_some() {
+        eprintln!("tress: native local mode does not use HARNESS_API_KEY; this conversation is not synced to Harness. Use a configured host for a durable shared thread.");
+    }
     let model = &settings.model.value;
     let mut engine = configured_engine(&settings, &root);
 

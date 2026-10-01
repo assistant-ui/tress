@@ -1,3 +1,5 @@
+import type { WorkspaceDetails } from "@tress/workspaces";
+
 export type DemoConfig = {
   configured: boolean;
   model: string;
@@ -16,6 +18,7 @@ export type DemoConfig = {
     writes: boolean;
     localDemo?: boolean;
     root?: string;
+    details?: WorkspaceDetails;
   };
 };
 

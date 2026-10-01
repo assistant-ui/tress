@@ -18,12 +18,20 @@ export const openSession = async (
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set on the server");
   const { TressHostSession } = await import("../wasm/pkg/tress_wasm.js");
   const { writes } = workspaceConfig();
-  const connected = workspace.kind === "connected-local";
+  const connectedDevice = workspace.details?.environment === "device" &&
+    workspace.details.access === "connected";
+  const connected = connectedDevice || workspace.kind === "connected-local";
   const canWrite = connected
-    ? (workspace as Workspace & { writable?: boolean }).writable === true
-    : writes;
-  const virtual = workspace.kind !== "vercel";
-  const shell = typeof workspace.exec === "function";
+    ? workspace.details?.writable ??
+      (workspace as Workspace & { writable?: boolean }).writable === true
+    : writes && workspace.details?.writable !== false;
+  const nativeSandboxShell = workspace.kind === "vercel" ||
+    (workspace.details?.environment === "sandbox" &&
+      workspace.details.shell === "native");
+  const nativeDeviceShell = workspace.details?.environment === "device" &&
+    workspace.details.shell === "native";
+  const shell = !connected && typeof workspace.exec === "function" &&
+    workspace.details?.shell !== "none";
   return createAgent({
     Session: TressHostSession,
     workspace,
@@ -32,7 +40,7 @@ export const openSession = async (
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
     system: `You are tress, a coding agent working in a shared workspace. Browser and terminal clients share this conversation and its files.
 Answer questions directly. Only inspect or change files when needed for the user's request. Paths are relative to the workspace root.
-${connected ? "Files are served by a user-approved native folder. No shell or project test runner is available in this connection." : virtual ? "The shell is just-bash: simulated file and text commands, not a native operating system. Node, npm, git, and project test runners are not available. Never claim tests ran unless a tool actually ran them." : "Commands run inside the remote sandbox, with a timeout. Installed runtimes and dependencies belong to that sandbox."}
+${connected ? "Files are served by a user-approved native folder. No shell or project test runner is available in this connection." : nativeSandboxShell ? "Commands run inside a sandbox, with a timeout. Installed runtimes and dependencies belong to that sandbox." : nativeDeviceShell ? "Commands run on the host device under its configured tool policy. Only claim a command ran when the tool confirms it." : "The shell is just-bash: simulated file and text commands, not a native operating system. Node, npm, git, and project test runners are not available. Never claim tests ran unless a tool actually ran them."}
 ${canWrite ? "Read relevant files before editing, make the smallest useful change, and report what you verified." : "This workspace is read-only; explain proposed changes without trying to write files."}
 Keep replies short and concrete.`,
     tools: { include: canWrite ? shell ? WORKSPACE_TOOLS : ["read", "ls", "write", "edit"] : ["read", "ls"], ...hooks },

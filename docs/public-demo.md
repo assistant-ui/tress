@@ -128,6 +128,13 @@ owner cookie; sharing the ID does not transfer ownership. For a non-demo
 product, add your own user authentication and authorization before treating
 these anonymous sessions as private accounts.
 
+For an automated terminal client, the operator can provide `TRESS_HOST` and a
+private `TRESS_SESSION` in the environment, then run `tress` without interactive
+setup. Do not put `HARNESS_API_KEY` on visitor devices: the site host holds it.
+If a person instead exports only `ANTHROPIC_API_KEY` and runs `tress` with no
+saved host, the native agent works in their current directory but that
+conversation is standalone, not a managed Harness thread.
+
 Internally, Tress also creates a UUID for each workspace and a distinct
 managed Harness thread ID. PostgreSQL stores those IDs and only a **hash** of
 the short attach ID. Neither the UUID nor the Harness thread ID is a substitute

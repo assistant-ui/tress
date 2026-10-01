@@ -18,6 +18,10 @@ import { snapshotWorkspace } from "../src/snapshot.js";
 
 test("virtual shell and file tools share writes, directories, and exit status", async () => {
   const workspace = createBashWorkspace({ files: { "note.txt": "hello" } });
+  assert.deepEqual(workspace.details, {
+    environment: "virtual", access: "in-process", storage: "memory",
+    shell: "simulated", writable: true, label: "virtual workspace",
+  });
   const tools = createWorkspaceTools(workspace, { include: WORKSPACE_TOOLS });
   assert.equal(
     (
@@ -48,10 +52,16 @@ test("local disk and overlay modes are scoped and keep different write semantics
   await writeFile(join(root, "note.txt"), "original");
   await writeFile(join(parent, "outside.txt"), "private");
   const overlay = await createLocalWorkspace({ root, mode: "overlay" });
+  assert.equal(overlay.details?.environment, "unknown");
+  assert.equal(overlay.details?.storage, "overlay");
+  const sandboxLocal = await createLocalWorkspace({ root, environment: "sandbox" });
+  assert.equal(sandboxLocal.details?.environment, "sandbox");
+  assert.equal(sandboxLocal.details?.access, "in-process");
   await overlay.exec!("echo preview > note.txt");
   assert.equal(await overlay.readFile("note.txt"), "preview\n");
   assert.equal(await readFile(join(root, "note.txt"), "utf8"), "original");
   const local = await createLocalWorkspace({ root });
+  assert.equal(local.details?.storage, "filesystem");
   await local.exec!("echo persisted > note.txt");
   assert.equal(await readFile(join(root, "note.txt"), "utf8"), "persisted\n");
   await local.writeFile("nested/new.txt", "created");

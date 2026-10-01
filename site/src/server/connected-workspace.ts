@@ -74,6 +74,14 @@ export const createConnectedWorkspace = (
     throw new Error("The connected folder is offline. Start tress connect on that device.");
   return {
     kind: "connected-local",
+    details: {
+      environment: "device",
+      access: "connected",
+      storage: "filesystem",
+      shell: "none",
+      writable: device.writable,
+      label: device.label,
+    },
     writable: device.writable,
     async readFile(path) {
       const value = await connectedCall(threadId, "read", path, undefined, store);

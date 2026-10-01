@@ -37,7 +37,9 @@ impl Home {
             .env_remove("ANTHROPIC_BASE_URL")
             .env_remove("TRESS_MODEL")
             .env_remove("TRESS_MAX_STEPS")
-            .env_remove("TRESS_HOST");
+            .env_remove("TRESS_HOST")
+            .env_remove("TRESS_SESSION")
+            .env_remove("HARNESS_API_KEY");
         command
     }
     fn run(&self, args: &[&str]) -> Output {
@@ -143,6 +145,70 @@ fn config_precedence_and_sources_are_visible_without_a_key() {
     );
     assert_eq!(flags["max_steps"]["value"], 1);
     assert_eq!(flags["base_url"]["value"], "http://localhost:9876/proxy");
+}
+
+#[test]
+fn exported_model_key_starts_native_local_without_setup() {
+    let home = Home::new();
+    let output = home
+        .command()
+        .env("ANTHROPIC_API_KEY", "fake-key")
+        .arg("config")
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert_eq!(settings(output)["mode"], "local");
+    let output = home
+        .command()
+        .env("ANTHROPIC_API_KEY", "fake-key")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("tress"));
+    assert!(
+        !home.0.join("config").exists(),
+        "automatic mode does not save secrets"
+    );
+    let output = home
+        .command()
+        .env("ANTHROPIC_API_KEY", "fake-key")
+        .env("HARNESS_API_KEY", "must-not-print-this-key")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    success(&output);
+    let notice = String::from_utf8_lossy(&output.stderr);
+    assert!(notice.contains("not synced to Harness"));
+    assert!(!notice.contains("must-not-print-this-key"));
+}
+
+#[test]
+fn exported_host_and_session_win_over_model_key_without_saving_it() {
+    let home = Home::new();
+    let output = home
+        .command()
+        .env("ANTHROPIC_API_KEY", "fake-key")
+        .env("TRESS_HOST", "https://example.com")
+        .env("TRESS_SESSION", "Abc1_def-XYZ")
+        .args(["config", "--json"])
+        .output()
+        .unwrap();
+    let view = settings(output);
+    assert_eq!(view["mode"], "host");
+    assert_eq!(view["host"], "https://example.com");
+    assert_eq!(view["session"], "saved (hidden)");
+    assert_eq!(view["credentials"], "managed by host");
+    let missing_host = home
+        .command()
+        .env("TRESS_SESSION", "Abc1_def-XYZ")
+        .args(["config", "--json"])
+        .output()
+        .unwrap();
+    assert!(!missing_host.status.success());
+    assert!(
+        String::from_utf8_lossy(&missing_host.stderr).contains("TRESS_SESSION requires TRESS_HOST")
+    );
 }
 
 #[test]
@@ -501,28 +567,30 @@ fn serve_host(status: u16, body: Value) -> (String, std::thread::JoinHandle<Stri
 }
 
 #[test]
-fn default_mode_is_host_and_does_not_load_or_request_personal_keys() {
+fn default_mode_without_a_key_is_host_and_does_not_request_personal_keys() {
     let home = Home::new();
-    // Even a present but invalid local key must not select or block hosted mode.
     let output = home
         .command()
         .args(["config", "--json"])
-        .env("ANTHROPIC_API_KEY", "")
         .env("TRESS_MODEL", "invalid model")
         .output()
         .unwrap();
     let value = settings(output);
     assert_eq!(value["mode"], "host");
     assert_eq!(value["credentials"], "managed by host");
-    let output = home
-        .command()
-        .env("ANTHROPIC_API_KEY", "local-secret")
-        .output()
-        .unwrap();
+    let output = home.command().output().unwrap();
     assert!(!output.status.success());
     let error = String::from_utf8_lossy(&output.stderr);
     assert!(error.contains("No host configured"));
     assert!(!error.contains("ANTHROPIC_API_KEY"));
+    let invalid_key = home
+        .command()
+        .args(["config", "--json"])
+        .env("ANTHROPIC_API_KEY", "")
+        .output()
+        .unwrap();
+    assert!(!invalid_key.status.success());
+    assert!(String::from_utf8_lossy(&invalid_key.stderr).contains("Invalid Anthropic API key"));
     assert!(!home.0.join("config").exists());
     assert!(!home.run(&["setup", "--key-stdin"]).status.success());
 }
