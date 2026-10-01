@@ -1,4 +1,6 @@
 /** The state shared by the browser, terminal, and thread host. */
+import type { WorkspaceDetails } from "@tress/workspaces";
+
 export type Entry = {
   id: string;
   role: "user" | "agent";
@@ -12,7 +14,7 @@ export type ThreadState = {
   status: "idle" | "running";
   files: Record<string, string>;
   runs: number;
-  workspace?: { mode: string; root?: string };
+  workspace?: { mode: string; root?: string; details?: WorkspaceDetails };
   clients: {
     id: string;
     kind: "browser" | "terminal" | "api";

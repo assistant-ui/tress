@@ -4,6 +4,7 @@ import { createBashWorkspace } from "@tress/workspaces/just-bash";
 import { openWorkspace, workspaceConfig } from "./workspace";
 import { SEED_FILES } from "./seed";
 import { workspaceFiles } from "./workspace-storage";
+import { connectedDevice, createConnectedWorkspace } from "./connected-workspace";
 
 const key = Symbol.for("tress.managed.workspaces");
 type Runtime = {
@@ -56,11 +57,15 @@ const filesFrom = (messages: UIMessage[]) => {
   return undefined;
 };
 
-export const managedWorkspace = (
+export const managedWorkspace = async (
   threadId: string,
   history: UIMessage[] = [],
   scope?: string,
 ) => {
+  if (scope) {
+    const device = await connectedDevice(scope);
+    if (device) return createConnectedWorkspace(scope, device);
+  }
   let workspace = runtime.workspaces.get(threadId);
   const config = workspaceConfig();
   const files = filesFrom(history);
@@ -94,6 +99,11 @@ export const refreshManagedFiles = async (
   scope?: string,
   activeWorkspace?: Workspace,
 ) => {
+  if (activeWorkspace?.kind === "connected-local" ||
+      (scope && await connectedDevice(scope))) {
+    for (const listener of runtime.listeners) listener(threadId, {});
+    return {};
+  }
   if (scope && process.env.TRESS_SERVERLESS === "1" && !activeWorkspace) {
     // Observers never save an instance's stale filesystem over an agent's work.
     return (

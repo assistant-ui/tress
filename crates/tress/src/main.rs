@@ -13,6 +13,7 @@ use config::DEFAULT_MODEL;
 mod attach;
 mod commands;
 mod config;
+mod connect;
 mod host;
 mod onboarding;
 
@@ -53,14 +54,17 @@ fn usage() -> String {
          tress attach <url>    join a thread with plain terminal output\n  \
          tress attach <url> -s <id>  join your demo session (--session also works)\n  \
          tress attach <url> --ui  opt into the full terminal interface\n  \
+         tress connect --site <url> [--root <path>] [--allow-write]\n  \
          tress --help          this text\n\n\
          environment:\n  \
          TRESS_HOST            override the saved host address\n  \
+         TRESS_SESSION         select a thread on TRESS_HOST or the saved host\n  \
          ANTHROPIC_API_KEY     local mode only; overrides the saved API key\n  \
          TRESS_MODEL           model id (default {DEFAULT_MODEL})\n  \
          TRESS_MAX_STEPS       maximum model requests per turn (default 64)\n  \
          ANTHROPIC_BASE_URL    Anthropic-compatible API endpoint\n\n\
          local options: --model <id>, --max-steps <n>, --base-url <url>\n\
+         with no saved mode, ANTHROPIC_API_KEY starts native local mode automatically\n\
          precedence: flags > environment > .tress.json > personal config > defaults\n",
         env!("CARGO_PKG_VERSION")
     )
@@ -103,6 +107,15 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if args.first().is_some_and(|arg| arg == "connect") {
+        return match connect::run(&args[1..]).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress connect: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     if args.first().is_some_and(|arg| arg == "attach") {
         let (url, ui, session) = match attach_options(&args[1..]) {
             Ok(options) => options,
@@ -177,6 +190,9 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if std::env::var_os("HARNESS_API_KEY").is_some() {
+        eprintln!("tress: native local mode does not use HARNESS_API_KEY; this conversation is not synced to Harness. Use a configured host for a durable shared thread.");
+    }
     let model = &settings.model.value;
     let mut engine = configured_engine(&settings, &root);
 
