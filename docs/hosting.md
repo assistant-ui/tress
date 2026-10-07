@@ -28,9 +28,10 @@ Running `tress attach <url>` always makes that terminal a client. The current
 CLI does not have a `tress serve` command for turning a terminal session into a
 shareable host.
 
-`tress connect --site <url> --root <path>` is different from `attach`: it
-offers a scoped local folder as a workspace to a browser-owned thread. The
-site still owns the agent and managed Harness credential. See
+`tress connect --site <url>` is different from `attach`: it offers the current
+directory as a workspace to a browser-owned thread. Optionally add
+`--root <path>` to choose another folder. The site still owns the agent and
+managed Harness credential. See
 [connected folders](connected-folder.md).
 
 The included site is the supported shareable host. Its server runs the Rust

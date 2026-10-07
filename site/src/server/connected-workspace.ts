@@ -15,13 +15,14 @@ export const connectedDevice = async (
   store: ConnectStore = connectStore(),
 ) => store.device(threadId);
 
-/** A leased mutation is never automatically redelivered after a timeout. */
+/** Keep each call on its original device; never redeliver leased mutations. */
 export const connectedCall = async (
   threadId: string,
   operation: DeviceJob["operation"],
   path: string,
   content?: string,
   store: ConnectStore = connectStore(),
+  expectedDeviceId?: string,
 ) => {
   if (path.length > 1024 || path.includes("\0"))
     throw new Error("Invalid connected file path.");
@@ -29,11 +30,12 @@ export const connectedCall = async (
     throw new Error("Connected file content exceeds the 1 MB limit.");
   const id = randomUUID();
   const job: DeviceJob = { id, operation, path, ...(content !== undefined && { content }) };
-  if (!(await store.enqueue(threadId, job)))
+  const deviceId = expectedDeviceId ?? (await store.device(threadId))?.id;
+  if (!deviceId || !(await store.enqueue(threadId, job, deviceId)))
     throw new Error(
       operation === "write"
-        ? "The connected folder is offline or was shared read-only."
-        : "The connected folder is offline. Reconnect its native Tress process.",
+        ? "The connected folder is offline, read-only, or its connection changed."
+        : "The connected folder is offline or its connection changed. Reconnect its native Tress process.",
     );
   try {
     const until = Date.now() + 60_000;
@@ -47,11 +49,11 @@ export const connectedCall = async (
       }
       if (Date.now() >= checkConnectionAt) {
         const device = await store.device(threadId);
-        if (!device || !deviceOnline(device))
+        if (!device || device.id !== deviceId || !deviceOnline(device))
           throw new Error(
             operation === "write"
-              ? "The folder disconnected during a write. Check the file before retrying."
-              : "The connected folder disconnected. Reconnect its native Tress process.",
+              ? "The folder disconnected or its connection changed during a write. Check the file before retrying."
+              : "The connected folder disconnected or its connection changed. Start a new prompt after reconnecting.",
           );
         checkConnectionAt = Date.now() + 1000;
       }
@@ -84,17 +86,17 @@ export const createConnectedWorkspace = (
     },
     writable: device.writable,
     async readFile(path) {
-      const value = await connectedCall(threadId, "read", path, undefined, store);
+      const value = await connectedCall(threadId, "read", path, undefined, store, device.id);
       if (typeof value !== "string") throw new Error("Invalid local file response.");
       return value;
     },
     async writeFile(path, content) {
       if (!device.writable) throw new Error("This connected folder is read-only.");
-      const value = await connectedCall(threadId, "write", path, content, store);
+      const value = await connectedCall(threadId, "write", path, content, store, device.id);
       if (typeof value !== "string") throw new Error("Invalid local write response.");
     },
     async listFiles(path = "") {
-      const value = await connectedCall(threadId, "list", path, undefined, store);
+      const value = await connectedCall(threadId, "list", path, undefined, store, device.id);
       if (!Array.isArray(value)) throw new Error("Invalid local directory response.");
       return value as FileEntry[];
     },

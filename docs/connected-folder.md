@@ -10,12 +10,13 @@ folder to one browser-owned demo thread through a short-lived pairing code.
 2. Install the native `tress` binary. In the directory you want to share, run:
 
    ```sh
-   tress connect --site https://your-tress-site.example --root .
+   tress connect --site https://your-tress-site.example
    ```
 
-   This grants read/list access only. To allow the agent to edit files inside
-   that root, add `--allow-write`. No native shell commands are exposed in
-   connected-folder mode.
+   The current directory is used by default. `--root <path>` is optional and
+   selects another folder. This grants read/list access only. To allow the
+   agent to edit files inside that folder, add `--allow-write`. No native
+   shell commands are exposed in connected-folder mode.
 3. Enter the code printed by the binary in the browser's pairing form. The
    code expires after five minutes. The browser shows the folder label,
    permissions, and actual online/offline state.

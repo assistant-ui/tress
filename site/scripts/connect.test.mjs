@@ -154,6 +154,42 @@ test("a writable connection can edit; jobs never cross thread boundaries", async
   assert.equal((await reading).length, 1_048_576);
 });
 
+const verifyReplacementIsolation = async (store, threadId) => {
+  const pair = async () => {
+    const tokenHash = connectHash(randomUUID());
+    const codeHash = connectHash(randomUUID());
+    await store.offer({ id: randomUUID(), tokenHash, codeHash, label: "Laptop", rootLabel: "project", writable: true, expiresAt: Date.now() + 60_000 });
+    await store.claim(codeHash, threadId);
+    await store.heartbeat(tokenHash);
+    return tokenHash;
+  };
+  await pair();
+  const original = await store.device(threadId);
+  const workspace = createConnectedWorkspace(threadId, original, store);
+  const replacementToken = await pair();
+  let outcome;
+  const writing = workspace.writeFile("note.txt", "belongs to the original folder")
+    .then(() => { outcome = { ok: true }; }, (error) => { outcome = { error }; });
+  const crossed = [];
+  const until = Date.now() + 3000;
+  while (!outcome && Date.now() < until) {
+    const job = await store.take(replacementToken);
+    if (job) {
+      crossed.push(job);
+      await store.complete(replacementToken, job.id, { ok: true, value: "Wrote note.txt" });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert(outcome, "the original workspace should reject promptly");
+  await writing;
+  assert.equal(crossed.length, 0, "an existing workspace must never send jobs to its replacement");
+  assert.match(outcome.error?.message ?? "", /connection changed/);
+};
+
+test("replacing a paired folder cannot redirect an existing workspace's writes", async () => {
+  await verifyReplacementIsolation(createMemoryConnectStore(), randomUUID());
+});
+
 const binary = fileURLToPath(new URL("../../target/debug/tress", import.meta.url));
 test("the native CLI pairs over HTTP and performs scoped file operations", {
   skip: !existsSync(binary),
@@ -192,7 +228,8 @@ test("the native CLI pairs over HTTP and performs scoped file operations", {
     const owner = await resolveDemoOwner(ownerRequest, true, registry);
     const session = await resolveDemoSession(ownerRequest, true, registry, owner);
     const cookie = ownerCookie(owner, ownerRequest);
-    child = spawn(binary, ["connect", "--site", origin, "--root", root, "--allow-write"], {
+    child = spawn(binary, ["connect", "--site", origin, "--allow-write"], {
+      cwd: root,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let output = "";
@@ -266,10 +303,11 @@ test("separate PostgreSQL workers deliver exactly one scoped file job", {
     const tokenHash = connectHash(randomUUID());
     const codeHash = connectHash(randomUUID());
     await a.offer({ id: randomUUID(), tokenHash, codeHash, label: "Mac", rootLabel: "repo", writable: true, expiresAt: Date.now() + 60_000 });
-    assert.equal((await b.claim(codeHash, threadId)).threadId, threadId);
+    const device = await b.claim(codeHash, threadId);
+    assert.equal(device.threadId, threadId);
     assert.deepEqual(await a.heartbeat(tokenHash), { paired: true, revoked: false });
     const job = { id: randomUUID(), operation: "write", path: "note.txt", content: "hello" };
-    assert.equal(await a.enqueue(threadId, job), true);
+    assert.equal(await a.enqueue(threadId, job, device.id), true);
     assert.equal((await b.take(tokenHash)).id, job.id);
     assert.equal(await a.take(tokenHash), undefined);
     assert.equal(await b.complete(tokenHash, job.id, { ok: true, value: "Wrote note.txt" }), true);
@@ -277,6 +315,7 @@ test("separate PostgreSQL workers deliver exactly one scoped file job", {
     assert.deepEqual(await a.result(job.id), { status: "done", result: { ok: true, value: "Wrote note.txt" } });
     assert.equal(await a.revoke(threadId), true);
     assert.deepEqual(await b.heartbeat(tokenHash), { paired: true, revoked: true });
+    await verifyReplacementIsolation(a, threadId);
   } finally {
     await first.query("DELETE FROM tress_demo_threads WHERE id = $1", [threadId]).catch(() => {});
     await Promise.all([first.end(), second.end()]);

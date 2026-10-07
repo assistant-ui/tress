@@ -106,12 +106,13 @@ limits.
    this **separate** command from a folder you choose:
 
    ```sh
-   tress connect --site https://your-tress-site.example --root .
+   tress connect --site https://your-tress-site.example
    ```
 
-   Enter its short-lived pairing code in the browser thread's **connect
-   folder** control. This is read-only unless you explicitly add
-   `--allow-write`. The connector does not expose a shell or receive the
+   The current directory is used by default; optionally add `--root <path>`
+   to choose another folder. Enter its short-lived pairing code in the
+   browser thread's **connect folder** control. This is read-only unless you
+   explicitly add `--allow-write`. The connector does not expose a shell or receive the
    Harness key. Keep its process running while you want that folder online;
    if it stops, the conversation survives but file access goes offline until
    you pair again. See [connected-folder permissions](connected-folder.md).

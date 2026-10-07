@@ -39,7 +39,7 @@ export interface ConnectStore {
   device(threadId: string): Promise<Device | undefined>;
   revoke(threadId: string): Promise<boolean>;
   heartbeat(tokenHash: string): Promise<{ paired: boolean; revoked: boolean } | undefined>;
-  enqueue(threadId: string, job: DeviceJob): Promise<boolean>;
+  enqueue(threadId: string, job: DeviceJob, deviceId: string): Promise<boolean>;
   take(tokenHash: string): Promise<DeviceJob | undefined>;
   complete(tokenHash: string, id: string, result: DeviceResult): Promise<boolean>;
   result(id: string): Promise<JobState | undefined>;
@@ -114,9 +114,9 @@ export const createMemoryConnectStore = (): ConnectStore => {
       if (row.threadId) row.lastSeenAt = Date.now();
       return { paired: Boolean(row.threadId), revoked: false };
     },
-    async enqueue(threadId, job) {
-      const device = await this.device(threadId);
-      if (!device || !deviceOnline(device)) return false;
+    async enqueue(threadId, job, deviceId) {
+      const device = devices.get(deviceId);
+      if (!device || device.threadId !== threadId || !deviceOnline(device)) return false;
       if (job.operation === "write" && !device.writable) return false;
       jobs.set(job.id, { deviceId: device.id, job, state: { status: "pending" } });
       return true;
@@ -247,15 +247,15 @@ export const createPostgresConnectStore = (pool: Pool): ConnectStore => ({
     );
     return rows[0] ?? undefined;
   },
-  async enqueue(threadId, job) {
+  async enqueue(threadId, job, deviceId) {
     const result = await pool.query(
       `INSERT INTO tress_demo_device_jobs (id, device_id, operation, path, content)
        SELECT $2, id, $3, $4, $5 FROM tress_demo_devices
-       WHERE thread_id = $1 AND revoked_at IS NULL
+       WHERE thread_id = $1 AND id = $6 AND revoked_at IS NULL
          AND last_seen_at > now() - interval '30 seconds'
          AND ($3 <> 'write' OR writable)
        ORDER BY created_at DESC LIMIT 1`,
-      [threadId, job.id, job.operation, job.path, job.content ?? null],
+      [threadId, job.id, job.operation, job.path, job.content ?? null, deviceId],
     );
     return Boolean(result.rowCount);
   },

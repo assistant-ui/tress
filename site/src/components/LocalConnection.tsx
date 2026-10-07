@@ -31,7 +31,7 @@ export function LocalConnection({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const command = `tress connect --site ${origin || "https://your-tress-site"} --root .`;
+  const command = `tress connect --site ${origin || "https://your-tress-site"}`;
 
   useEffect(() => {
     let alive = true;
