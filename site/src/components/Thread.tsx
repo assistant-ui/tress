@@ -23,6 +23,7 @@ import { KeyboardShortcuts } from "./terminal/KeyboardShortcuts";
 import { ToolCall } from "./terminal/ToolCall";
 import { TerminalIcon } from "./terminal/TerminalIcon";
 import { TressWordmark } from "./TressWordmark";
+import { LocalConnection, type LocalDevice } from "./LocalConnection";
 import type { SessionTopology } from "./ThreadSidebar";
 
 const EMPTY: ThreadState = {
@@ -141,6 +142,7 @@ export function Thread({
   const [configFailed, setConfigFailed] = useState(false);
   const [configError, setConfigError] = useState<string>();
   const [configLoading, setConfigLoading] = useState(true);
+  const [localDevice, setLocalDevice] = useState<LocalDevice | null>(null);
   const configRequest = useRef<ReturnType<typeof observeDemoConfig> | null>(
     null,
   );
@@ -153,6 +155,10 @@ export function Thread({
   const submitting = useRef(false);
   const follow = useRef(true);
   const wasDetached = useRef(false);
+
+  useEffect(() => {
+    setLocalDevice(null);
+  }, [config?.session?.id]);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -257,10 +263,15 @@ export function Thread({
       onActivity?.(config.session.id, state.status === "running", firstPrompt);
   }, [config?.session?.id, state.status, firstPrompt, onActivity]);
 
-  const demo = !config?.workspace || config.workspace.mode === "memory";
-  const localDemo = config?.workspace?.localDemo === true;
+  const demo = !localDevice && (!config?.workspace || config.workspace.mode === "memory");
+  const localDemo = !localDevice && config?.workspace?.localDemo === true;
   const workspace = state.workspace ?? config?.workspace;
-  const workspaceDescription = workspace && describeWorkspace(workspace.mode);
+  const workspaceDescription = localDevice
+    ? {
+        label: localDevice.rootLabel,
+        description: `${localDevice.label} is ${localDevice.online ? "online" : "offline"}; ${localDevice.writable ? "file edits enabled" : "read-only"}.`,
+      }
+    : workspace && describeWorkspace(workspace.mode);
   const suggestions =
     localDemo && config?.workspace?.writes
       ? LOCAL_SUGGESTIONS
@@ -283,7 +294,8 @@ export function Thread({
   const hostRuntime =
     config?.host?.runtime ?? (state.harness ? "managed" : "local");
   const busy = running || pending;
-  const canSend = connected && !busy && config?.configured === true;
+  const canSend = connected && !busy && config?.configured === true &&
+    (!localDevice || localDevice.online);
   const attachCommand = `tress attach ${origin || "<this-host>"}${config?.session ? ` -s ${config.session.attachId}` : ""}`;
   const matches = COMMANDS.filter((command) =>
     command.name.startsWith(input.trim().toLowerCase()),
@@ -410,7 +422,9 @@ export function Thread({
 
   const showWorkspaceInfo = () => {
     follow.current = true;
-    if (workspace?.mode === "local" && workspace.root) {
+    if (localDevice) {
+      setNotice(`${localDevice.label} shares ${localDevice.rootLabel} with this thread (${localDevice.online ? "online" : "offline"}, ${localDevice.writable ? "read and write" : "read-only"}). Files stay on that device.`);
+    } else if (workspace?.mode === "local" && workspace.root) {
       const root = workspace.root;
       setNotice(
         <>
@@ -481,7 +495,13 @@ export function Thread({
                 <dt>Runs</dt>
                 <dd>{state.runs} completed</dd>
                 <dt>Files</dt>
-                <dd>{Object.keys(state.files).length}</dd>
+                <dd>{localDevice ? "on connected device" : Object.keys(state.files).length}</dd>
+                {localDevice ? (
+                  <>
+                    <dt>Local folder</dt>
+                    <dd>{localDevice.label} · {localDevice.rootLabel} · {localDevice.online ? "online" : "offline"}</dd>
+                  </>
+                ) : null}
                 <dt>Clients</dt>
                 <dd>
                   {clients.length} {connected ? "connected" : "last known"}
@@ -638,6 +658,16 @@ export function Thread({
           </p>
         </details>
 
+        {config?.session && hostRuntime === "managed" ? (
+          <LocalConnection
+            key={config.session.id}
+            threadId={config.session.id}
+            attachId={config.session.attachId}
+            origin={origin}
+            onDevice={setLocalDevice}
+          />
+        ) : null}
+
         <div className="workspace-summary">
           {workspaceDescription ? (
             <button
@@ -705,7 +735,12 @@ export function Thread({
             </div>
           ) : state.entries.length === 0 ? (
             <div className="empty-state">
-              {localDemo ? (
+              {localDevice ? (
+                <p>
+                  Connected to {localDevice.label} · {localDevice.rootLabel} ·{" "}
+                  {localDevice.writable ? "file edits enabled" : "read-only"}.
+                </p>
+              ) : localDemo ? (
                 <p>
                   Try editing{" "}
                   <button
@@ -1020,7 +1055,11 @@ export function Thread({
 
         {showFiles ? (
           <div id="workspace" className="workspace">
-            <SourcePane files={state.files} open={open} onOpen={setOpen} />
+            {localDevice ? (
+              <p className="local-files-note">Files stay on {localDevice.label}. Ask Tress to list or read them; the site does not mirror the whole folder.</p>
+            ) : (
+              <SourcePane files={state.files} open={open} onOpen={setOpen} />
+            )}
           </div>
         ) : null}
       </div>

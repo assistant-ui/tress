@@ -38,6 +38,8 @@ export interface VercelWorkspaceOptions {
   sandbox: VercelSandboxClient;
   /** Existing absolute directory inside the sandbox. */
   root?: string;
+  /** Safe display label; the sandbox identifier and credentials stay with the caller. */
+  label?: string;
   timeoutMs?: number;
   env?: Record<string, string>;
 }
@@ -75,6 +77,14 @@ export async function createVercelWorkspace(
   };
   return {
     kind: "vercel",
+    details: {
+      environment: "sandbox",
+      access: "connected",
+      storage: "filesystem",
+      shell: "native",
+      writable: true,
+      label: options.label ?? "remote sandbox",
+    },
     async readFile(path) {
       return sandbox.fs.readFile(await resolve(filePath(path)), "utf8");
     },

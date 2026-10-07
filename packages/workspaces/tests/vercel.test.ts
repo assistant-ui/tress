@@ -44,6 +44,10 @@ test("remote adapter uses SDK file APIs, preserves command arguments, and refuse
     root,
     timeoutMs: 1234,
   });
+  assert.deepEqual(workspace.details, {
+    environment: "sandbox", access: "connected", storage: "filesystem",
+    shell: "native", writable: true, label: "remote sandbox",
+  });
   await workspace.writeFile("src/file with ' quotes.txt", "remote");
   assert.equal(
     await workspace.readFile("src/file with ' quotes.txt"),

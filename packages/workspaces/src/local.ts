@@ -7,6 +7,10 @@ export interface LocalWorkspaceOptions {
   root: string;
   /** overlay reads the directory but keeps changes in memory. Default: read-write. */
   mode?: "read-write" | "overlay";
+  /** Where this Node process runs; do not infer it from the directory path. */
+  environment?: "device" | "sandbox" | "unknown";
+  /** Safe display label, never a credential or a full filesystem path. */
+  label?: string;
   maxFileReadSize?: number;
   bash?: Omit<NonNullable<BashWorkspaceOptions["bash"]>, "fs">;
 }
@@ -31,5 +35,16 @@ export async function createLocalWorkspace(
     cwd: overlay ? "/workspace" : "/",
     bash: { ...options.bash, fs },
   });
-  return { ...workspace, kind: overlay ? "local-overlay" : "local" };
+  return {
+    ...workspace,
+    kind: overlay ? "local-overlay" : "local",
+    details: {
+      environment: options.environment ?? "unknown",
+      access: "in-process",
+      storage: overlay ? "overlay" : "filesystem",
+      shell: "simulated",
+      writable: true,
+      label: options.label ?? "local directory",
+    },
+  };
 }

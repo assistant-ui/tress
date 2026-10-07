@@ -1,4 +1,4 @@
-import type { Workspace } from "@tress/workspaces";
+import type { Workspace, WorkspaceDetails } from "@tress/workspaces";
 import { createBashWorkspace } from "@tress/workspaces/just-bash";
 import { SEED_FILES } from "./seed";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -20,8 +20,12 @@ export function workspaceConfig(scope?: string) {
     throw new Error(
       "TRESS_VISIBLE_FILES must be a JSON array of relative paths.",
     );
+  const environment = process.env.TRESS_WORKSPACE_ENVIRONMENT ?? "unknown";
+  if (!["device", "sandbox", "unknown"].includes(environment))
+    throw new Error("TRESS_WORKSPACE_ENVIRONMENT must be device or sandbox.");
   return {
     mode,
+    environment: environment as "device" | "sandbox" | "unknown",
     root:
       mode === "local" && scope && process.env.TRESS_WORKSPACE_ROOT
         ? join(process.env.TRESS_WORKSPACE_ROOT, "threads", scope)
@@ -37,16 +41,36 @@ export function workspaceConfig(scope?: string) {
 
 /** Describe the host workspace without exposing remote or overlay host paths. */
 export function workspaceInfo(scope?: string) {
-  const { mode, root } = workspaceConfig(scope);
+  const { mode, root, writes, environment } = workspaceConfig(scope);
+  let details: WorkspaceDetails;
+  if (mode === "memory") {
+    details = {
+      environment: "virtual", access: "in-process", storage: "memory",
+      shell: "simulated", writable: true, label: "virtual workspace",
+    };
+  } else if (mode === "vercel") {
+    details = {
+      environment: "sandbox", access: "connected", storage: "filesystem",
+      shell: writes ? "native" : "none", writable: writes, label: "remote sandbox",
+    };
+  } else {
+    details = {
+      environment, access: "in-process",
+      storage: mode === "overlay" ? "overlay" : "filesystem",
+      shell: writes ? "simulated" : "none", writable: writes,
+      label: mode === "overlay" ? "local overlay" : "host directory",
+    };
+  }
   return {
     mode,
+    details,
     ...(mode === "local" && root ? { root: resolve(root) } : {}),
   };
 }
 
 /** Replace this factory to use your own provider. Clients never choose a host path. */
 export async function openWorkspace(scope?: string): Promise<Workspace> {
-  const { mode, root, localDemo } = workspaceConfig(scope);
+  const { mode, root, localDemo, environment } = workspaceConfig(scope);
   if (mode === "memory") return createBashWorkspace({ files: SEED_FILES() });
   if (mode === "local" || mode === "overlay") {
     if (!root)
@@ -75,6 +99,7 @@ export async function openWorkspace(scope?: string): Promise<Workspace> {
     return createLocalWorkspace({
       root,
       mode: mode === "overlay" ? "overlay" : "read-write",
+      environment,
     });
   }
   const template = process.env.TRESS_SANDBOX_NAME;

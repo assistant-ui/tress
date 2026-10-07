@@ -227,7 +227,11 @@ test("managed gateway shares, resumes and rotates persisted threads in developme
     gateway = await createManagedGateway(config, factory);
     const first = await attach();
     const second = await attach();
-    assert.deepEqual(second.state.workspace, { mode: "memory" });
+    assert.equal(second.state.workspace.mode, "memory");
+    assert.deepEqual(second.state.workspace.details, {
+      environment: "virtual", access: "in-process", storage: "memory",
+      shell: "simulated", writable: true, label: "virtual workspace",
+    });
     await first.commands.send("Remember this conversation");
     await wait(
       () => second.state.runs === 1 && second.state.status === "idle",

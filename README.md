@@ -58,14 +58,25 @@ tress attach http://localhost:5311 -s <id> --ui
 
 Use the full session ID shown on the page to join the same conversation and
 workspace from another client. The ID grants access to that anonymous session.
-See [demo setup and PostgreSQL metadata storage](site/README.md).
+See [managed demo setup, credentials, and visitor steps](docs/public-demo.md)
+or the [site reference](site/README.md) for storage details.
+
+The managed public demo can also use a visitor's local folder without giving
+the visitor a Harness key. Run `tress connect --site <site-url>` in
+that folder, then enter its short pairing code in your browser thread. The
+current directory is used by default; optionally pass `--root <path>` to
+choose another folder. It is read-only by default; add `--allow-write` to
+permit file edits. This native process serves scoped file requests and does
+**not** become the agent host or
+expose a shell. See [connected-folder setup and access rules](docs/connected-folder.md).
 
 ### Host and clients
 
 The **host** is the tress server at the attach URL. It runs the agent and owns
 the model credentials, thread state, and workspace access. Browser tabs,
 terminals connected through `tress setup` or `tress attach`, and API connections
-are **clients** attached to it. Both browser and terminal use the host's model
+are **clients** attached to it. A `tress connect` process is another client
+that can supply a local folder to one thread. Browser and terminal use the host's model
 configuration; neither needs a personal model key. The thread sidebar and
 `/status` show these roles separately.
 
@@ -93,6 +104,7 @@ See the [site demo](site/README.md) for the two-client walkthrough.
 The demo connects to managed Harness when `HARNESS_API_KEY` is configured.
 The server holds the credential and localhost tunnel, so browser and terminal
 clients share cloud history while tools work on the host's configured files.
+Visitors can optionally pair a native folder for that thread instead.
 Completed conversations survive host restarts. `/clear` selects a new cloud
 thread and keeps the previous one in Harness. With no harness key, the original
 in-memory host is used. `/status` reports the live browser and terminal clients

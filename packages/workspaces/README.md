@@ -15,6 +15,26 @@ The workspace lives on the host. Attaching a terminal does not upload its curren
 directory, start a second agent, or copy the files into the browser. Both clients
 send prompts to the same session and observe its events and shared file previews.
 
+The adapter's `details` distinguishes the environment where files live
+(`device`, `sandbox`, `virtual`, or `unknown`), whether access is in-process or
+connected, storage semantics, shell type, and write capability. It contains a
+safe label, not a full path or credential. A local directory is **not**
+automatically a person's device: when this package runs inside a sandbox,
+pass `environment: "sandbox"` to `createLocalWorkspace`. If the operator has
+not identified the runtime, the adapter reports `unknown` rather than guessing.
+The host's tool policy may grant less than the adapter can technically do.
+
+| Files live in | `environment` / `access` | Shell | What happens if the client closes? |
+| --- | --- | --- | --- |
+| Native `tress` current directory | Device or sandbox / in-process | Native, with approvals | Local process and its unsynced conversation end. |
+| Site host directory | Device or sandbox / in-process | Simulated | Files stay on that runtime; managed thread can resume. |
+| Paired folder on another device | Device / connected | None | Files stay there; connector must remain online for access. |
+| Remote sandbox | Sandbox / connected | Native inside VM | Sandbox lifecycle belongs to its provider/operator. |
+| Virtual demo files | Virtual / in-process | Simulated | Persist files separately from the conversation if needed. |
+
+Harness durability applies to the **conversation**, not automatically to the
+workspace. Re-opening a thread must resolve its workspace binding again.
+
 ## Build and try
 
 Requires Node 20.19+ and the Rust/WASM build tools described in `site/README.md`.
@@ -117,6 +137,7 @@ starts in the configured root each time; file changes persist between commands.
 const workspace = await createLocalWorkspace({
   root: "/projects/my-app", // existing directory, selected by the host
   mode: "overlay",         // read disk; keep changes in memory
+  environment: "device",  // use "sandbox" when this process runs inside one
   maxFileReadSize: 1_048_576,
 });
 ```
@@ -156,6 +177,13 @@ sandbox. File tools check paths against the configured root; **shell commands
 can access the whole sandbox**. The VM is the isolation boundary. Give each
 untrusted tenant its own environment. See the [SDK reference](https://vercel.com/docs/sandbox/sdk-reference).
 
+The same `Workspace` file/tool API works for a folder on the agent's own
+runtime, a folder mounted inside a sandbox, or a remote sandbox. Its `details`
+describe location and capabilities; they are **not** a persistent resource ID
+or an authorization token. Store a sandbox ID or device pairing in a private
+thread-to-workspace binding, re-open the adapter when the agent resumes, and
+keep artifact storage and Harness conversation persistence separate.
+
 ### Your own provider and tools
 
 No Vercel dependency is required for a custom adapter. Implement this interface
@@ -164,6 +192,7 @@ over E2B, a container, your own RPC service, or an existing filesystem:
 ```ts
 interface Workspace {
   readonly kind: string;
+  readonly details?: WorkspaceDetails; // public description, no secrets
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
   listFiles(path?: string): Promise<Array<{

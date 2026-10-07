@@ -23,7 +23,19 @@ pub enum Mode {
 }
 
 pub fn local_mode(paths: &Paths, explicit: bool) -> Result<bool, String> {
-    Ok(explicit || paths.read_user()?.mode == Some(Mode::Local))
+    if explicit {
+        return Ok(true);
+    }
+    match paths.read_user()?.mode {
+        Some(Mode::Local) => Ok(true),
+        Some(Mode::Host) => Ok(false),
+        None => {
+            // A model key makes the native agent usable without a setup step.
+            // An explicit host still wins; never forward the model key to it.
+            Ok(crate::host::configured_host(paths)?.is_none()
+                && env("ANTHROPIC_API_KEY")?.is_some())
+        }
+    }
 }
 
 #[derive(Default, Deserialize, Serialize)]

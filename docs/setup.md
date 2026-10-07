@@ -1,8 +1,9 @@
 # Set up tress
 
-Tress connects to a host by default. The host supplies the model, runs tools,
-and owns the workspace. Browser and terminal clients share its thread.
-Your terminal does not need an Anthropic key or a Harness key.
+Tress connects to a saved host by default. The host supplies the model, runs
+tools, and owns the workspace. Browser and terminal clients share its thread.
+Your terminal does not need an Anthropic key or a Harness key. With no saved
+mode or host, an exported `ANTHROPIC_API_KEY` instead starts native local mode.
 
 ## Install
 
@@ -16,6 +17,9 @@ The installer downloads a binary, verifies its checksum, and installs to
 `~/.local/bin`. Follow its PATH instructions if needed.
 
 Use **v0.2.1 or newer** for hosted setup and complete `tress ask` replies.
+The automatic local mode and `TRESS_SESSION` environment shortcut described
+below are in this checkout, not the v0.2.1 release. Build this checkout until
+a release containing them is published.
 Check `tress --version` after installation. To build the current checkout
 with Rust instead:
 
@@ -49,6 +53,9 @@ Setup asks for the host address, defaulting to the public demo at
 existing conversation, or press Enter to create a fresh thread. Setup prints
 a browser link to that same thread and saves the connection privately.
 On repeat setup, Enter keeps the saved session; type `new` for a fresh one.
+This is host/session setup, **not account authentication**. The public demo
+uses anonymous capability IDs; a future account-backed CLI login needs an
+identity service and scoped client tokens before it can replace this step.
 
 You can also supply the connection directly:
 
@@ -78,7 +85,18 @@ do not stop a host run.
 
 `TRESS_HOST` overrides the saved host address. A saved session ID is reused only
 when the normalized host matches; changing hosts never implicitly forwards a
-session capability from another host. Use `-s` to choose the new host's session.
+session capability from another host. `TRESS_SESSION` selects a thread on the
+environment-selected or saved host without writing a config file:
+
+```sh
+export TRESS_HOST=https://your-tress-host.example
+export TRESS_SESSION=<private-session-id>
+tress
+```
+
+This is a **client** connection. The host, not this shell, must have the
+Harness and model credentials. Treat `TRESS_SESSION` as a secret: it grants
+access to that thread. An explicit `-s` argument overrides it for one attach.
 
 ## Credentials and storage
 
@@ -90,6 +108,10 @@ For the managed demo, the server holds two separate credentials:
 Harness supplies the shared-thread infrastructure; the host operator configures
 and pays for model access. Neither key is copied to the terminal or browser.
 A host error never falls back to your personal model key.
+Exporting `HARNESS_API_KEY` in a terminal does not make the Rust CLI a managed
+host. The current managed Harness transport runs in the site's Node host and
+also needs an allowed backend URL, a model credential, and durable session
+storage. The binary does not read or forward that project key.
 
 Personal settings live in `$XDG_CONFIG_HOME/tress/`, or `~/.config/tress/` when
 `XDG_CONFIG_HOME` is unset. `config.json` records the selected mode.
@@ -137,6 +159,15 @@ Or choose local mode for one invocation with an existing environment key:
 tress --local
 tress --local ask "fix the failing test"
 ```
+
+With no saved mode or `TRESS_HOST`, an exported `ANTHROPIC_API_KEY` now selects
+native local mode automatically, so `cd your-project && tress` works without
+running setup. An explicitly saved host or local mode still wins over this
+automatic choice; use `--local` to override a saved host for one run. Local
+mode uses that process's current directory, whether the binary is running on
+your laptop or inside a sandbox. It does **not** sync the conversation to
+Harness or keep it after exit. If `HARNESS_API_KEY` is also exported, the CLI
+warns that this key is unused in native local mode.
 
 Run `tress setup` again to select hosted mode. `tress attach` always connects to
 a host, regardless of the saved mode. Local mode does not start a shareable
