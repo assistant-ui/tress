@@ -117,9 +117,8 @@ limits.
    if it stops, the conversation survives but file access goes offline until
    you pair again. See [connected-folder permissions](connected-folder.md).
 
-   `tress connect` is in the current source and PR, but not in the v0.2.1
-   release. Until a release containing it is published, build this checkout
-   with `cargo install --locked --path crates/tress`.
+   `tress connect` requires v0.3.0 or newer. Rerun the installer to upgrade
+   an older binary, then check `tress --version`.
 
 The session ID is an **access capability**, not a login or a database
 password. Anyone with the complete ID or browser link can join and steer that

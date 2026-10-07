@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,14 +41,20 @@ const workspace = join(root, "workspace");
 await mkdir(workspace);
 await writeFile(join(workspace, "note.txt"), "CONNECTED-FILE-CONTENT\n");
 const requests = [];
+const responses = [
+  { type: "tool_use", id: "read1", name: "read", input: { path: "note.txt" } },
+  { type: "text", text: "The connected note was read." },
+  { type: "tool_use", id: "read2", name: "read", input: { path: "note.txt" } },
+  { type: "tool_use", id: "edit1", name: "edit", input: { path: "note.txt", old: "CONNECTED-FILE-CONTENT", new: "EDITED-THROUGH-HOST" } },
+  { type: "tool_use", id: "read3", name: "read", input: { path: "note.txt" } },
+  { type: "text", text: "The connected note was edited and read back." },
+];
 const model = createServer(async (request, response) => {
   let raw = "";
   for await (const chunk of request) raw += chunk;
   requests.push(JSON.parse(raw));
   response.writeHead(200, { "Content-Type": "text/event-stream" });
-  response.end(sse(requests.length === 1
-    ? { type: "tool_use", id: "read1", name: "read", input: { path: "note.txt" } }
-    : { type: "text", text: "The connected note was read." }));
+  response.end(sse(responses[requests.length - 1] ?? { type: "text", text: "Unexpected model request." }));
 });
 let host;
 let connector;
@@ -99,38 +105,51 @@ try {
   assert.equal(mode.kind, "cloud");
   assert(mode.session?.id);
   assert.match(cookies, /tress_demo_owner=/);
-  const binary = fileURLToPath(new URL("../../target/debug/tress", import.meta.url));
-  let output = "";
-  connector = spawn(binary, ["connect", "--site", origin, "--root", workspace], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  connector.stdout.on("data", (part) => { output += part; });
-  connector.stderr.on("data", (part) => { output += part; });
-  await waitFor(() => /Code: [A-Za-z0-9_-]{12}/.test(output), `pairing code: ${output}`);
-  const code = output.match(/Code: ([A-Za-z0-9_-]{12})/)[1];
-  const claim = await fetch(`${origin}/api/connect/claim`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookies, Origin: origin },
-    body: JSON.stringify({ threadId: mode.session.id, code }),
-  });
-  assert.equal(claim.status, 200, await claim.text());
-  await waitFor(async () => {
-    const response = await fetch(`${origin}/api/connect/status?thread=${mode.session.id}`, {
-      headers: { Cookie: cookies },
+  const binary = process.env.TRESS_TEST_BINARY ?? fileURLToPath(new URL("../../target/debug/tress", import.meta.url));
+  const pair = async (writable) => {
+    if (connector?.exitCode === null) {
+      connector.kill("SIGTERM");
+      await once(connector, "exit");
+    }
+    let output = "";
+    connector = spawn(binary, ["connect", "--site", origin, ...(writable ? ["--allow-write"] : [])], {
+      cwd: workspace,
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    return response.ok && (await response.json()).device?.online;
-  }, "native connector online");
-  const chat = await fetch(`${origin}/api/chat?session=${mode.session.attachId}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      id: `fixture~tress-${mode.session.id}`,
-      messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "Read note.txt" }] }],
-    }),
-  });
-  if (!chat.ok) throw new Error(`Managed callback ${chat.status}: ${await chat.text()}`);
-  const stream = await chat.text();
-  assert(!stream.includes('"type":"error"'), stream);
+    connector.stdout.on("data", (part) => { output += part; });
+    connector.stderr.on("data", (part) => { output += part; });
+    await waitFor(() => /Code: [A-Za-z0-9_-]{12}/.test(output), "native pairing code");
+    const code = output.match(/Code: ([A-Za-z0-9_-]{12})/)[1];
+    const claim = await fetch(`${origin}/api/connect/claim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookies, Origin: origin },
+      body: JSON.stringify({ threadId: mode.session.id, code }),
+    });
+    assert.equal(claim.status, 200, await claim.text());
+    await waitFor(async () => {
+      const response = await fetch(`${origin}/api/connect/status?thread=${mode.session.id}`, {
+        headers: { Cookie: cookies },
+      });
+      const device = response.ok ? (await response.json()).device : null;
+      return device?.online && device.writable === writable;
+    }, "native connector online");
+  };
+  const turn = async (text) => {
+    const chat = await fetch(`${origin}/api/chat?session=${mode.session.attachId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: `fixture~tress-${mode.session.id}`,
+        messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text }] }],
+      }),
+    });
+    if (!chat.ok) throw new Error(`Managed callback ${chat.status}: ${await chat.text()}`);
+    const stream = await chat.text();
+    assert(!stream.includes('"type":"error"'), stream);
+    return stream;
+  };
+  await pair(false);
+  const stream = await turn("Read note.txt");
   assert(stream.includes("The connected note was read."), stream);
   assert.equal(requests.length, 2, "the tool result returns to the model");
   assert(JSON.stringify(requests[1]).includes("CONNECTED-FILE-CONTENT"));
@@ -138,7 +157,19 @@ try {
   assert(tools.includes("read") && tools.includes("ls"));
   assert(!tools.includes("write") && !tools.includes("bash"));
   assert(stream.includes('"type":"data-files","data":{}'), "local files are not mirrored into previews");
-  console.log("✓ managed callback reads the paired native folder with read-only tools and no file mirroring");
+  await pair(true);
+  const edited = await turn("Read note.txt, edit its content, and read it back");
+  assert(edited.includes("The connected note was edited and read back."), edited);
+  assert.equal(requests.length, 6);
+  assert.equal(await readFile(join(workspace, "note.txt"), "utf8"), "EDITED-THROUGH-HOST\n");
+  assert(JSON.stringify(requests[5]).includes("EDITED-THROUGH-HOST"), "the model receives content read back from disk");
+  const writeTools = requests[2].tools.map((tool) => tool.name);
+  assert(writeTools.includes("write") && writeTools.includes("edit") && !writeTools.includes("bash"));
+  const revoke = await fetch(`${origin}/api/connect/status?thread=${mode.session.id}`, {
+    method: "DELETE", headers: { Cookie: cookies, Origin: origin },
+  });
+  assert.equal(revoke.status, 200);
+  console.log("✓ managed callback reads, edits, and reads back the paired native folder; read-only policy and revocation pass");
 } finally {
   if (connector?.exitCode === null) {
     connector.kill("SIGTERM");

@@ -16,10 +16,9 @@ curl -fsSL https://tress-theta.vercel.app/tress.sh | sh
 The installer downloads a binary, verifies its checksum, and installs to
 `~/.local/bin`. Follow its PATH instructions if needed.
 
-Use **v0.2.1 or newer** for hosted setup and complete `tress ask` replies.
-The automatic local mode and `TRESS_SESSION` environment shortcut described
-below are in this checkout, not the v0.2.1 release. Build this checkout until
-a release containing them is published.
+Use **v0.3.0 or newer** for connected folders, automatic local startup, and
+the `TRESS_HOST` / `TRESS_SESSION` environment shortcuts. Hosted setup and
+complete `tress ask` replies remain supported.
 Check `tress --version` after installation. To build the current checkout
 with Rust instead:
 

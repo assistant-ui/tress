@@ -10,14 +10,14 @@ tress                    # join your saved thread
 tress attach -s <id>     # join another thread on that host
 ```
 
-[Install and configuration guide](docs/setup.md). Use v0.2.1 or newer for hosted
-setup and complete `tress ask` replies. The v0.1.0 binary requires an explicit
+[Install and configuration guide](docs/setup.md). Use v0.3.0 or newer for connected
+folders and environment-based startup. The v0.1.0 binary requires an explicit
 URL with `tress attach`.
 
 For standalone work in your own project, choose `tress setup --local`:
 
 ```
-tress 0.2.0 · ~/oss/tress · claude-sonnet-5
+tress 0.3.0 · ~/oss/tress · claude-sonnet-5
 /help for commands, ctrl-d to exit
 
 ❯ add a greet function in greet.py and check it runs
