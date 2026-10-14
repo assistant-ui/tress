@@ -1454,9 +1454,9 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "statewire"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "157fc0b82db5f1ac5c6825bb55c2b29f360d79b0a9d8035e1ee91923300b4d75"
+checksum = "225f7d432804710726024a01998a6a8de5d3e0ff3b2e7454cbc6f1a500d10fa6"
 dependencies = [
  "futures-util",
  "reqwest",
