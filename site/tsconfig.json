@@ -12,5 +12,5 @@
     "resolveJsonModule": true,
     "isolatedModules": true
   },
-  "include": ["src", "farm.config.ts"]
+  "include": ["src", "farm.config.ts", "docs.config.ts"]
 }

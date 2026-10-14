@@ -1,0 +1,127 @@
+---
+title: Connect an existing app
+description: Keep your assistant-ui UI and agent. Expose its server-owned thread.
+---
+
+# Connect an existing app
+
+
+This source preview needs a Statewire host using Harness protocol `2026-09-13`.
+The browser and terminal must connect to that **same thread host**. An ordinary
+AI SDK `/api/chat` route does not, by itself, own a shared conversation.
+
+Start with the [runnable local example](/docs/local) to see all of this working
+together, then bring these integration points into your application.
+
+## 1. Reuse the thread host
+
+If your app already has a server-owned Harness thread, keep it. Its fetch
+handler is the integration point:
+
+```ts
+import { createTressAccess } from "@tress/access";
+
+const access = createTressAccess({
+  host: existingThreadHost,
+  origin: appOrigin, // http://localhost:3000 locally; your HTTPS origin in prod
+  authorize: async ({ request, action }) => {
+    // These are your application's functions, not Tress SDK exports.
+    const grant = await app.authenticate(request);
+    if (!grant) throw new Response("Sign in", { status: 401 });
+    if (!await app.canAccessThread(grant.subject, threadId, action)) {
+      throw new Response("Forbidden", { status: 403 });
+    }
+    return {
+      subject: grant.subject,
+      connectionId: grant.id,
+      expiresAt: grant.expiresAt, // milliseconds since Unix epoch
+    };
+  },
+});
+
+// Forward BOTH routes to this same long-lived adapter instance:
+// GET/POST /api/threads/:id/stream
+// POST     /api/threads/:id/frames
+export const GET = (request: Request) => access.fetch(request);
+export const POST = GET;
+```
+
+`existingThreadHost`, `app`, `appOrigin`, and `threadId` come from your app.
+Resolve the thread and its owner before selecting the host. Do not create a
+fresh host on every HTTP request. [Authentication](/docs/authentication) covers
+grant issuance and revocation.
+
+`@tress/access` currently lives in `packages/access` in this checkout. It is
+source code for the preview, not a published npm package. Its TypeScript source
+works in a TypeScript-aware application or Node 24.
+
+## 2. If the browser currently owns the transport
+
+Move that transport to a server-owned host first. The upstream source packages
+provide this composition:
+
+```ts
+import { statewireHost } from "statewire-node";
+import { AISDKTransport } from "@harness-sdk/ai-sdk";
+import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
+import { DirectChatTransport } from "ai";
+
+const existingThreadHost = statewireHost({
+  protocol: HARNESS_HOST_PROTOCOL,
+  key: [threadId],
+  transport: (restored) => AISDKTransport({
+    threadId,
+    transport: new DirectChatTransport({ agent: existingAgent }),
+    ...(restored ? { initialState: restored as AISDKTransport.State } : {}),
+  }),
+  storage: {
+    load: () => app.threadSnapshots.load(threadId),
+    save: (snapshot) => app.threadSnapshots.save(threadId, snapshot),
+  },
+  onError: (error) => app.reportStorageError(error),
+});
+```
+
+This is a composition example: supply your existing AI SDK agent, snapshot
+store, and error reporting. These Harness adapters are currently upstream
+source packages; see [versions](/docs/reference). There is **no required
+`CHAT_BACKEND_URL`**. A transport can call the existing agent in-process. If
+your app already uses HTTP between services, keep its own configured transport.
+
+## 3. Point assistant-ui at the same thread
+
+Keep your chat components and change the runtime/provider wiring where needed:
+
+```tsx
+import { AuiConfig, AuiProvider } from "@assistant-ui/react";
+import { HarnessThread } from "@assistant-ui/react-harness-sdk";
+import { StatewireHttp } from "statewire";
+
+const config = AuiConfig({
+  thread: HarnessThread({
+    transport: StatewireHttp({ url: "/api/threads/main" }),
+  }),
+});
+
+export function Assistant() {
+  return <AuiProvider config={config}><YourExistingChat /></AuiProvider>;
+}
+```
+
+For dynamic conversations, scope the provider and endpoint to the selected
+thread. Browser requests use the application's existing same-origin session.
+
+## 4. Connect the terminal
+
+Give the user the complete thread endpoint and a separately issued credential
+file. Never put credentials in a connection URL or copied shell command.
+
+```sh
+chmod 600 app-headers.json
+tress attach http://localhost:3000/api/threads/main \
+  --headers-file app-headers.json
+```
+
+The terminal negotiates Harness and loads the active conversation. Send from
+each client, reconnect, and revoke the terminal while the browser remains open.
+Do this locally before following the [production walkthrough](/docs/production).

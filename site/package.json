@@ -26,8 +26,11 @@
   },
   "dependencies": {
     "@assistant-ui/tap": "^0.9.19",
-    "@farm.js/core": "0.1.0-beta.104",
+    "@farm.js/core": "0.1.0-beta.106",
     "@farm.js/wasm": "0.1.0-beta.0",
+    "@farming-labs/docs": "0.2.115",
+    "@farming-labs/farmjs": "0.2.115",
+    "@farming-labs/theme": "0.2.115",
     "@tress/workspaces": "file:../packages/workspaces",
     "@vercel/functions": "^3.9.9",
     "@vercel/sandbox": "^3.5.0",
@@ -42,11 +45,12 @@
     "statewire": "^0.19.4"
   },
   "devDependencies": {
-    "@farm.js/cli": "0.1.0-beta.104",
+    "@farm.js/cli": "0.1.0-beta.106",
     "@types/node": "^20.10.5",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "esbuild": "0.28.2",
     "typescript": "^5.3.3",
     "vite": "^5.0.10"
   },

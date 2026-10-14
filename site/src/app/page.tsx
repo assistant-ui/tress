@@ -21,7 +21,7 @@ export default function HomePage() {
         <nav aria-label="Main navigation">
           <a href="#demo">try</a>
           <a href="#about">about</a>
-          <a href={`${SOURCE}#readme`}>docs</a>
+          <a href="/docs">docs</a>
           <a href={SOURCE}>github ↗</a>
         </nav>
       </header>

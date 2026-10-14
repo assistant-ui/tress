@@ -10,6 +10,12 @@ For the operator-to-visitor path—getting credentials, deploying the host,
 receiving a private session ID, and connecting a terminal or folder—start with
 the [managed demo guide](../docs/public-demo.md).
 
+The `/docs` section uses Farming Labs Docs, with content in `docs/*.mdx` and
+configuration in `docs.config.ts`. It documents the website trial separately
+from the [existing-app source preview](../examples/existing-app/README.md).
+Run the normal site dev/build commands below to serve both. No model key is
+needed to read the docs.
+
 ## Run locally
 
 ```sh

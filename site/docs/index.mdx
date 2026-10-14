@@ -1,0 +1,46 @@
+---
+title: Keep the thread.
+description: Your application in the browser. The same conversation in your terminal.
+---
+
+# Keep the thread.
+
+
+Tress is a terminal client and a small Rust coding agent. Connect it to a shared
+thread and continue a conversation from either surface. The host owns the run;
+closing a client leaves that run on the host.
+
+```text
+assistant-ui browser ──┐
+                      ├── your thread host ── your agent + tools
+tress terminal ───────┘
+```
+
+**Trying the website?** Start with [the browser demo](/docs/try). You need a
+terminal client; the demo provides its own agent and host.
+
+**Connecting your application?** Follow [existing apps](/docs/existing-app).
+Keep your assistant-ui components, agent, tools, authentication, and deployment.
+Add terminal access to the thread your app already owns.
+
+The existing-app integration is a **development preview**. It includes a source
+package and a native client built from this checkout. It is not in the published
+Tress v0.3.0 binary. [Versions and current limits](/docs/reference) are explicit.
+
+## Two ways in
+
+| Start here | What happens |
+| --- | --- |
+| Browser | Sign in, open a conversation, obtain a terminal grant, and copy its connection command. |
+| Terminal | Obtain an app-issued grant and thread endpoint, attach, then open that conversation's browser URL. |
+
+Both paths reach one server-owned thread. Connecting a terminal does not upload
+its working directory or grant the agent access to its local shell.
+
+## Local to production
+
+Develop against a [local host](/docs/local). In [production](/docs/production),
+use the app's HTTPS address and durable thread owner. The application decides
+who can connect, which thread they can access, and when access ends.
+
+Built with [Farming Labs Docs](https://docs.farming-labs.dev).

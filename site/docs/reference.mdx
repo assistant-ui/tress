@@ -1,0 +1,60 @@
+---
+title: Versions & limits
+description: What this preview supports, and what still needs upstream release work.
+---
+
+# Versions & limits
+
+
+| Component | Preview source |
+| --- | --- |
+| Tress | Build the native client from this checkout. Published v0.3.0 supports Tress-specific hosts. |
+| Rust Statewire client | Git revision `684168fd5ed6eb87e1ff90b166446311d9837aeb`, adding `http::connect_with_headers`; no new crates.io release is implied. |
+| Harness protocol | `2026-09-13` |
+| JavaScript Statewire | `0.19.4` |
+| assistant-ui | `@assistant-ui/react` `0.15.28`, `@assistant-ui/tap` `0.9.23` in the reference app |
+| AI SDK | `7.0.114` in the reference app |
+| Access integration | `packages/access`, source package; Node 24 or a TypeScript-aware build |
+| Harness adapters | Upstream source at `c07dab9b1eb32a3800d2bad25e807efa0cfeedef`; several are not published on npm. |
+
+The CLI can negotiate the existing Tress host or a Harness host, display the
+active branch's text and tool activity, and submit text to a known thread.
+Harness preloads its recent message window. Full history pagination, generic
+thread discovery/creation, and OAuth credential refresh are follow-up work.
+
+Use the browser for Harness tool approvals and history management in this
+preview. Adding the client does not add cancellation, branching, or approval
+capabilities to your existing agent.
+
+## Commands
+
+```sh
+# Known Harness thread endpoint; preserve your app's routing.
+tress attach https://chat.example.com/api/threads/main --headers-file app-headers.json
+
+# Full terminal UI.
+tress attach https://chat.example.com/api/threads/main --headers-file app-headers.json --ui
+
+# One prompt, then exit when the host's reply finishes.
+tress ask --host https://chat.example.com/api/threads/main --headers-file app-headers.json "Explain this project"
+
+# Existing Tress demo session.
+tress attach https://your-demo.example -s YOUR_SESSION_ID
+```
+
+`--headers-file` requires an explicit endpoint. The JSON file holds string
+header names and values. Statewire and HTTP framing headers are reserved.
+Credentials are never included in recent-thread commands.
+
+## Common connection failures
+
+| Symptom | Check |
+| --- | --- |
+| Cannot connect | Is the complete thread endpoint reachable from this machine? |
+| Access ended | Reauthenticate through the app and obtain a new grant. Do not blindly resend an in-flight prompt. |
+| Empty history | Are both clients using one server-owned Harness host and the same thread? |
+| Works directly, fails behind proxy | Check buffering, idle timeout, routing to the correct owner, and the canonical origin. |
+| Browser works, terminal denied | Check the terminal grant's subject, thread permissions, expiry, and private file permissions. |
+
+Managed authentication and new-project scaffolding remain planned. Existing
+applications retain control over their auth provider and deployment.

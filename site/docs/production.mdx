@@ -1,0 +1,91 @@
+---
+title: Production
+description: Deploy the app and durable thread host, then point clients at its public address.
+---
+
+# Production
+
+
+The initial self-hosting topology is one long-running thread owner behind an
+HTTPS reverse proxy. Reuse an existing durable Harness deployment when your
+application already has one.
+
+```text
+browser ──┐                      ┌─ durable conversation storage
+          ├─ HTTPS app address ── thread owner ── existing agent
+terminal ─┘                      └─ workspace / tools
+```
+
+## Configure the owner
+
+Use your application's canonical public origin when creating the access adapter
+and browser links. The deployment platform or DNS points that domain to the
+app. Tress learns the address from the connection command; it does not guess
+where you deployed the server.
+
+```ts
+const access = createTressAccess({
+  origin: "https://chat.example.com",
+  host: existingThreadHost,
+  authorize: authorizeThisThread,
+});
+```
+
+Provide durable snapshots and grant storage, a process supervisor, and a
+shutdown path that flushes the thread host. Snapshot persistence can restore
+completed conversations; it does not make an in-flight external side effect
+exactly once. Surface interruptions and use your agent's recovery policy.
+
+## Forward streaming requests
+
+For an Nginx reverse proxy in front of a host listening on port 3000, the thread
+route needs streaming and a long enough idle timeout:
+
+```nginx
+location /api/threads/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+This location belongs in your existing HTTPS server configuration. TLS,
+certificates, and the app's remaining routes still come from your deployment.
+Keep the host's heartbeat shorter than the proxy's idle timeout.
+
+## Connect from any terminal
+
+Install the compatible native client, obtain an application grant, and attach:
+
+```sh
+chmod 600 app-headers.json
+tress attach https://chat.example.com/api/threads/main \
+  --headers-file app-headers.json
+```
+
+There is no software to install on every user's browser. The app serves its
+existing assistant-ui interface. The integration runs on the thread host.
+
+## Verify before rollout
+
+1. Join the same private thread from a browser and another machine's terminal.
+2. Send from each. Check shared history, streaming, and one execution per prompt.
+3. Disconnect during a run. Reconnect without replaying the prompt.
+4. Try a different user's credential. Deny both reads and commands.
+5. Revoke the terminal grant. Its stream closes; the browser continues.
+6. Restart after a completed turn. Restore history and keep revoked grants denied.
+7. Repeat through the actual HTTPS proxy and test an expired credential.
+
+## Scaling and serverless
+
+Multiple hosts do not become a shared thread owner merely by sharing a database.
+Route a thread's stream and commands to one owner, or use the existing Harness
+routing infrastructure. Broadcast revocations to every owner that needs them.
+
+A request-limited frontend can serve the UI, but it needs a durable worker or
+thread service for long-running agents. Do not assume an in-memory host inside
+a request handler will survive after the request or deployment ends.

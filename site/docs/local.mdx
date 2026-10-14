@@ -1,0 +1,87 @@
+---
+title: Local development
+description: Start in a browser or a terminal and reach the same local host.
+---
+
+# Local development
+
+
+## Run the complete reference app
+
+Use Node 24+ and stable Rust. From this repository's root:
+
+```sh
+cargo build --locked -p tress
+npm --prefix examples/existing-app ci
+npm --prefix examples/existing-app run build
+cd examples/existing-app
+APP_PASSWORD=local-example-password PUBLIC_ORIGIN=http://localhost:3000 npm start
+```
+
+Open `http://localhost:3000` and sign in with `local-example-password`. The
+sample agent echoes messages without a model key. Download a terminal
+credential, then follow the browser-first steps below using the built binary
+and the file's actual download path.
+
+The reference app demonstrates one owner and one thread. Replace its password
+login with your application's identity provider for production. Its
+`AGENT_MODULE` option accepts a module exporting your existing AI SDK agent;
+no separate chat-backend URL is required.
+
+## Use your existing application
+
+Build the preview CLI from this checkout:
+
+```sh
+cargo build --locked -p tress
+./target/debug/tress --help
+```
+
+Start your existing application with its normal development command after
+adding [the integration](/docs/existing-app). Keep its thread host alive outside
+the lifetime of an individual browser tab.
+
+## Browser first
+
+1. Open `http://localhost:3000`, sign in, and select a conversation.
+2. Request a terminal grant from the app. Save its header file privately.
+3. Copy the thread endpoint and connect:
+
+```sh
+chmod 600 app-headers.json
+./target/debug/tress attach http://localhost:3000/api/threads/main \
+  --headers-file app-headers.json
+```
+
+4. Send a message in either client. Both should show one reply.
+5. Close the terminal mid-run and reconnect. The host keeps working.
+
+## Terminal first
+
+Obtain the endpoint and a grant through your app's supported access flow, then
+run the same command. The preview joins an existing thread; thread creation,
+listing, and a generic browser login flow are separate work.
+
+Have the app provide the browser URL for that thread alongside its endpoint:
+
+```ts
+const connection = {
+  endpoint: new URL(`/api/threads/${encodeURIComponent(threadId)}`, appOrigin).href,
+  browserUrl: new URL(`/chat/${encodeURIComponent(threadId)}`, appOrigin).href,
+};
+```
+
+These routes are examples; use your application's actual routing. The browser
+URL selects the thread and still requires the app's normal login.
+
+## Remote development machine
+
+Run the app on the remote machine, then forward its local port:
+
+```sh
+ssh -L 3000:127.0.0.1:3000 user@your-server
+```
+
+Open `http://localhost:3000` and use the same local attach command on your
+laptop. Here, SSH carries traffic to the remote host. No public domain is
+required. The remote host still runs the agent and owns its workspace.

@@ -1,7 +1,8 @@
 import { defineConfig } from "@farm.js/core";
 import { wasm } from "@farm.js/wasm";
+import { withDocs } from "@farming-labs/farmjs/config";
 
-export default defineConfig({
+export default withDocs(defineConfig({
   deploy:
     process.env.FARM_DEPLOY_TARGET === "vercel"
       ? { target: "vercel" }
@@ -39,4 +40,4 @@ export default defineConfig({
       },
     ],
   },
-});
+}), { codeBlockThemes: { light: "github-light-default", dark: "vesper" } });

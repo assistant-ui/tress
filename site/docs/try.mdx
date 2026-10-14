@@ -1,0 +1,41 @@
+---
+title: Try the browser demo
+description: Start on the website, then join from a terminal.
+---
+
+# Try the browser demo
+
+
+1. Open [the demo](/#demo) and start a conversation.
+2. Choose its terminal connection action. It supplies the host address and
+   session ID for that conversation.
+3. Install Tress with the command shown on the website, or build from source.
+4. Run the copied connection command. For example:
+
+```sh
+tress attach https://your-demo.example -s YOUR_SESSION_ID
+```
+
+The URL and ID above are placeholders. Use the values from your own demo
+session. A bare host address selects its default thread; `-s` selects a
+Tress demo session.
+
+Send a prompt from the terminal. Its response appears in both clients. Close
+the terminal and reconnect with the same command to recover the thread.
+
+```text
+/status      show connection and host details
+/disconnect  leave the thread running on its host
+/reconnect   attach again
+/exit        leave the terminal client
+```
+
+Add `--ui` to use the full terminal interface:
+
+```sh
+tress attach https://your-demo.example -s YOUR_SESSION_ID --ui
+```
+
+The public demo has its own access model. To connect an application you own,
+follow [existing apps](/docs/existing-app); adding a URL alone does not make
+an arbitrary chat website compatible.
