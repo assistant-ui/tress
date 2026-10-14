@@ -10,15 +10,17 @@ use std::io::{BufRead, IsTerminal, Write};
 
 use futures_util::StreamExt;
 
+use connection::Connector;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use statewire::session::{Config, Event};
-use statewire::transport::http::{connect, generate_client_id};
+use statewire::transport::http::generate_client_id;
 use statewire::wire::Verdict;
 use statewire::{ProtocolOffer, VersionRange, WIRE_VERSION};
 
 use crate::commands::{self, Command};
 
+mod connection;
 mod recent;
 mod ui;
 
@@ -41,6 +43,8 @@ struct Entry {
 struct ThreadState {
     #[serde(default)]
     entries: Vec<Entry>,
+    #[serde(default)]
+    attention: Option<String>,
     #[serde(default)]
     status: String,
     #[serde(default)]
@@ -167,11 +171,17 @@ fn connection_config() -> Config {
     Config {
         client_id: generate_client_id(),
         wire: VersionRange::exact(WIRE_VERSION),
-        offers: vec![ProtocolOffer {
-            name: PROTOCOL.to_owned(),
-            range: VersionRange::exact(WIRE_VERSION),
-            optional: false,
-        }],
+        offers: vec![
+            ProtocolOffer {
+                name: PROTOCOL.to_owned(),
+                range: VersionRange::exact(WIRE_VERSION),
+                optional: true,
+            },
+            ProtocolOffer {
+                optional: true,
+                ..harness_threads::harness_offer()
+            },
+        ],
     }
 }
 
@@ -180,8 +190,9 @@ pub async fn run(
     style: &crate::Style,
     ui_requested: bool,
     session: Option<&str>,
+    headers_file: Option<&str>,
 ) -> Result<(), String> {
-    run_inner(input, style, ui_requested, session, None).await
+    run_inner(input, style, ui_requested, session, None, headers_file).await
 }
 
 pub async fn ask(
@@ -189,11 +200,12 @@ pub async fn ask(
     style: &crate::Style,
     session: Option<&str>,
     prompt: &str,
+    headers_file: Option<&str>,
 ) -> Result<(), String> {
     if prompt.trim().is_empty() {
         return Err("A prompt is required".into());
     }
-    run_inner(input, style, false, session, Some(prompt)).await
+    run_inner(input, style, false, session, Some(prompt), headers_file).await
 }
 
 async fn run_inner(
@@ -202,6 +214,7 @@ async fn run_inner(
     ui_requested: bool,
     session: Option<&str>,
     initial_prompt: Option<&str>,
+    headers_file: Option<&str>,
 ) -> Result<(), String> {
     let one_shot = initial_prompt.is_some();
     let mut unsent = initial_prompt;
@@ -223,7 +236,9 @@ async fn run_inner(
         || format!("tress attach {input}"),
         |id| format!("tress attach {input} -s {id}"),
     );
-    let (initial, mut events) = connect(&url, connection_config())
+    let connector = Connector::new(&url, headers_file)?;
+    let (initial, mut events) = connector
+        .connect(&url, connection_config())
         .await
         .map_err(|error| error.to_string())?;
     let mut client = Some(initial);
@@ -275,6 +290,9 @@ async fn run_inner(
         // for the replicated run to settle, regardless of frame ordering.
         if one_shot && send_acknowledged {
             if let (Some(state), Some(before)) = (&snapshot, runs_before_send) {
+                if let Some(attention) = &state.attention {
+                    return Err(attention.clone());
+                }
                 if let Some(error) = state
                     .harness
                     .as_ref()
@@ -374,7 +392,7 @@ async fn run_inner(
                     }
                     Some(ui::Action::Switch(next_url)) => {
                         if next_url != url {
-                            match connect(&next_url, connection_config()).await {
+                            match connector.connect(&next_url, connection_config()).await {
                                 Ok((next, next_events)) => {
                                     screen.as_mut().unwrap().switch(&url, &next_url);
                                     client = Some(next);
@@ -402,7 +420,7 @@ async fn run_inner(
                     if one_shot { return Err("Host connection closed; the run may continue on the host. Reattach to check.".into()); }
                     client = None;
                     pending = None;
-                    notice(&mut screen, "Connection closed. Use /reconnect to try again.");
+                    notice(&mut screen, "Connection closed. Check application access or credential expiry, then /reconnect. The host may still be running.");
                     continue;
                 };
                 match event {
@@ -568,7 +586,8 @@ async fn run_inner(
             Some(Command::Reconnect) => {
                 drop(client.take());
                 pending = None;
-                let (next, next_events) = connect(&url, connection_config())
+                let (next, next_events) = connector
+                    .connect(&url, connection_config())
                     .await
                     .map_err(|error| error.to_string())?;
                 client = Some(next);
@@ -583,7 +602,16 @@ async fn run_inner(
                 );
             }
             Some(Command::Clear) | None => {
-                if !connected || snapshot.is_none() {
+                if command == Some(Command::Clear)
+                    && client.is_some()
+                    && !client.as_ref().unwrap().can_reset().await
+                {
+                    accepted = false;
+                    notice(
+                        &mut screen,
+                        "Use the application's browser UI to manage this thread's history.",
+                    );
+                } else if !connected || snapshot.is_none() {
                     accepted = false;
                     notice(
                         &mut screen,

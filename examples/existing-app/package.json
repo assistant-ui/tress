@@ -1,0 +1,31 @@
+{
+  "name": "tress-existing-app-example",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node --experimental-strip-types server.mjs --dev",
+    "build": "vite build",
+    "start": "node --experimental-strip-types server.mjs",
+    "test": "node --test test.mjs"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "0.15.28",
+    "@assistant-ui/react-harness-sdk": "file:../../site/vendor/assistant-ui-react-harness-sdk-0.0.1.tgz",
+    "@assistant-ui/tap": "0.9.23",
+    "@harness-sdk/ai-sdk": "file:../../site/vendor/harness-sdk-ai-sdk-0.0.1.tgz",
+    "@tress/access": "file:../../packages/access",
+    "ai": "7.0.114",
+    "harness-sdk": "file:../../site/vendor/harness-sdk-0.3.0.tgz",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "statewire": "0.19.4",
+    "statewire-node": "file:../../site/vendor/statewire-node-0.0.1.tgz",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.4"
+  }
+}
