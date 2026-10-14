@@ -38,6 +38,19 @@ Add `--ui` to use the full terminal interface:
 tress attach https://your-demo.example -s YOUR_SESSION_ID --ui
 ```
 
+To also share a real project folder from your computer or VM, use:
+
+```sh
+tress attach https://your-demo.example -s YOUR_SESSION_ID --root . --allow-write --ui
+```
+
+Run it in the project folder. Enter its pairing code under **connect folder**
+in the same browser chat. The terminal UI opens after pairing; both clients
+can then ask the agent to read and edit that folder. Omit `--allow-write` for
+read-only access. `/exit` or `/disconnect` stops sharing. No shell execution is
+exposed, and switching chats requires exiting first. The site must be reachable
+from the machine running the command; `localhost` always means that machine.
+
 The public demo has its own access model. To connect an application you own,
 follow [existing apps](/docs/existing-app); adding a URL alone does not make
 an arbitrary chat website compatible.

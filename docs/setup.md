@@ -77,7 +77,19 @@ Explicit attachment still works without setup:
 tress attach https://your-tress-host.example -s <session-id>
 ```
 
-Files belong to the host's workspace, which may be a local directory on that
+To share a folder and use the terminal UI in one process:
+
+```sh
+tress attach https://your-tress-host.example -s <session-id> --root . --ui
+```
+
+Enter its pairing code in that browser chat; the terminal opens after pairing.
+Add `--allow-write` for edits. Exit to stop sharing. See the
+[connected folder guide](connected-folder.md) for access rules and remote VMs.
+This requires the updated Tress site's connection API; the older `connect`
+command remains supported for a folder-only process.
+
+Without `--root`, files belong to the host's workspace, which may be a local directory on that
 host, virtual files, or a sandbox. Connecting from a project directory does not
 upload that directory. `/pwd` describes the host's workspace. Client disconnects
 do not stop a host run.

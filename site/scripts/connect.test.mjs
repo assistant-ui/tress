@@ -305,7 +305,7 @@ test("separate PostgreSQL workers deliver exactly one scoped file job", {
     await a.offer({ id: randomUUID(), tokenHash, codeHash, label: "Mac", rootLabel: "repo", writable: true, expiresAt: Date.now() + 60_000 });
     const device = await b.claim(codeHash, threadId);
     assert.equal(device.threadId, threadId);
-    assert.deepEqual(await a.heartbeat(tokenHash), { paired: true, revoked: false });
+    assert.deepEqual(await a.heartbeat(tokenHash), { paired: true, revoked: false, threadId });
     const job = { id: randomUUID(), operation: "write", path: "note.txt", content: "hello" };
     assert.equal(await a.enqueue(threadId, job, device.id), true);
     assert.equal((await b.take(tokenHash)).id, job.id);
@@ -314,7 +314,7 @@ test("separate PostgreSQL workers deliver exactly one scoped file job", {
     assert.equal(await b.complete(tokenHash, job.id, { ok: true, value: "different" }), false);
     assert.deepEqual(await a.result(job.id), { status: "done", result: { ok: true, value: "Wrote note.txt" } });
     assert.equal(await a.revoke(threadId), true);
-    assert.deepEqual(await b.heartbeat(tokenHash), { paired: true, revoked: true });
+    assert.deepEqual(await b.heartbeat(tokenHash), { paired: true, revoked: true, threadId });
     await verifyReplacementIsolation(a, threadId);
   } finally {
     await first.query("DELETE FROM tress_demo_threads WHERE id = $1", [threadId]).catch(() => {});
@@ -358,4 +358,33 @@ test("browser file browsing is scoped to the session and current device", async 
   assert.equal((await malformed).status, 502);
   await devices.revoke(a.session.thread.id);
   assert.equal((await call(request(), "files")).status, 409);
+});
+
+
+test("attach folder polling is pinned to its active chat before delivering any file job", async () => {
+  const a = await visitor();
+  const b = await visitor();
+  const scoped = (action, session, token, body = {}) => new Request(url(action, `?session=${session}`), {
+    method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  const offerBody = { label: "Attached folder", rootLabel: "repo", writable: true };
+  assert.equal((await call(scoped("offer", "invalid", undefined, offerBody), "offer")).status, 404);
+  const offer = await (await call(scoped("offer", a.session.token, undefined, offerBody), "offer")).json();
+  const pending = await (await call(scoped("poll", a.session.token, offer.token), "poll")).json();
+  assert.equal(pending.sessionMatched, true);
+  assert.equal(pending.paired, false);
+  const claim = await (await call(json("claim", { code: offer.code, threadId: b.session.thread.id }, b.cookie), "claim")).json();
+  await devices.heartbeat(connectHash(offer.token));
+  const job = { id: randomUUID(), operation: "read", path: "private.txt" };
+  assert(await devices.enqueue(b.session.thread.id, job, claim.device.id));
+  assert.equal((await call(scoped("poll", a.session.token, offer.token), "poll")).status, 409);
+  assert.deepEqual(await devices.result(job.id), { status: "pending" }, "wrong chat cannot take file jobs");
+  assert.equal((await call(scoped("result", a.session.token, offer.token, { id: job.id, result: { ok: true, value: "private" } }), "result")).status, 409);
+  const correct = await (await call(scoped("poll", b.session.token, offer.token), "poll")).json();
+  assert.equal(correct.sessionMatched, true);
+  assert.equal(correct.job.id, job.id);
+  assert.equal((await call(scoped("poll", "invalid", offer.token), "poll")).status, 404);
+  await devices.revoke(b.session.thread.id);
+  assert.equal((await call(scoped("poll", b.session.token, offer.token), "poll")).status, 410);
 });

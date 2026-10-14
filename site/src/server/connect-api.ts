@@ -133,6 +133,8 @@ export const connectRequest = async (
 ): Promise<Response> => {
   try {
     if (action === "offer" && request.method === "POST") {
+      if (new URL(request.url).searchParams.has("session"))
+        await resolveDemoSession(request, false, registry);
       const body = await bodyOf(request);
       const label = clean(body.label, 80, "device label");
       const rootLabel = clean(body.rootLabel, 160, "folder label");
@@ -231,16 +233,27 @@ export const connectRequest = async (
     }
     if (action === "poll" && request.method === "POST") {
       const hash = bearer(request);
+      const scoped = new URL(request.url).searchParams.has("session");
+      const session = scoped ? await resolveDemoSession(request, false, registry) : undefined;
+      if (scoped && !session) fail("This host does not support attaching a folder to a session.", 400);
       const status = await devices.heartbeat(hash);
       if (!status) fail("Unknown device credential.", 401);
       if (status.revoked) fail("Connection expired or revoked.", 410);
+      if (session && status.paired && status.threadId !== session.thread.id)
+        fail("Pair this folder in the same chat as your attach command.", 409);
       return Response.json(
-        { paired: status.paired, job: status.paired ? await devices.take(hash) : null },
+        { paired: status.paired, ...(scoped ? { sessionMatched: true } : {}), job: status.paired ? await devices.take(hash) : null },
         { headers: jsonHeaders },
       );
     }
     if (action === "result" && request.method === "POST") {
       const hash = bearer(request);
+      if (new URL(request.url).searchParams.has("session")) {
+        const session = await resolveDemoSession(request, false, registry);
+        const status = await devices.heartbeat(hash);
+        if (!session || !status || status.revoked || status.threadId !== session.thread.id)
+          fail("The folder is no longer attached to this chat.", 409);
+      }
       // Escaped control characters can expand a valid 1 MB file sixfold.
       const body = await bodyOf(request, 7_000_000);
       if (typeof body.id !== "string" || !/^[a-f0-9-]{36}$/.test(body.id))

@@ -1,6 +1,6 @@
 # Connect a computer or VM workspace
 
-The site owns the model credentials and, in managed mode, the Harness credentials. `tress connect` does
+The site owns the model credentials and, in managed mode, the Harness credentials. `tress attach --root <folder>` does
 not log into Harness, need an API key, or open an inbound port. It offers one
 folder to one browser-owned demo thread through a short-lived pairing code.
 
@@ -10,15 +10,18 @@ folder to one browser-owned demo thread through a short-lived pairing code.
 2. Install the native `tress` binary. In the directory you want to share, run:
 
    ```sh
-   tress connect --site https://your-tress-site.example
+   tress attach https://your-tress-site.example -s YOUR_SESSION_ID --root . --ui
    ```
 
-   The current directory is used by default. `--root <path>` is optional and
-   selects another folder. This grants read/list access only. To allow the
+   Copy the site and session from your browser chat. `--root .` shares the
+   current directory; use another path to select a different folder. Without
+   `--root`, attach only joins the chat. Sharing grants read/list access only. To allow the
    agent to edit files inside that folder, add `--allow-write`. No native
    shell commands are exposed in connected-folder mode.
 3. Enter the code printed by the binary in the browser's pairing form. The
-   code expires after five minutes. The browser shows the folder label,
+   code expires after five minutes. Pair in the same chat as the command.
+   After pairing, the terminal UI opens and the same process serves file requests.
+   Omit `--ui` for plain terminal output. The browser shows the folder label,
    permissions, and actual online/offline state. The file browser opens with
    the real directory listing. Open subfolders and files, or use **Refresh**
    after an external change. **Ask about file** prepares a prompt; **Ask to edit**
@@ -26,8 +29,9 @@ folder to one browser-owned demo thread through a short-lived pairing code.
    it through the agent's existing tools.
    On a VM, run the same command inside its project directory. The site address
    must be reachable from that VM; `localhost` refers to the VM itself.
-4. Ask about or edit files in the same conversation from the browser or an
-   attached terminal. Close the binary or use **disconnect** to stop local
+4. Ask about or edit files in the same conversation from the browser or that
+   terminal. `/exit`, `/disconnect`, or closing the process stops sharing;
+   switching chats requires exiting first. The browser’s **disconnect** also stops local
    access. The managed conversation remains available when the device is
    offline, but local file operations will not silently switch to demo files.
 
@@ -64,9 +68,14 @@ read/list/write jobs through PostgreSQL; a long-running gateway service is
 not required for this first version.
 
 Pairing also works with a long-running local thread host (`TRESS_THREAD_MODE=local`)
-and a configured model; Harness Cloud is not needed for that setup. A terminal
-attached with `tress attach` only joins the chat. Use `tress connect` separately
-to grant access to a folder. New threads start without seeded example files.
+and a configured model; Harness Cloud is not needed for that setup.
+New threads start without seeded example files. Folder attachment requires the
+Tress site connection API and a session; arbitrary application thread URLs with
+`--headers-file` still support chat-only attachment.
+
+The older `tress connect --site <url> [--root <folder>] [--allow-write]` command
+remains available for a folder-only process without terminal chat. It uses the
+current directory by default and the same browser pairing form.
 
 For local development without PostgreSQL, the connector store is in memory.
 It resets when the dev server restarts, so reconnect and pair again after a

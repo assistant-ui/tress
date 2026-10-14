@@ -54,6 +54,7 @@ fn usage() -> String {
          tress attach <url>    join a thread with plain terminal output\n  \
          tress attach <url> -s <id>  join your demo session (--session also works)\n  \
          tress attach <url> --ui  opt into the full terminal interface\n  \
+         tress attach <site> -s <id> --root . --allow-write --ui  share a folder and chat\n  \
          tress attach <url> --headers-file <path>  use app credentials from a private JSON file\n  \
          tress connect --site <url> [--root <path>] [--allow-write]\n  \
          tress --help          this text\n\n\
@@ -118,7 +119,14 @@ async fn main() -> std::process::ExitCode {
         };
     }
     if args.first().is_some_and(|arg| arg == "attach") {
-        let (url, ui, session, headers_file) = match attach_options(&args[1..]) {
+        let (chat_args, root, writable) = match workspace_options(&args[1..]) {
+            Ok(options) => options,
+            Err(error) => {
+                eprintln!("tress attach: {error}");
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+        let (url, ui, session, headers_file) = match attach_options(&chat_args) {
             Ok(options) => options,
             Err(error) => {
                 eprintln!("tress attach: {error}");
@@ -132,12 +140,28 @@ async fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::FAILURE;
             }
         };
+        let workspace = if let Some(root) = root {
+            let result = match (target.session.as_deref(), headers_file) {
+                (Some(session), None) => connect::prepare_attached(&target.host, session, root, writable).await,
+                _ => Err("Folder sharing needs a Tress site and session (-s), without --headers-file. Application thread URLs still support chat-only attachment.".into()),
+            };
+            match result {
+                Ok(connection) => Some(connection),
+                Err(error) => {
+                    eprintln!("tress attach: {error}");
+                    return std::process::ExitCode::FAILURE;
+                }
+            }
+        } else {
+            None
+        };
         return match attach::run(
             &target.host,
             &style,
             ui,
             target.session.as_deref(),
             headers_file,
+            workspace,
         )
         .await
         {
@@ -349,6 +373,7 @@ async fn hosted_session(
                 ui,
                 target.session.as_deref(),
                 headers_file,
+                None,
             )
             .await
         }
@@ -392,6 +417,41 @@ fn session_options(args: &[String]) -> Result<(config::UserConfig, Option<String
 }
 
 type AttachOptions<'a> = (Option<&'a str>, bool, Option<&'a str>, Option<&'a str>);
+
+fn workspace_options(args: &[String]) -> Result<(Vec<String>, Option<&str>, bool), String> {
+    let mut chat = Vec::new();
+    let mut root = None;
+    let mut writable = false;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--root" => {
+                if root.is_some() {
+                    return Err("provide --root only once".into());
+                }
+                let value = args.next().ok_or("--root needs a folder path")?;
+                if value.is_empty() || value.starts_with('-') {
+                    return Err("--root needs a folder path".into());
+                }
+                root = Some(value.as_str());
+            }
+            "--allow-write" => writable = true,
+            // Keep option values intact; a missing value must not consume a
+            // folder-sharing flag and accidentally broaden filesystem access.
+            "--host" | "-s" | "--session" | "--headers-file" => {
+                chat.push(arg.clone());
+                if let Some(value) = args.next() {
+                    chat.push(value.clone());
+                }
+            }
+            _ => chat.push(arg.clone()),
+        }
+    }
+    if writable && root.is_none() {
+        return Err("--allow-write requires --root <folder>".into());
+    }
+    Ok((chat, root, writable))
+}
 
 fn attach_options(args: &[String]) -> Result<AttachOptions<'_>, String> {
     let mut url: Option<&str> = None;
@@ -522,6 +582,49 @@ fn ask_approval(summary: &str, style: &Style) -> Approval {
 #[cfg(test)]
 mod cli_tests {
     use super::attach_options;
+
+    #[test]
+    fn attaching_files_requires_an_explicit_root() {
+        for values in [
+            vec!["--allow-write"],
+            vec!["--root"],
+            vec!["--root", "--ui"],
+            vec!["--root", ".", "--root", "other"],
+        ] {
+            let args: Vec<_> = values.into_iter().map(str::to_owned).collect();
+            assert!(super::workspace_options(&args).is_err());
+        }
+        for write in [false, true] {
+            let mut args = vec![
+                "http://localhost:5327",
+                "--root",
+                ".",
+                "--ui",
+                "-s",
+                "abcdefghijkl",
+            ];
+            if write {
+                args.push("--allow-write");
+            }
+            let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
+            let (chat, root, writable) = super::workspace_options(&args).unwrap();
+            assert_eq!(root, Some("."));
+            assert_eq!(writable, write);
+            assert_eq!(
+                attach_options(&chat).unwrap(),
+                (
+                    Some("http://localhost:5327"),
+                    true,
+                    Some("abcdefghijkl"),
+                    None
+                )
+            );
+        }
+        let args = ["--headers-file", "--root", "."].map(str::to_owned);
+        let (chat, root, _) = super::workspace_options(&args).unwrap();
+        assert_eq!(root, None);
+        assert!(attach_options(&chat).is_err());
+    }
 
     #[test]
     fn session_flags_do_not_consume_prompt_text() {

@@ -191,8 +191,18 @@ pub async fn run(
     ui_requested: bool,
     session: Option<&str>,
     headers_file: Option<&str>,
+    workspace: Option<crate::connect::Connection>,
 ) -> Result<(), String> {
-    run_inner(input, style, ui_requested, session, None, headers_file).await
+    run_inner(
+        input,
+        style,
+        ui_requested,
+        session,
+        None,
+        headers_file,
+        workspace,
+    )
+    .await
 }
 
 pub async fn ask(
@@ -205,7 +215,16 @@ pub async fn ask(
     if prompt.trim().is_empty() {
         return Err("A prompt is required".into());
     }
-    run_inner(input, style, false, session, Some(prompt), headers_file).await
+    run_inner(
+        input,
+        style,
+        false,
+        session,
+        Some(prompt),
+        headers_file,
+        None,
+    )
+    .await
 }
 
 async fn run_inner(
@@ -215,7 +234,19 @@ async fn run_inner(
     session: Option<&str>,
     initial_prompt: Option<&str>,
     headers_file: Option<&str>,
+    workspace: Option<crate::connect::Connection>,
 ) -> Result<(), String> {
+    let sharing = workspace.is_some();
+    let workspace_description = workspace
+        .as_ref()
+        .map(crate::connect::Connection::description);
+    let workspace_worker = async move {
+        match workspace {
+            Some(connection) => connection.serve().await,
+            None => std::future::pending::<Result<(), String>>().await,
+        }
+    };
+    tokio::pin!(workspace_worker);
     let one_shot = initial_prompt.is_some();
     let mut unsent = initial_prompt;
     let ready_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
@@ -251,6 +282,9 @@ async fn run_inner(
     } else {
         None
     };
+    if let Some(description) = &workspace_description {
+        notice(&mut screen, description);
+    }
     let mut keyboard = interactive.then(crossterm::event::EventStream::new);
     let mut recent = recent::RecentThreads::load();
     recent.remember(&url, None);
@@ -368,6 +402,9 @@ async fn run_inner(
         }
 
         let typed = tokio::select! {
+            result = &mut workspace_worker => {
+                return result.map_err(|error| format!("Folder sharing stopped: {error}. Run attach again to reconnect."));
+            }
             _ = tokio::time::sleep_until(ready_deadline), if one_shot && unsent.is_some() => {
                 return Err("The host did not become ready within 20 seconds. Use `tress` to inspect its connection.".into());
             }
@@ -391,6 +428,10 @@ async fn run_inner(
                         None
                     }
                     Some(ui::Action::Switch(next_url)) => {
+                        if sharing && next_url != url {
+                            notice(&mut screen, "This folder is paired with the current chat. Exit before attaching to another chat.");
+                            continue;
+                        }
                         if next_url != url {
                             match connector.connect(&next_url, connection_config()).await {
                                 Ok((next, next_events)) => {
@@ -501,11 +542,15 @@ async fn run_inner(
             Some(Command::Exit) => break,
             Some(Command::Attach) => notice(&mut screen, &attach_command),
             Some(Command::Pwd) => {
-                let detail = snapshot.as_ref().and_then(|state| state.workspace.as_ref()).map_or_else(
-                    || "Workspace information is unavailable. Reconnect to an updated host and try /pwd again.".into(),
-                    WorkspaceInfo::path_notice,
-                );
-                notice(&mut screen, &detail);
+                if let Some(description) = &workspace_description {
+                    notice(&mut screen, description);
+                } else {
+                    let detail = snapshot.as_ref().and_then(|state| state.workspace.as_ref()).map_or_else(
+                        || "Workspace information is unavailable. Reconnect to an updated host and try /pwd again.".into(),
+                        WorkspaceInfo::path_notice,
+                    );
+                    notice(&mut screen, &detail);
+                }
             }
             Some(Command::Threads) => {
                 recent = recent::RecentThreads::load();
@@ -573,9 +618,20 @@ async fn run_inner(
                         detail
                     },
                 );
-                notice(&mut screen, &detail);
+                if let Some(description) = &workspace_description {
+                    notice(&mut screen, &format!("{detail}\n\n{description}"));
+                } else {
+                    notice(&mut screen, &detail);
+                }
             }
             Some(Command::Disconnect) => {
+                if sharing {
+                    notice(
+                        &mut screen,
+                        "Detached and stopped sharing this folder. Run attach again to reconnect.",
+                    );
+                    break;
+                }
                 client = None; // Drop the transport; the shared host keeps running.
                 pending = None;
                 notice(

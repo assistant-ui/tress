@@ -38,7 +38,7 @@ export interface ConnectStore {
   claim(codeHash: string, threadId: string): Promise<Device | undefined>;
   device(threadId: string): Promise<Device | undefined>;
   revoke(threadId: string): Promise<boolean>;
-  heartbeat(tokenHash: string): Promise<{ paired: boolean; revoked: boolean } | undefined>;
+  heartbeat(tokenHash: string): Promise<{ paired: boolean; revoked: boolean; threadId: string | null } | undefined>;
   enqueue(threadId: string, job: DeviceJob, deviceId: string): Promise<boolean>;
   take(tokenHash: string): Promise<DeviceJob | undefined>;
   complete(tokenHash: string, id: string, result: DeviceResult): Promise<boolean>;
@@ -110,9 +110,9 @@ export const createMemoryConnectStore = (): ConnectStore => {
       const row = byToken(hash);
       if (!row) return undefined;
       if (!row.threadId && row.expiresAt <= Date.now()) row.revoked = true;
-      if (row.revoked) return { paired: Boolean(row.threadId), revoked: true };
+      if (row.revoked) return { paired: Boolean(row.threadId), revoked: true, threadId: row.threadId };
       if (row.threadId) row.lastSeenAt = Date.now();
-      return { paired: Boolean(row.threadId), revoked: false };
+      return { paired: Boolean(row.threadId), revoked: false, threadId: row.threadId };
     },
     async enqueue(threadId, job, deviceId) {
       const device = devices.get(deviceId);
@@ -240,7 +240,7 @@ export const createPostgresConnectStore = (pool: Pool): ConnectStore => ({
     const { rows } = await pool.query(
       `UPDATE tress_demo_devices SET last_seen_at = CASE WHEN thread_id IS NOT NULL
          AND revoked_at IS NULL THEN now() ELSE last_seen_at END
-       WHERE token_hash = $1 RETURNING thread_id IS NOT NULL AS paired,
+       WHERE token_hash = $1 RETURNING thread_id AS "threadId", thread_id IS NOT NULL AS paired,
          (revoked_at IS NOT NULL OR
           (thread_id IS NULL AND code_expires_at <= now())) AS revoked`,
       [hash],

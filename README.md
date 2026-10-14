@@ -68,9 +68,10 @@ See [managed demo setup, credentials, and visitor steps](docs/public-demo.md)
 or the [site reference](site/README.md) for storage details.
 
 The managed public demo can also use a visitor's local folder without giving
-the visitor a Harness key. Run `tress connect --site <site-url>` in
-that folder, then enter its short pairing code in your browser thread. The
-current directory is used by default; optionally pass `--root <path>` to
+the visitor a Harness key. Run
+`tress attach <site-url> -s <session-id> --root . --ui` in that folder, then
+enter its pairing code in the same browser chat. The terminal UI opens after
+pairing and keeps folder access running until you exit. Use `--root <path>` to
 choose another folder. It is read-only by default; add `--allow-write` to
 permit file edits. This native process serves scoped file requests and does
 **not** become the agent host or

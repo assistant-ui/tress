@@ -18,7 +18,7 @@
     "test:connect": "node --test scripts/connect.test.mjs",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
     "db:import": "node --env-file-if-exists=.env.local scripts/import-sessions.mjs",
-    "test:host": "node --test scripts/local-demo.test.mjs scripts/workspace-info.test.mjs scripts/managed.test.mjs scripts/managed-backend.test.mjs scripts/demo-config.test.mjs scripts/markdown.test.mjs scripts/sessions.test.mjs scripts/health-policy.test.mjs scripts/connect.test.mjs && node scripts/verify-workspaces.mjs && node scripts/verify-managed-boot.mjs && node scripts/verify-sessions.mjs && node scripts/verify-health-policy.mjs && node scripts/verify-connected-agent.mjs && node scripts/verify-connected-agent.mjs --local",
+    "test:host": "node --test scripts/local-demo.test.mjs scripts/workspace-info.test.mjs scripts/managed.test.mjs scripts/managed-backend.test.mjs scripts/demo-config.test.mjs scripts/markdown.test.mjs scripts/sessions.test.mjs scripts/health-policy.test.mjs scripts/connect.test.mjs && node scripts/verify-workspaces.mjs && node scripts/verify-managed-boot.mjs && node scripts/verify-sessions.mjs && node scripts/verify-health-policy.mjs && node scripts/verify-connected-agent.mjs && node scripts/verify-connected-agent.mjs --local && node scripts/verify-connected-agent.mjs --local --attach && node scripts/verify-connected-agent.mjs --local --attach --ui",
     "test:host:dev": "node scripts/verify-workspaces.mjs --dev",
     "test:deployment": "node scripts/verify-deployment.mjs",
     "test:sandbox:live": "node --env-file-if-exists=.env.local scripts/verify-live-sandbox.mjs",
