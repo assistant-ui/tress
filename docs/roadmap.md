@@ -11,6 +11,9 @@ integration.
 Self-hosted applications are the first target. Managed terminal authentication
 is backlog work and is not a prerequisite for the first integration.
 
+The [consumer setup design](consumer-setup.md) covers application integration,
+browser-first and terminal-first use, and the production acceptance walkthrough.
+
 ## Existing foundation and gaps
 
 Tress already attaches native clients to its site's Statewire endpoints. The
@@ -34,6 +37,11 @@ do not assume they are installable from the public registry.
 
 Deliver one browser-and-terminal integration against a server-owned Harness
 thread in an existing assistant-ui app.
+
+Prerequisite: the Rust Statewire HTTP client needs a caller-supplied credential
+mechanism for protected endpoints. Version 0.1.1 fixes streaming but does not
+provide that mechanism. Upstream transport authentication separately, then use
+it in the Tress adapter; see the consumer setup design for the required behavior.
 
 - [ ] Establish the supported Harness protocol version and endpoint/auth
   contract against an existing fixture. Keep credentials separate from URLs.
