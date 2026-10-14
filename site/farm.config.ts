@@ -27,12 +27,11 @@ export default withDocs(defineConfig({
         name: "tress-server-workspace-dependencies",
         config: () => ({
           ssr: {
+            // Keep Harness, Statewire, and tap in Farm's React bundle. Leaving
+            // them external creates runtime React imports outside that bundle.
             external: [
               "just-bash",
               "@vercel/sandbox",
-              "harness-sdk",
-              "statewire",
-              "@assistant-ui/tap",
               "pg",
             ],
           },

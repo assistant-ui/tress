@@ -73,3 +73,7 @@ jobs:
       - run: cargo build -p tress
       - run: npm --prefix site run test:host
       - run: npm --prefix site run test:host:dev
+      - run: npm --prefix site run build
+        env:
+          FARM_DEPLOY_TARGET: vercel
+      - run: npm --prefix site run test:deployment
