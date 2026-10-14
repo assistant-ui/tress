@@ -71,6 +71,15 @@ export function createWorkspaceTools(
   workspace: Workspace,
   options: WorkspaceToolsOptions = {},
 ) {
+  const root = workspace.filesystemRoot;
+  if (root !== undefined && root !== "/" && !/^[a-z]:[\\/]$/i.test(root))
+    throw new Error("filesystemRoot must be an OS filesystem root.");
+  const relative = (path: string): string => {
+    if (root === "/" && path.startsWith("/")) return path.slice(1);
+    if (root && root !== "/" && path.slice(0, 3).replaceAll("\\", "/").toLowerCase() === root.replaceAll("\\", "/").toLowerCase())
+      return path.slice(3).replaceAll("\\", "/");
+    return path;
+  };
   const include = options.include ?? ["read", "ls"];
   for (const name of include) {
     if (!(WORKSPACE_TOOLS as readonly string[]).includes(name))
@@ -80,7 +89,9 @@ export function createWorkspaceTools(
   }
   const schemas = definitions.filter((tool) =>
     include.includes(tool.name as WorkspaceToolName),
-  );
+  ).map((tool) => root && tool.name !== "bash"
+    ? { ...tool, description: `${tool.description} Absolute paths under filesystem root ${root} are also accepted.` }
+    : tool);
   const custom = new Map<string, CustomTool>();
   for (const tool of options.custom ?? []) {
     if (
@@ -137,7 +148,7 @@ export function createWorkspaceTools(
             case "read":
               result = {
                 content: await workspace.readFile(
-                  filePath(string(input, "path")),
+                  filePath(relative(string(input, "path"))),
                 ),
                 is_error: false,
               };
@@ -148,7 +159,7 @@ export function createWorkspaceTools(
                   (
                     await workspace.listFiles(
                       workspacePath(
-                        input.path === undefined ? "" : string(input, "path"),
+                        relative(input.path === undefined ? "" : string(input, "path")),
                       ),
                     )
                   )
@@ -162,12 +173,12 @@ export function createWorkspaceTools(
               break;
             case "write":
               result = await write(
-                filePath(string(input, "path")),
+                filePath(relative(string(input, "path"))),
                 string(input, "content"),
               );
               break;
             case "edit": {
-              const path = filePath(string(input, "path"));
+              const path = filePath(relative(string(input, "path")));
               const old = string(input, "old");
               const replacement = string(input, "new");
               if (!old) throw new Error("old must not be empty.");

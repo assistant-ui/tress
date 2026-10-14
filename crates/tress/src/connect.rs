@@ -114,6 +114,9 @@ fn options(args: &[String]) -> Result<Options, String> {
         return Err("workspace root must be a directory".into());
     }
     let label = label.unwrap_or_else(|| {
+        if root.parent().is_none() {
+            return "Whole filesystem".into();
+        }
         root.file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "local folder".into())
@@ -129,14 +132,50 @@ fn options(args: &[String]) -> Result<Options, String> {
     })
 }
 
-fn safe_path(root: &Dir, path: &str, directory: bool) -> Result<PathBuf, String> {
+fn root_label(root: &Path) -> String {
+    if let Some(name) = root.file_name() {
+        return name.to_string_lossy().into_owned();
+    }
+    // canonicalize() uses extended-length drive paths on Windows; publish the
+    // ordinary drive root so browser tools can recognize absolute input.
+    #[cfg(windows)]
+    if let Some(Component::Prefix(prefix)) = root.components().next() {
+        if let std::path::Prefix::Disk(letter) | std::path::Prefix::VerbatimDisk(letter) =
+            prefix.kind()
+        {
+            return format!("{}:\\", char::from(letter));
+        }
+    }
+    root.display().to_string()
+}
+
+fn safe_path(
+    root: &Dir,
+    path: &str,
+    directory: bool,
+    filesystem_root: Option<&Path>,
+) -> Result<PathBuf, String> {
     if path.len() > 1024 || path.contains('\0') {
         return Err("invalid file path".into());
     }
     if path.is_empty() && directory {
         return Ok(PathBuf::from("."));
     }
-    let relative = Path::new(path);
+    let requested = Path::new(path);
+    let relative = if requested.is_absolute() {
+        match filesystem_root {
+            Some(base) => requested
+                .strip_prefix(base)
+                .or_else(|_| requested.strip_prefix(Path::new(&root_label(base))))
+                .map_err(|_| "path is outside the shared filesystem")?,
+            None => return Err("path must stay inside the connected folder".into()),
+        }
+    } else {
+        requested
+    };
+    if relative.as_os_str().is_empty() && directory {
+        return Ok(PathBuf::from("."));
+    }
     if relative.as_os_str().is_empty()
         || relative.is_absolute()
         || relative
@@ -160,10 +199,15 @@ fn safe_path(root: &Dir, path: &str, directory: bool) -> Result<PathBuf, String>
     Ok(current)
 }
 
-fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
+fn execute_scoped(
+    root: &Dir,
+    writable: bool,
+    job: &Job,
+    filesystem_root: Option<&Path>,
+) -> JobResult {
     let result: Result<serde_json::Value, String> = (|| match job.operation.as_str() {
         "read" => {
-            let path = safe_path(root, &job.path, false)?;
+            let path = safe_path(root, &job.path, false, filesystem_root)?;
             let metadata = root.metadata(&path).map_err(|error| error.to_string())?;
             if !metadata.is_file() {
                 return Err("only regular files can be read".into());
@@ -182,7 +226,7 @@ fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
             Ok(serde_json::Value::String(content))
         }
         "list" => {
-            let path = safe_path(root, &job.path, true)?;
+            let path = safe_path(root, &job.path, true, filesystem_root)?;
             let mut entries = Vec::new();
             for entry in root.read_dir(path).map_err(|error| error.to_string())? {
                 let entry = entry.map_err(|error| error.to_string())?;
@@ -209,7 +253,7 @@ fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
             if content.len() > 1_048_576 {
                 return Err("file exceeds the 1 MB write limit".into());
             }
-            let path = safe_path(root, &job.path, false)?;
+            let path = safe_path(root, &job.path, false, filesystem_root)?;
             let parent = path
                 .parent()
                 .filter(|parent| !parent.as_os_str().is_empty())
@@ -263,7 +307,12 @@ impl Connection {
 
     pub fn description(&self) -> String {
         format!(
-            "Sharing {} · {} · no shell. Exit to stop sharing.",
+            "Sharing {}{} · {} · no shell. Exit to stop sharing.",
+            if self.options.root.parent().is_none() {
+                "whole filesystem "
+            } else {
+                ""
+            },
             self.options.root.display(),
             if self.options.writable {
                 "read + write"
@@ -291,12 +340,7 @@ impl Connection {
             session: session.map(str::to_owned),
             failures: 0,
         };
-        let root_label = connection
-            .options
-            .root
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "workspace".into());
+        let root_label = root_label(&connection.options.root);
         let response = connection
             .client
             .post(connection.endpoint("offer"))
@@ -325,6 +369,9 @@ impl Connection {
         println!("Pair this folder at {browser_url}");
         println!("Code: {} (expires in 5 minutes)", offered.code);
         println!("Folder: {}", connection.options.root.display());
+        if connection.options.root.parent().is_none() {
+            println!("Scope: Whole filesystem accessible to this process, subject to OS permissions. Use --root <folder> to restrict access.");
+        }
         println!(
             "Access: {}",
             if connection.options.writable {
@@ -392,7 +439,16 @@ impl Connection {
             }
             let body = ResultBody {
                 id: &job.id,
-                result: execute(&self.root, self.options.writable, &job),
+                result: execute_scoped(
+                    &self.root,
+                    self.options.writable,
+                    &job,
+                    self.options
+                        .root
+                        .parent()
+                        .is_none()
+                        .then_some(self.options.root.as_path()),
+                ),
             };
             // Retry delivery, never execution: a write may already be on disk.
             loop {
@@ -455,10 +511,15 @@ impl Connection {
 pub async fn prepare_attached(
     site: &str,
     session: &str,
-    root: &str,
+    root: &Path,
     writable: bool,
 ) -> Result<Connection, String> {
-    let mut args = vec!["--site".into(), site.into(), "--root".into(), root.into()];
+    let mut args = vec![
+        "--site".into(),
+        site.into(),
+        "--root".into(),
+        root.to_string_lossy().into_owned(),
+    ];
     if writable {
         args.push("--allow-write".into());
     }
@@ -486,6 +547,53 @@ pub async fn run(args: &[String]) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
+        execute_scoped(root, writable, job, None)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn canonical_drive_roots_use_normal_drive_labels() {
+        assert_eq!(root_label(Path::new(r"\\?\C:\")), "C:\\");
+        assert_eq!(root_label(Path::new(r"C:\")), "C:\\");
+        assert_eq!(root_label(Path::new(r"\\?\C:\project")), "project");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn whole_filesystem_reads_absolute_paths_but_restricted_folders_do_not() {
+        let path = root().canonicalize().unwrap();
+        let note = path.join("note.txt");
+        std::fs::write(&note, "real filesystem fixture").unwrap();
+        let machine = Dir::open_ambient_dir("/", ambient_authority()).unwrap();
+        let folder = Dir::open_ambient_dir(&path, ambient_authority()).unwrap();
+        let read = Job {
+            id: "root-read".into(),
+            operation: "read".into(),
+            path: note.display().to_string(),
+            content: None,
+        };
+        assert_eq!(
+            execute_scoped(&machine, false, &read, Some(Path::new("/"))).value,
+            Some(serde_json::json!("real filesystem fixture"))
+        );
+        assert!(!execute(&folder, false, &read).ok);
+        let write = Job {
+            operation: "write".into(),
+            content: Some("updated".into()),
+            ..read
+        };
+        assert!(!execute_scoped(&machine, false, &write, Some(Path::new("/"))).ok);
+        assert!(execute_scoped(&machine, true, &write, Some(Path::new("/"))).ok);
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "updated");
+        assert_eq!(
+            safe_path(&machine, "/", true, Some(Path::new("/"))).unwrap(),
+            PathBuf::from(".")
+        );
+        assert!(safe_path(&machine, "/../outside", false, Some(Path::new("/"))).is_err());
+        std::fs::remove_dir_all(path).unwrap();
+    }
 
     fn root() -> PathBuf {
         let id = SystemTime::now()

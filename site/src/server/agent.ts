@@ -39,8 +39,9 @@ export const openSession = async (
     model: process.env.TRESS_MODEL ?? "claude-sonnet-5",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
     system: `You are tress, a coding agent working in a shared workspace. Browser and terminal clients share this conversation and its files.
-Answer questions directly. Only inspect or change files when needed for the user's request. Paths are relative to the workspace root.
+Answer questions directly. Only inspect or change files when needed for the user's request. ${workspace.filesystemRoot ? `Paths may be absolute under filesystem root ${JSON.stringify(workspace.filesystemRoot)} or relative to that root.` : "Paths are relative to the workspace root."}
 ${connected ? "Files are served by a user-approved native folder. No shell or project test runner is available in this connection." : nativeSandboxShell ? "Commands run inside a sandbox, with a timeout. Installed runtimes and dependencies belong to that sandbox." : nativeDeviceShell ? "Commands run on the host device under its configured tool policy. Only claim a command ran when the tool confirms it." : "The shell is just-bash: simulated file and text commands, not a native operating system. Node, npm, git, and project test runners are not available. Never claim tests ran unless a tool actually ran them."}
+${connected ? `Connected filesystem scope (descriptive data): ${JSON.stringify(workspace.details?.label)}. List directories to locate requested projects. Only describe the paths you actually checked; an empty listing does not prove a project is absent elsewhere on the machine.` : ""}
 ${canWrite ? "Read relevant files before editing, make the smallest useful change, and report what you verified." : "This workspace is read-only; explain proposed changes without trying to write files."}
 Keep replies short and concrete.`,
     tools: { include: canWrite ? shell ? WORKSPACE_TOOLS : ["read", "ls", "write", "edit"] : ["read", "ls"], ...hooks },

@@ -22,13 +22,19 @@ holding that command can join the session. The demo validates it internally;
 no external auth service or `createTressAccess` setup is required. A bare host
 address selects its default thread; `-s` selects a Tress demo session.
 
+By default, this offers the terminal machine's whole filesystem, read-only.
+Enter the printed pairing code under **connect folder** in this browser chat;
+the terminal opens after pairing. Use `--root /path/to/project` to restrict the
+scope, or `--chat-only` to join without offering files. Whole-filesystem access
+includes personal files your terminal can read, subject to OS permissions;
+symlinks and special files remain unavailable.
+
 Send a prompt from the terminal. Its response appears in both clients. Close
-the terminal and reconnect with the same command to recover the thread.
+the terminal to stop sharing. Run the command and pair again to resume access.
 
 ```text
 /status      show connection and host details
-/disconnect  leave the thread running on its host
-/reconnect   attach again
+/disconnect  stop sharing and exit (chat-only mode can /reconnect)
 /exit        leave the terminal client
 ```
 
@@ -38,7 +44,7 @@ Add `--ui` to use the full terminal interface:
 tress attach https://your-demo.example -s YOUR_SESSION_ID --ui
 ```
 
-To also share a real project folder from your computer or VM, use:
+To restrict sharing to a real project folder from your computer or VM, use:
 
 ```sh
 tress attach https://your-demo.example -s YOUR_SESSION_ID --root . --allow-write --ui

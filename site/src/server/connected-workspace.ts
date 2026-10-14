@@ -76,16 +76,18 @@ export const createConnectedWorkspace = (
   store: ConnectStore = connectStore(),
 ): Workspace & { writable: boolean } => {
   if (!deviceOnline(device))
-    throw new Error("The connected folder is offline. Start tress connect on that device.");
+    throw new Error("The connected filesystem is offline. Start tress attach on that device and pair it again.");
   return {
     kind: "connected-local",
+    ...((device.rootLabel === "/" || /^[a-z]:[\\/]$/i.test(device.rootLabel))
+      ? { filesystemRoot: device.rootLabel } : {}),
     details: {
       environment: "device",
       access: "connected",
       storage: "filesystem",
       shell: "none",
       writable: device.writable,
-      label: device.label,
+      label: `${device.label} · ${device.rootLabel}`,
     },
     writable: device.writable,
     async readFile(path) {

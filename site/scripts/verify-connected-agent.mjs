@@ -6,11 +6,13 @@ import { StatewireClient, StatewireHttp } from "statewire";
 const local = process.argv.includes("--local");
 const attach = process.argv.includes("--attach");
 const ui = process.argv.includes("--ui");
+const whole = process.argv.includes("--whole-filesystem");
+if (whole && !attach) throw new Error("Whole filesystem fixture requires --attach.");
 if (attach && !local) throw new Error("The attach fixture requires --local.");
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,17 +51,20 @@ const sse = (block) => [
   { type: "message_stop" },
 ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
 
-const root = await mkdtemp(join(tmpdir(), "tress-connected-agent-"));
+const root = await realpath(await mkdtemp(join(tmpdir(), "tress-connected-agent-")));
 const workspace = join(root, "workspace");
 await mkdir(workspace);
 await writeFile(join(workspace, "note.txt"), "CONNECTED-FILE-CONTENT\n");
+const notePath = whole ? join(workspace, "note.txt") : "note.txt";
+const browseDirectory = whole ? workspace.replace(/^\//, "") : "";
+const browseNote = whole ? `${browseDirectory}/note.txt` : "note.txt";
 const requests = [];
 const responses = [
-  { type: "tool_use", id: "read1", name: "read", input: { path: "note.txt" } },
+  { type: "tool_use", id: "read1", name: "read", input: { path: notePath } },
   { type: "text", text: "The connected note was read." },
-  { type: "tool_use", id: "read2", name: "read", input: { path: "note.txt" } },
-  { type: "tool_use", id: "edit1", name: "edit", input: { path: "note.txt", old: "CONNECTED-FILE-CONTENT", new: "EDITED-THROUGH-HOST" } },
-  { type: "tool_use", id: "read3", name: "read", input: { path: "note.txt" } },
+  { type: "tool_use", id: "read2", name: "read", input: { path: notePath } },
+  { type: "tool_use", id: "edit1", name: "edit", input: { path: notePath, old: "CONNECTED-FILE-CONTENT", new: "EDITED-THROUGH-HOST" } },
+  { type: "tool_use", id: "read3", name: "read", input: { path: notePath } },
   { type: "text", text: "The connected note was edited and read back." },
 ];
 const model = createServer(async (request, response) => {
@@ -130,7 +135,7 @@ try {
     await stopChild(connector);
     connectorOutput = "";
     const args = attach
-      ? ["attach", origin, "-s", mode.session.attachId, "--root", ".", ...(ui ? ["--ui"] : [])]
+      ? ["attach", origin, "-s", mode.session.attachId, ...(whole ? [] : ["--root", "."]), ...(ui ? ["--ui"] : [])]
       : ["connect", "--site", origin];
     if (writable) args.push("--allow-write");
     connector = spawn(ui ? "python3" : binary, ui ? [fileURLToPath(new URL("./pty-cli.py", import.meta.url)), binary, ...args] : args, {
@@ -191,8 +196,13 @@ try {
     assert.equal(response.status, 200, `browser ${operation}: ${response.status}`);
     return (await response.json()).value;
   };
-  assert((await browse("list", "")).some((entry) => entry.name === "note.txt"));
-  assert.equal(await browse("read", "note.txt"), "CONNECTED-FILE-CONTENT\n");
+  if (whole) {
+    assert.equal(status.device.label, "Whole filesystem");
+    assert.equal(status.device.rootLabel, "/");
+    assert(connectorOutput.includes("Scope: Whole filesystem"));
+  }
+  assert((await browse("list", browseDirectory)).some((entry) => entry.name === "note.txt"));
+  assert.equal(await browse("read", browseNote), "CONNECTED-FILE-CONTENT\n");
   const stream = await turn("Read note.txt");
   assert(stream.includes("The connected note was read."), stream);
   assert.equal(requests.length, 2, "the tool result returns to the model");
@@ -231,14 +241,14 @@ try {
     const first = await (await fetch(`${origin}/api/connect/status?thread=${mode.session.id}`, { headers: { Cookie: cookies } })).json();
     await new Promise((resolve) => setTimeout(resolve, 1500));
     // No detached worker remains to receive queued work after the chat exits.
-    const query = new URLSearchParams({ thread: mode.session.id, session: mode.session.attachId, device: first.device.id, operation: "read", path: "note.txt" });
+    const query = new URLSearchParams({ thread: mode.session.id, session: mode.session.attachId, device: first.device.id, operation: "read", path: browseNote });
     await assert.rejects(fetch(`${origin}/api/connect/files?${query}`, { signal: AbortSignal.timeout(1600) }), /abort|timeout/i);
   }
   const revoke = await fetch(`${origin}/api/connect/status?thread=${mode.session.id}`, {
     method: "DELETE", headers: { Cookie: cookies, Origin: origin },
   });
   assert.equal(revoke.status, 200);
-  console.log(`✓ ${attach ? `attach${ui ? " --ui" : ""} + folder` : local ? "local thread" : "managed callback"}: browser lists and previews files; agent reads, edits, and reads back the native folder; read-only policy and revocation pass`);
+  console.log(`✓ ${attach ? `attach${ui ? " --ui" : ""} + ${whole ? "whole filesystem" : "folder"}` : local ? "local thread" : "managed callback"}: browser lists and previews files; agent reads, edits, and reads back the native folder; read-only policy and revocation pass`);
 } catch (error) {
   console.error(error);
   if (attach) console.error(connectorOutput);

@@ -434,7 +434,7 @@ export function Thread({
           break;
         case "/files":
           if (hasWorkspace) setShowFiles((visible) => !visible);
-          else setNotice("Connect a folder on your computer or VM to browse its files. Attaching a terminal alone does not share its filesystem.");
+          else setNotice("Run the attach command on your computer or VM, then enter its pairing code under connect folder to browse its files.");
           break;
         case "/pwd":
           showWorkspaceInfo();
@@ -629,7 +629,7 @@ export function Thread({
           </div>
           <p>
             Same thread, live in both clients. Add <code>--ui</code> for the
-            full terminal interface.
+            full terminal interface. {config?.session ? <>After pairing, the terminal shares its whole filesystem read-only. Add <code>--root /path/to/project</code> to limit the scope, <code>--allow-write</code> for edits, or <code>--chat-only</code> to join without sharing files.</> : null}
           </p>
         </details>
 

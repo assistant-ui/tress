@@ -1,23 +1,29 @@
 # Connect a computer or VM workspace
 
-The site owns the model credentials and, in managed mode, the Harness credentials. `tress attach --root <folder>` does
-not log into Harness, need an API key, or open an inbound port. It offers one
-folder to one browser-owned demo thread through a short-lived pairing code.
+The site owns the model credentials and, in managed mode, the Harness credentials. `tress attach` does
+not log into Harness, need an API key, or open an inbound port. It offers a filesystem
+to one browser-owned demo thread through a short-lived pairing code.
 
 ## Visitor steps
 
 1. Open the public site, create or select a thread, and choose **connect folder**.
-2. Install the native `tress` binary. In the directory you want to share, run:
+2. Install the updated native `tress` binary. On the machine you want to access, run:
 
    ```sh
-   tress attach https://your-tress-site.example -s YOUR_SESSION_ID --root . --ui
+   tress attach https://your-tress-site.example -s YOUR_SESSION_ID --ui
    ```
 
-   Copy the site and session from your browser chat. `--root .` shares the
-   current directory; use another path to select a different folder. Without
-   `--root`, attach only joins the chat. Sharing grants read/list access only. To allow the
-   agent to edit files inside that folder, add `--allow-write`. No native
-   shell commands are exposed in connected-folder mode.
+   Copy the site and session from your browser chat. Without `--root`, this
+   shares the filesystem root (`/` on macOS/Linux, the current drive root on
+   Windows), subject to the process's OS permissions. Add `--root .` to share
+   only the current folder, or `--root /path/to/project` for another folder.
+   Access is read-only unless you add `--allow-write`. Use `--chat-only` to
+   join the conversation without offering any filesystem. No native shell
+   commands are exposed. Symlink paths and special files remain unavailable.
+
+   Whole-filesystem access includes personal files readable by that process.
+   The CLI prints the exact scope before pairing, and the browser labels it
+   **Whole filesystem**. No file content is sent until a file is requested.
 3. Enter the code printed by the binary in the browser's pairing form. The
    code expires after five minutes. Pair in the same chat as the command.
    After pairing, the terminal UI opens and the same process serves file requests.
@@ -35,7 +41,9 @@ folder to one browser-owned demo thread through a short-lived pairing code.
    access. The managed conversation remains available when the device is
    offline, but local file operations will not silently switch to demo files.
 
-The binary prints the exact canonical root before pairing. It keeps a
+The binary prints the exact canonical root before pairing. Whole-filesystem
+connections accept absolute paths such as `/Users/mac/oss/riftri/README.md`;
+folder-scoped connections require paths relative to that folder. It keeps a
 revocable, thread-scoped device token in memory for that process only; it
 does not save the token or the Harness project key. Restarting it currently
 requires a new pairing. Temporary network failures are retried while the
@@ -70,8 +78,10 @@ not required for this first version.
 Pairing also works with a long-running local thread host (`TRESS_THREAD_MODE=local`)
 and a configured model; Harness Cloud is not needed for that setup.
 New threads start without seeded example files. Folder attachment requires the
-Tress site connection API and a session; arbitrary application thread URLs with
-`--headers-file` still support chat-only attachment.
+Tress site connection API and a session; application thread URLs without a Tress session (including
+`--headers-file` connections) continue to use their application-owned workspace.
+Plain `tress` and `tress ask` also use the saved host workspace; this default
+filesystem sharing applies to the explicit `attach` command.
 
 The older `tress connect --site <url> [--root <folder>] [--allow-write]` command
 remains available for a folder-only process without terminal chat. It uses the
