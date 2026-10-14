@@ -1,6 +1,7 @@
 import React from "react";
 import type { LayoutProps, Metadata } from "@farm.js/core";
 import "./globals.css";
+import "./docs.css";
 
 export const metadata: Metadata = {
   title: "tress — keep the thread",
