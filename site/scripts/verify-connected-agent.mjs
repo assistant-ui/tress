@@ -23,6 +23,13 @@ const waitFor = async (predicate, label) => {
   }
   throw new Error(`Timed out: ${label}`);
 };
+const stopChild = async (child) => {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, "exit");
+  child.kill("SIGTERM");
+  const timer = setTimeout(() => child.kill("SIGKILL"), 2000);
+  try { await exited; } finally { clearTimeout(timer); }
+};
 const sse = (block) => [
   { type: "message_start" },
   {
@@ -120,10 +127,7 @@ try {
   assert.match(cookies, /tress_demo_owner=/);
   const binary = process.env.TRESS_TEST_BINARY ?? fileURLToPath(new URL("../../target/debug/tress", import.meta.url));
   const pair = async (writable) => {
-    if (connector?.exitCode === null) {
-      connector.kill("SIGTERM");
-      await once(connector, "exit");
-    }
+    await stopChild(connector);
     connectorOutput = "";
     const args = attach
       ? ["attach", origin, "-s", mode.session.attachId, "--root", ".", ...(ui ? ["--ui"] : [])]
@@ -235,17 +239,17 @@ try {
   });
   assert.equal(revoke.status, 200);
   console.log(`✓ ${attach ? `attach${ui ? " --ui" : ""} + folder` : local ? "local thread" : "managed callback"}: browser lists and previews files; agent reads, edits, and reads back the native folder; read-only policy and revocation pass`);
+} catch (error) {
+  console.error(error);
+  if (attach) console.error(connectorOutput);
+  throw error;
 } finally {
   browser?.dispose();
-  if (connector?.exitCode === null) {
-    connector.kill("SIGTERM");
-    await once(connector, "exit");
-  }
-  if (host?.exitCode === null) {
-    host.kill("SIGTERM");
-    await once(host, "exit");
-  }
-  model.closeAllConnections();
-  await new Promise((resolve) => model.close(resolve));
+  await stopChild(connector);
+  await stopChild(host);
+  await new Promise((resolve) => {
+    model.close(resolve);
+    model.closeAllConnections();
+  });
   await rm(root, { recursive: true, force: true });
 }
