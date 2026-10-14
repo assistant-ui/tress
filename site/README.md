@@ -483,9 +483,11 @@ FARM_DEPLOY_TARGET=vercel npm run build
 npm run test:deployment
 ```
 
-This copies the function into a temporary directory and requests the app and
-docs pages through its exported handler. It catches missing runtime packages
-that a local server can accidentally resolve from the parent `node_modules`.
+This copies the function into a temporary directory, restricts filesystem reads
+to that artifact with Node's permission model, and requests the app and docs
+pages through its exported handler. It catches missing packages and source
+files that a local server can accidentally resolve from the checkout. The
+postbuild step stages docs beside Nitro's generated entry for Farm beta.106.
 
 The [Farm WASM plugin](https://farmjs.dev/docs/plugins/wasm) handles imports of
 the generated `src/wasm/pkg/tress_wasm.js` entry point. Both `dev` and `build`

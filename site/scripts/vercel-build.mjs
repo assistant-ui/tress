@@ -59,3 +59,4 @@ run("npm", ["--prefix", "../packages/workspaces", "run", "build"]);
 run(process.execPath, ["scripts/build-wasm.mjs"]);
 if (env.TRESS_DATABASE_URL) run(process.execPath, ["scripts/migrate.mjs"]);
 run(process.execPath, ["node_modules/@farm.js/cli/bin/farm.js", "build"]);
+run(process.execPath, ["scripts/stage-docs.mjs"]);

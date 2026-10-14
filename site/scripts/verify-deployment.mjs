@@ -1,18 +1,20 @@
 // Boot the deployed function away from the checkout: ancestor node_modules
 // must not hide a dependency missing from the uploaded Vercel artifact.
 import assert from "node:assert/strict";
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 
-const temporary = await mkdtemp(join(tmpdir(), "tress-deployment-"));
+const temporary = await realpath(await mkdtemp(join(tmpdir(), "tress-deployment-")));
 try {
   await cp(resolve(".vercel/output/functions/__nitro.func"), temporary, {
     recursive: true, dereference: true,
   });
-  const { stdout } = await promisify(execFile)(process.execPath, ["--input-type=module", "-e", `
+  const { stdout } = await promisify(execFile)(process.execPath, [
+    "--permission", `--allow-fs-read=${temporary}`,
+    "--input-type=module", "-e", `
     const { default: app } = await import("./index.mjs");
     for (const path of ["/", "/docs", "/docs/local", "/docs/authentication", "/docs/production"]) {
       const response = await app.fetch(new Request("https://example.test" + path));

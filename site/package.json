@@ -8,6 +8,7 @@
     "demo:local": "node scripts/local-demo.mjs",
     "prebuild": "npm --prefix ../packages/workspaces run build && npm run wasm",
     "build": "farm build",
+    "postbuild": "node scripts/stage-docs.mjs",
     "preview": "farm preview",
     "test:config": "node --test scripts/demo-config.test.mjs",
     "test:install": "node --test scripts/install.test.mjs",
