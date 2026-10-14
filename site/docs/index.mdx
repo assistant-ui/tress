@@ -31,11 +31,14 @@ Tress v0.3.0 binary. [Versions and current limits](/docs/reference) are explicit
 
 | Start here | What happens |
 | --- | --- |
-| Browser | Sign in, open a conversation, obtain a terminal grant, and copy its connection command. |
-| Terminal | Obtain an app-issued grant and thread endpoint, attach, then open that conversation's browser URL. |
+| Browser | Open a conversation and copy its connection command, using the host's session-sharing or credential flow. |
+| Terminal | Obtain the thread endpoint and its required access credential, attach, then open that conversation's browser URL. |
 
 Both paths reach one server-owned thread. Connecting a terminal does not upload
 its working directory or grant the agent access to its local shell.
+
+Reuse the host's session/access checks. `createTressAccess` and external auth
+services are optional; see [access options](/docs/authentication).
 
 ## Local to production
 

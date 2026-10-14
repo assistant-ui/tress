@@ -15,45 +15,32 @@ together, then bring these integration points into your application.
 
 ## 1. Reuse the thread host
 
-If your app already has a server-owned Harness thread, keep it. Its fetch
-handler is the integration point:
+If your app already has a server-owned Harness thread, keep it and its existing
+session/access checks. Its fetch handler is the integration point.
+**`createTressAccess` is optional.** Tress does not require another auth provider
+or a wrapper around an already authorized host.
 
 ```ts
-import { createTressAccess } from "@tress/access";
-
-const access = createTressAccess({
-  host: existingThreadHost,
-  origin: appOrigin, // http://localhost:3000 locally; your HTTPS origin in prod
-  authorize: async ({ request, action }) => {
-    // These are your application's functions, not Tress SDK exports.
-    const grant = await app.authenticate(request);
-    if (!grant) throw new Response("Sign in", { status: 401 });
-    if (!await app.canAccessThread(grant.subject, threadId, action)) {
-      throw new Response("Forbidden", { status: 403 });
-    }
-    return {
-      subject: grant.subject,
-      connectionId: grant.id,
-      expiresAt: grant.expiresAt, // milliseconds since Unix epoch
-    };
-  },
-});
-
-// Forward BOTH routes to this same long-lived adapter instance:
+// Inside your existing authenticated route/middleware:
 // GET/POST /api/threads/:id/stream
 // POST     /api/threads/:id/frames
-export const GET = (request: Request) => access.fetch(request);
+export const GET = async (request: Request) => {
+  // Application code: validate the session/credential and this thread's
+  // permissions, including your existing Origin/CSRF checks for writes.
+  await app.requireThreadAccess(request, threadId);
+  return existingThreadHost.fetch(request);
+};
 export const POST = GET;
 ```
 
-`existingThreadHost`, `app`, `appOrigin`, and `threadId` come from your app.
+`existingThreadHost`, `app`, and `threadId` come from your app.
 Resolve the thread and its owner before selecting the host. Do not create a
-fresh host on every HTTP request. [Authentication](/docs/authentication) covers
-grant issuance and revocation.
+fresh host on every HTTP request. A public thread ID alone does not authorize
+a connection. The terminal needs a credential your host understands; the
+browser's cookie is not automatically transferred to the CLI.
 
-`@tress/access` currently lives in `packages/access` in this checkout. It is
-source code for the preview, not a published npm package. Its TypeScript source
-works in a TypeScript-aware application or Node 24.
+The [access guide](/docs/authentication) covers the demo's built-in session
+sharing, Harness's native `authorize` hook, and the optional access adapter.
 
 ## 2. If the browser currently owns the transport
 
@@ -113,8 +100,9 @@ thread. Browser requests use the application's existing same-origin session.
 
 ## 4. Connect the terminal
 
-Give the user the complete thread endpoint and a separately issued credential
-file. Never put credentials in a connection URL or copied shell command.
+Give the user the complete thread endpoint and the access method your app
+supports. For app-issued header credentials, use a private file so the copied
+command contains only its path:
 
 ```sh
 chmod 600 app-headers.json
@@ -122,6 +110,11 @@ tress attach http://localhost:3000/api/threads/main \
   --headers-file app-headers.json
 ```
 
+`--headers-file` is optional; use it when the endpoint requires application
+headers. The [Tress demo](/docs/try) instead includes a secret session token in
+its copied command. That built-in demo flow does not require this adapter or a
+separate login provider.
+
 The terminal negotiates Harness and loads the active conversation. Send from
-each client, reconnect, and revoke the terminal while the browser remains open.
-Do this locally before following the [production walkthrough](/docs/production).
+each client and reconnect. Verify your app's access-expiration policy before
+following the [production walkthrough](/docs/production).

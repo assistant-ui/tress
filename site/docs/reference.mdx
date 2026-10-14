@@ -14,7 +14,7 @@ description: What this preview supports, and what still needs upstream release w
 | JavaScript Statewire | `0.19.4` |
 | assistant-ui | `@assistant-ui/react` `0.15.28`, `@assistant-ui/tap` `0.9.23` in the reference app |
 | AI SDK | `7.0.114` in the reference app |
-| Access integration | `packages/access`, source package; Node 24 or a TypeScript-aware build |
+| Optional access adapter | `packages/access`, source package; Node 24 or a TypeScript-aware build. Existing host auth can be used directly. |
 | Harness adapters | Upstream source at `c07dab9b1eb32a3800d2bad25e807efa0cfeedef`; several are not published on npm. |
 
 The CLI can negotiate the existing Tress host or a Harness host, display the
@@ -42,9 +42,10 @@ tress ask --host https://chat.example.com/api/threads/main --headers-file app-he
 tress attach https://your-demo.example -s YOUR_SESSION_ID
 ```
 
-`--headers-file` requires an explicit endpoint. The JSON file holds string
+`--headers-file` is optional and requires an explicit endpoint when used. The JSON file holds string
 header names and values. Statewire and HTTP framing headers are reserved.
-Credentials are never included in recent-thread commands.
+Header credentials are never included in recent-thread commands. The demo's
+`-s` value is a secret session token; its copied command grants session access.
 
 ## Common connection failures
 

@@ -23,7 +23,9 @@ sample agent echoes messages without a model key. Download a terminal
 credential, then follow the browser-first steps below using the built binary
 and the file's actual download path.
 
-The reference app demonstrates one owner and one thread. Replace its password
+The reference app demonstrates one owner and one thread, including the
+**optional** `createTressAccess` adapter and separate terminal grants. Existing
+apps can keep their own session/access implementation. Replace this example's password
 login with your application's identity provider for production. Its
 `AGENT_MODULE` option accepts a module exporting your existing AI SDK agent;
 no separate chat-backend URL is required.
@@ -44,8 +46,10 @@ the lifetime of an individual browser tab.
 ## Browser first
 
 1. Open `http://localhost:3000`, sign in, and select a conversation.
-2. Request a terminal grant from the app. Save its header file privately.
-3. Copy the thread endpoint and connect:
+2. Use the app's terminal-sharing action. The reference app issues a separate
+   grant; save its header file privately. The [website demo](/docs/try) instead
+   supplies a command containing its secret session token.
+3. Copy the thread endpoint and connect. For the reference app:
 
 ```sh
 chmod 600 app-headers.json
@@ -58,7 +62,7 @@ chmod 600 app-headers.json
 
 ## Terminal first
 
-Obtain the endpoint and a grant through your app's supported access flow, then
+Obtain the endpoint and any required credential through your app's access flow, then
 run the same command. The preview joins an existing thread; thread creation,
 listing, and a generic browser login flow are separate work.
 

@@ -1,7 +1,17 @@
 # @tress/access (source preview)
 
-Application-owned authorization and revocation around a long-lived Statewire
-thread host. This private source package is not published on npm. Use Node 24
+An **optional** adapter for application-owned authorization and revocation
+around a long-lived Statewire thread host. Tress can connect directly to an
+already authorized host; this package is not a protocol requirement or an
+external login service. Keep your existing session/access implementation when
+it covers your needs.
+
+Harness's `statewireHost({ authorize })` gates attachments; command requests use
+the resulting lease. This adapter adds per-request checks and closes expired
+or revoked streams. See the [access guide](../../site/docs/authentication.mdx)
+for native host hooks and browser auth-recovery callbacks.
+
+This private source package is not published on npm. Use Node 24
 or a TypeScript-aware application build.
 
 ```ts

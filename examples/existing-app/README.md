@@ -5,6 +5,12 @@ terminal sharing a server-owned Harness thread. The included agent echoes
 messages so the complete flow needs no model key. `AGENT_MODULE` can replace it
 with your existing AI SDK agent, in process; no chat-backend URL is required.
 
+This example deliberately demonstrates the **optional** `createTressAccess`
+adapter with separate terminal grants and live revocation. It is one access
+model, not a required layer for Tress. An existing app can keep its session
+checks and authorized Harness host. The [access guide](../../site/docs/authentication.mdx)
+also covers the demo's built-in session command and Harness's auth callbacks.
+
 ## Run locally
 
 Requires Node 24+, npm, and stable Rust. From the repository root:

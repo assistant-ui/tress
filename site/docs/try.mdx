@@ -8,7 +8,7 @@ description: Start on the website, then join from a terminal.
 
 1. Open [the demo](/#demo) and start a conversation.
 2. Choose its terminal connection action. It supplies the host address and
-   session ID for that conversation.
+   secret session token for that conversation.
 3. Install Tress with the command shown on the website, or build from source.
 4. Run the copied connection command. For example:
 
@@ -17,8 +17,10 @@ tress attach https://your-demo.example -s YOUR_SESSION_ID
 ```
 
 The URL and ID above are placeholders. Use the values from your own demo
-session. A bare host address selects its default thread; `-s` selects a
-Tress demo session.
+session. The `-s` value is an access token, not just a public thread ID. Anyone
+holding that command can join the session. The demo validates it internally;
+no external auth service or `createTressAccess` setup is required. A bare host
+address selects its default thread; `-s` selects a Tress demo session.
 
 Send a prompt from the terminal. Its response appears in both clients. Close
 the terminal and reconnect with the same command to recover the thread.
