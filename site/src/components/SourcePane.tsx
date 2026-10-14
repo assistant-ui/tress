@@ -12,10 +12,16 @@ export const SourcePane = memo(function SourcePane({
   files,
   open,
   onOpen,
+  onAsk,
+  writable = false,
+  actionsDisabled = false,
 }: {
   files: Record<string, string>;
   open: string;
   onOpen: (path: string) => void;
+  onAsk?: (prompt: string) => void;
+  writable?: boolean;
+  actionsDisabled?: boolean;
 }) {
   const paths = Object.keys(files);
   const selected = paths.includes(open) ? open : paths[0];
@@ -89,13 +95,17 @@ export const SourcePane = memo(function SourcePane({
           </pre>
         ) : (
           <div className="source-loading">
-            No file previews shared by the host.
+            No file previews shared by the host. Ask Tress to list the workspace,
+            or configure which files this host shares with the browser.
           </div>
         )}
       </div>
       <div className="source-footer">
-        <span>{selected ? `${lines.length} lines` : "Read only preview"}</span>
-        <span>{selected ? "UTF-8" : ""}</span>
+        <span>{selected ? `${lines.length} ${lines.length === 1 ? "line" : "lines"}` : "Read only preview"}</span>
+        {selected && onAsk ? <div className="source-actions">
+          <button type="button" disabled={actionsDisabled} onClick={() => onAsk(`Explain the file ${JSON.stringify(selected)}. Do not change it.`)}>Ask about file</button>
+          {writable ? <button type="button" disabled={actionsDisabled} onClick={() => onAsk(`Please update ${JSON.stringify(selected)}: `)}>Ask to edit</button> : null}
+        </div> : <span>{selected ? "UTF-8" : ""}</span>}
       </div>
     </aside>
   );

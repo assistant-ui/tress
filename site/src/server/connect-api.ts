@@ -10,6 +10,7 @@ import {
 import { resolveDemoOwner, resolveDemoSession, SessionError, sessionResponse } from "./demo-session";
 import { threadStore, type ThreadStore } from "./thread-store";
 import type { WorkspaceDetails } from "@tress/workspaces";
+import { connectedCall } from "./connected-workspace";
 
 const jsonHeaders = {
   "Cache-Control": "private, no-store",
@@ -170,7 +171,9 @@ export const connectRequest = async (
         details: deviceDetails(device.label, device.writable),
       } }, { headers: jsonHeaders });
     }
-    if (action === "status" && ["GET", "DELETE"].includes(request.method)) {
+    if ((action === "status" && ["GET", "DELETE"].includes(request.method)) ||
+        (action === "files" && request.method === "GET")) {
+      if (action === "files") sameOrigin(request);
       if (request.method === "DELETE") sameOrigin(request);
       const threadId = new URL(request.url).searchParams.get("thread");
       if (!threadId || !/^[a-f0-9-]{36}$/.test(threadId))
@@ -182,7 +185,7 @@ export const connectRequest = async (
       }
       const owner = await resolveDemoOwner(request, false, registry);
       const manageable = Boolean(owner && (await registry.list(owner.id)).some((thread) => thread.id === threadId));
-      if (!manageable) {
+      if (!manageable || action === "files") {
         let session;
         try {
           session = await resolveDemoSession(request, false, registry);
@@ -192,6 +195,31 @@ export const connectRequest = async (
         if (session?.thread.id !== threadId) fail("Thread not found.", 404);
       }
       const device = await devices.device(threadId);
+      if (action === "files") {
+        const query = new URL(request.url).searchParams;
+        const expected = query.get("device");
+        if (!device || device.id !== expected || !deviceOnline(device))
+          fail("This workspace is offline or its connection changed. Reconnect and try again.", 409);
+        const operation = query.get("operation");
+        if (operation !== "list" && operation !== "read")
+          fail("Only file browsing and reading are available here.", 400);
+        const path = query.get("path") ?? "";
+        if (path.length > 1024 || path.includes("\\") || path.includes("\0") ||
+            path.startsWith("/") || path.split("/").some((part) => part === ".." || part === "."))
+          fail("Use a path inside the connected folder.", 400);
+        const value = await connectedCall(threadId, operation, path, undefined, devices, device.id, request.signal);
+        // A long read must not outlive an expired or archived session.
+        await resolveDemoSession(request, false, registry);
+        const current = await devices.device(threadId);
+        if (current?.id !== device.id || !deviceOnline(current))
+          fail("The workspace connection changed. Refresh to continue.", 409);
+        if (operation === "list" && (!Array.isArray(value) || value.some((entry) =>
+          !entry.name || /[\\/\0]/.test(entry.name) || [".", ".."].includes(entry.name))))
+          fail("The host returned an invalid directory listing.", 502);
+        if (operation === "read" && typeof value !== "string")
+          fail("The host returned invalid file content.", 502);
+        return Response.json({ deviceId: device.id, path, value }, { headers: jsonHeaders });
+      }
       return Response.json({ device: device ? {
         id: device.id,
         label: device.label,

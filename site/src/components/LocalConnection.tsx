@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CopyButton } from "./CopyButton";
 import type { WorkspaceDetails } from "@tress/workspaces";
 
@@ -25,6 +25,8 @@ export function LocalConnection({
   onDevice: (device: LocalDevice | null) => void;
 }) {
   const [device, setDevice] = useState<LocalDevice | null>(null);
+  const deviceRef = useRef(device);
+  deviceRef.current = device;
   const [visible, setVisible] = useState(false);
   const [manageable, setManageable] = useState(false);
   const [code, setCode] = useState("");
@@ -55,7 +57,12 @@ export function LocalConnection({
         onDevice(data.device);
         setError("");
       } catch (cause) {
-        if (alive) setError((cause as Error).message);
+        if (alive) {
+          setError((cause as Error).message);
+          const unavailable = deviceRef.current ? { ...deviceRef.current, online: false } : null;
+          setDevice(unavailable);
+          onDevice(unavailable);
+        }
       }
     };
     void refresh();
@@ -92,7 +99,7 @@ export function LocalConnection({
   };
 
   const disconnect = async () => {
-    if (!window.confirm("Disconnect this folder from the thread? The files stay on your computer."))
+    if (!window.confirm("Disconnect this folder from the thread? The files stay on its host."))
       return;
     setPending(true);
     setError("");
@@ -116,7 +123,7 @@ export function LocalConnection({
     <div className="local-connect">
       <div className="local-connect-head">
         <div>
-          <strong>local folder</strong>
+          <strong>host workspace</strong>
           <span role="status">
             {device
               ? `${device.label} · ${device.rootLabel} · ${device.online ? "online" : "offline"} · ${device.writable ? "read + write" : "read-only"}`
@@ -135,11 +142,11 @@ export function LocalConnection({
       </div>
       {!device && expanded ? (
         <div className="local-connect-steps">
-          <p>Run this inside the folder you want to share. The connection is read-only unless you add <code>--allow-write</code>.</p>
+          <p>Run this inside a project folder on your computer, VM, or remote host. Files appear here after pairing. Add <code>--allow-write</code> to allow the agent to edit; shell execution is not part of this connection.</p>
           <div className="attach-command">
             <span aria-hidden="true">$</span>
             <code>{command}</code>
-            <CopyButton text={command} label="Copy local folder command" compact disabled={!origin} />
+            <CopyButton text={command} label="Copy workspace connection command" compact disabled={!origin} />
           </div>
           <form onSubmit={(event) => void claim(event)}>
             <label htmlFor="local-pair-code">Pairing code printed by Tress</label>
@@ -156,7 +163,7 @@ export function LocalConnection({
               {pending ? "Connecting…" : "Connect"}
             </button>
           </form>
-          <p>Anyone with this thread’s private attach link can ask the agent to use the folder. File content read by the agent may enter the model and Harness Cloud conversation.</p>
+          <p>Anyone with this thread’s private attach link can browse this folder and ask the agent to use it. Files read by the agent enter its model conversation.</p>
         </div>
       ) : null}
       {device && !manageable ? <p className="local-connect-viewer">This folder is shared with this thread. Only its owner can disconnect it.</p> : null}

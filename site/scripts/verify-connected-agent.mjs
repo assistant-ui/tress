@@ -1,6 +1,9 @@
 // Exercise the built managed callback through the real native connector.
 // A scripted local model replaces Harness/model credentials; no cloud calls occur.
 import assert from "node:assert/strict";
+import { StatewireClient, StatewireHttp } from "statewire";
+
+const local = process.argv.includes("--local");
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -58,6 +61,7 @@ const model = createServer(async (request, response) => {
 });
 let host;
 let connector;
+let browser;
 try {
   await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
   const probe = createServer();
@@ -73,8 +77,8 @@ try {
       NODE_ENV: "production",
       HOST: "127.0.0.1",
       PORT: String(port),
-      TRESS_THREAD_MODE: "cloud",
-      TRESS_SERVERLESS: "1",
+      TRESS_THREAD_MODE: local ? "local" : "cloud",
+      TRESS_SERVERLESS: local ? "0" : "1",
       TRESS_DEMO_SHARED: "0",
       TRESS_WORKSPACE: "memory",
       TRESS_SESSION_DIR: join(root, "sessions"),
@@ -102,7 +106,12 @@ try {
       return false;
     }
   }, "managed preview");
-  assert.equal(mode.kind, "cloud");
+  assert.equal(mode.kind, local ? "local" : "cloud");
+  if (local) {
+    browser = new StatewireClient({ transport: StatewireHttp({ url: `${origin}${mode.session.clientUrl}` }) });
+    await waitFor(() => browser.connection.status === "connected", "browser thread attach");
+    assert.deepEqual(browser.state.files, {}, "fresh threads have no example files");
+  }
   assert(mode.session?.id);
   assert.match(cookies, /tress_demo_owner=/);
   const binary = process.env.TRESS_TEST_BINARY ?? fileURLToPath(new URL("../../target/debug/tress", import.meta.url));
@@ -135,6 +144,10 @@ try {
     }, "native connector online");
   };
   const turn = async (text) => {
+    if (local) {
+      await browser.commands.send(text);
+      return JSON.stringify(browser.state.entries);
+    }
     const chat = await fetch(`${origin}/api/chat?session=${mode.session.attachId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -149,6 +162,15 @@ try {
     return stream;
   };
   await pair(false);
+  const status = await (await fetch(`${origin}/api/connect/status?thread=${mode.session.id}`, { headers: { Cookie: cookies } })).json();
+  const browse = async (operation, path) => {
+    const query = new URLSearchParams({ thread: mode.session.id, session: mode.session.attachId, device: status.device.id, operation, path });
+    const response = await fetch(`${origin}/api/connect/files?${query}`);
+    assert.equal(response.status, 200, `browser ${operation}: ${response.status}`);
+    return (await response.json()).value;
+  };
+  assert((await browse("list", "")).some((entry) => entry.name === "note.txt"));
+  assert.equal(await browse("read", "note.txt"), "CONNECTED-FILE-CONTENT\n");
   const stream = await turn("Read note.txt");
   assert(stream.includes("The connected note was read."), stream);
   assert.equal(requests.length, 2, "the tool result returns to the model");
@@ -156,7 +178,8 @@ try {
   const tools = requests[0].tools.map((tool) => tool.name);
   assert(tools.includes("read") && tools.includes("ls"));
   assert(!tools.includes("write") && !tools.includes("bash"));
-  assert(stream.includes('"type":"data-files","data":{}'), "local files are not mirrored into previews");
+  if (local) assert.deepEqual(browser.state.files, {}, "connected files are fetched on demand");
+  else assert(stream.includes('"type":"data-files","data":{}'), "local files are not mirrored into previews");
   await pair(true);
   const edited = await turn("Read note.txt, edit its content, and read it back");
   assert(edited.includes("The connected note was edited and read back."), edited);
@@ -169,8 +192,9 @@ try {
     method: "DELETE", headers: { Cookie: cookies, Origin: origin },
   });
   assert.equal(revoke.status, 200);
-  console.log("✓ managed callback reads, edits, and reads back the paired native folder; read-only policy and revocation pass");
+  console.log(`✓ ${local ? "local thread" : "managed callback"}: browser lists and previews files; agent reads, edits, and reads back the native folder; read-only policy and revocation pass`);
 } finally {
+  browser?.dispose();
   if (connector?.exitCode === null) {
     connector.kill("SIGTERM");
     await once(connector, "exit");
