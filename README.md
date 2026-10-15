@@ -161,6 +161,8 @@ host's workspace, not the attached terminal's current directory.
 The [integration roadmap](docs/roadmap.md) describes the next milestone:
 terminal access to existing assistant-ui/Harness applications. Managed terminal
 authentication is deferred backlog work.
+The [consumer setup design](docs/consumer-setup.md) follows an existing app from
+browser and terminal use through production deployment.
 
 Early. The engine is a library (`tress::Engine`) driving a `Provider` over a
 `Tools` surface, with no I/O of its own — which is what lets the terminal

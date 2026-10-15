@@ -15,8 +15,9 @@ Proposed commands and capabilities must be labeled as proposals until shipped.
 - Inspect branch, working-tree, and staged changes before editing. Preserve
   unrelated work, including changes made by other agents.
 - Start each independent change from an up-to-date upstream base on a focused
-  branch. Use `codex/<topic>` unless the user specifies another convention.
-  Do not commit directly to `main`.
+  branch. Use conventional prefixes such as `feat/`, `fix/`, `chore/`, `docs/`,
+  or `release/`. Do not commit directly to `main`. Keep commit messages, PR
+  titles/descriptions, and labels free of agent branding.
 - Prefer an isolated worktree when the existing checkout has unrelated work.
   In Codex, use its managed worktree tools when available. If isolation is
   unavailable, keep unrelated files and hunks out of the commit explicitly.
