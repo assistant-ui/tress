@@ -9,6 +9,23 @@ export default withDocs(defineConfig({
       : undefined,
   plugins: [wasm()],
   images: { provider: "none" },
+  // Browsers download text/markdown; source links should display as text.
+  headers: () => [
+    "/docs.md",
+    "/docs/try.md",
+    "/docs/existing-app.md",
+    "/docs/authentication.md",
+    "/docs/local.md",
+    "/docs/production.md",
+    "/docs/reference.md",
+  ].map((source) => ({
+    source,
+    headers: [
+      { key: "Content-Type", value: "text/plain; charset=utf-8" },
+      { key: "Content-Disposition", value: "inline" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+    ],
+  })),
   routeRules: {
     "/api/**": { runtime: "node", regions: ["iad1"], maxDuration: 300 },
   },
