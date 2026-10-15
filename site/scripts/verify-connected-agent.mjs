@@ -4,10 +4,15 @@ import assert from "node:assert/strict";
 import { StatewireClient, StatewireHttp } from "statewire";
 
 const local = process.argv.includes("--local");
+const attach = process.argv.includes("--attach");
+const ui = process.argv.includes("--ui");
+const whole = process.argv.includes("--whole-filesystem");
+if (whole && !attach) throw new Error("Whole filesystem fixture requires --attach.");
+if (attach && !local) throw new Error("The attach fixture requires --local.");
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +24,13 @@ const waitFor = async (predicate, label) => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`Timed out: ${label}`);
+};
+const stopChild = async (child) => {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, "exit");
+  child.kill("SIGTERM");
+  const timer = setTimeout(() => child.kill("SIGKILL"), 2000);
+  try { await exited; } finally { clearTimeout(timer); }
 };
 const sse = (block) => [
   { type: "message_start" },
@@ -39,17 +51,20 @@ const sse = (block) => [
   { type: "message_stop" },
 ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
 
-const root = await mkdtemp(join(tmpdir(), "tress-connected-agent-"));
+const root = await realpath(await mkdtemp(join(tmpdir(), "tress-connected-agent-")));
 const workspace = join(root, "workspace");
 await mkdir(workspace);
 await writeFile(join(workspace, "note.txt"), "CONNECTED-FILE-CONTENT\n");
+const notePath = whole ? join(workspace, "note.txt") : "note.txt";
+const browseDirectory = whole ? workspace.replace(/^\//, "") : "";
+const browseNote = whole ? `${browseDirectory}/note.txt` : "note.txt";
 const requests = [];
 const responses = [
-  { type: "tool_use", id: "read1", name: "read", input: { path: "note.txt" } },
+  { type: "tool_use", id: "read1", name: "read", input: { path: notePath } },
   { type: "text", text: "The connected note was read." },
-  { type: "tool_use", id: "read2", name: "read", input: { path: "note.txt" } },
-  { type: "tool_use", id: "edit1", name: "edit", input: { path: "note.txt", old: "CONNECTED-FILE-CONTENT", new: "EDITED-THROUGH-HOST" } },
-  { type: "tool_use", id: "read3", name: "read", input: { path: "note.txt" } },
+  { type: "tool_use", id: "read2", name: "read", input: { path: notePath } },
+  { type: "tool_use", id: "edit1", name: "edit", input: { path: notePath, old: "CONNECTED-FILE-CONTENT", new: "EDITED-THROUGH-HOST" } },
+  { type: "tool_use", id: "read3", name: "read", input: { path: notePath } },
   { type: "text", text: "The connected note was edited and read back." },
 ];
 const model = createServer(async (request, response) => {
@@ -62,6 +77,7 @@ const model = createServer(async (request, response) => {
 let host;
 let connector;
 let browser;
+let connectorOutput = "";
 try {
   await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
   const probe = createServer();
@@ -116,19 +132,24 @@ try {
   assert.match(cookies, /tress_demo_owner=/);
   const binary = process.env.TRESS_TEST_BINARY ?? fileURLToPath(new URL("../../target/debug/tress", import.meta.url));
   const pair = async (writable) => {
-    if (connector?.exitCode === null) {
-      connector.kill("SIGTERM");
-      await once(connector, "exit");
-    }
-    let output = "";
-    connector = spawn(binary, ["connect", "--site", origin, ...(writable ? ["--allow-write"] : [])], {
+    await stopChild(connector);
+    connectorOutput = "";
+    const args = attach
+      ? ["attach", origin, "-s", mode.session.attachId, ...(whole ? [] : ["--root", "."]), ...(ui ? ["--ui"] : [])]
+      : ["connect", "--site", origin];
+    if (writable) args.push("--allow-write");
+    connector = spawn(ui ? "python3" : binary, ui ? [fileURLToPath(new URL("./pty-cli.py", import.meta.url)), binary, ...args] : args, {
       cwd: workspace,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
-    connector.stdout.on("data", (part) => { output += part; });
-    connector.stderr.on("data", (part) => { output += part; });
-    await waitFor(() => /Code: [A-Za-z0-9_-]{12}/.test(output), "native pairing code");
-    const code = output.match(/Code: ([A-Za-z0-9_-]{12})/)[1];
+    connector.stdout.on("data", (part) => { connectorOutput += part; });
+    connector.stderr.on("data", (part) => { connectorOutput += part; });
+    await waitFor(() => {
+      if (connector.exitCode !== null) throw new Error(connectorOutput);
+      return /Code: [A-Za-z0-9_-]{12}/.test(connectorOutput);
+    }, "native pairing code");
+    if (attach) assert(!connectorOutput.includes("\x1b[?1049h"), "UI waits for browser pairing");
+    const code = connectorOutput.match(/Code: ([A-Za-z0-9_-]{12})/)[1];
     const claim = await fetch(`${origin}/api/connect/claim`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookies, Origin: origin },
@@ -142,6 +163,12 @@ try {
       const device = response.ok ? (await response.json()).device : null;
       return device?.online && device.writable === writable;
     }, "native connector online");
+    if (attach) {
+      await waitFor(() => {
+        if (connector.exitCode !== null) throw new Error(connectorOutput);
+        return ui ? connectorOutput.includes("\x1b[?1049h") : connectorOutput.includes("shared thread");
+      }, "attach chat opens after pairing");
+    }
   };
   const turn = async (text) => {
     if (local) {
@@ -169,8 +196,13 @@ try {
     assert.equal(response.status, 200, `browser ${operation}: ${response.status}`);
     return (await response.json()).value;
   };
-  assert((await browse("list", "")).some((entry) => entry.name === "note.txt"));
-  assert.equal(await browse("read", "note.txt"), "CONNECTED-FILE-CONTENT\n");
+  if (whole) {
+    assert.equal(status.device.label, "Whole filesystem");
+    assert.equal(status.device.rootLabel, "/");
+    assert(connectorOutput.includes("Scope: Whole filesystem"));
+  }
+  assert((await browse("list", browseDirectory)).some((entry) => entry.name === "note.txt"));
+  assert.equal(await browse("read", browseNote), "CONNECTED-FILE-CONTENT\n");
   const stream = await turn("Read note.txt");
   assert(stream.includes("The connected note was read."), stream);
   assert.equal(requests.length, 2, "the tool result returns to the model");
@@ -181,29 +213,53 @@ try {
   if (local) assert.deepEqual(browser.state.files, {}, "connected files are fetched on demand");
   else assert(stream.includes('"type":"data-files","data":{}'), "local files are not mirrored into previews");
   await pair(true);
-  const edited = await turn("Read note.txt, edit its content, and read it back");
+  let edited;
+  if (attach) {
+    const before = browser.state.runs;
+    // Wait for both clients to receive the thread state before typing.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    connector.stdin.write(`/pwd${ui ? "\r" : "\n"}`);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    connector.stdin.write(`Read note.txt, edit its content, and read it back${ui ? "\r" : "\n"}`);
+    await waitFor(() => browser.state.runs > before && browser.state.status !== "running", "terminal edit appears in browser");
+    edited = JSON.stringify(browser.state.entries);
+  } else {
+    edited = await turn("Read note.txt, edit its content, and read it back");
+  }
   assert(edited.includes("The connected note was edited and read back."), edited);
   assert.equal(requests.length, 6);
   assert.equal(await readFile(join(workspace, "note.txt"), "utf8"), "EDITED-THROUGH-HOST\n");
   assert(JSON.stringify(requests[5]).includes("EDITED-THROUGH-HOST"), "the model receives content read back from disk");
   const writeTools = requests[2].tools.map((tool) => tool.name);
   assert(writeTools.includes("write") && writeTools.includes("edit") && !writeTools.includes("bash"));
+  if (attach) {
+    const exited = once(connector, "exit");
+    connector.stdin.write(ui ? "\x04" : "/disconnect\n");
+    await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error("attach did not exit")), 5000))]);
+    assert.equal(connector.exitCode, 0, connectorOutput);
+    if (ui) assert(connectorOutput.includes("\x1b[?1049l"), "terminal restored on exit");
+    const first = await (await fetch(`${origin}/api/connect/status?thread=${mode.session.id}`, { headers: { Cookie: cookies } })).json();
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // No detached worker remains to receive queued work after the chat exits.
+    const query = new URLSearchParams({ thread: mode.session.id, session: mode.session.attachId, device: first.device.id, operation: "read", path: browseNote });
+    await assert.rejects(fetch(`${origin}/api/connect/files?${query}`, { signal: AbortSignal.timeout(1600) }), /abort|timeout/i);
+  }
   const revoke = await fetch(`${origin}/api/connect/status?thread=${mode.session.id}`, {
     method: "DELETE", headers: { Cookie: cookies, Origin: origin },
   });
   assert.equal(revoke.status, 200);
-  console.log(`✓ ${local ? "local thread" : "managed callback"}: browser lists and previews files; agent reads, edits, and reads back the native folder; read-only policy and revocation pass`);
+  console.log(`✓ ${attach ? `attach${ui ? " --ui" : ""} + ${whole ? "whole filesystem" : "folder"}` : local ? "local thread" : "managed callback"}: browser lists and previews files; agent reads, edits, and reads back the native folder; read-only policy and revocation pass`);
+} catch (error) {
+  console.error(error);
+  if (attach) console.error(connectorOutput);
+  throw error;
 } finally {
   browser?.dispose();
-  if (connector?.exitCode === null) {
-    connector.kill("SIGTERM");
-    await once(connector, "exit");
-  }
-  if (host?.exitCode === null) {
-    host.kill("SIGTERM");
-    await once(host, "exit");
-  }
-  model.closeAllConnections();
-  await new Promise((resolve) => model.close(resolve));
+  await stopChild(connector);
+  await stopChild(host);
+  await new Promise((resolve) => {
+    model.close(resolve);
+    model.closeAllConnections();
+  });
   await rm(root, { recursive: true, force: true });
 }

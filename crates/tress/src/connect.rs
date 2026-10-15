@@ -36,6 +36,7 @@ struct Offered {
 #[serde(rename_all = "camelCase")]
 struct Poll {
     paired: bool,
+    session_matched: Option<bool>,
     job: Option<Job>,
 }
 
@@ -113,6 +114,9 @@ fn options(args: &[String]) -> Result<Options, String> {
         return Err("workspace root must be a directory".into());
     }
     let label = label.unwrap_or_else(|| {
+        if root.parent().is_none() {
+            return "Whole filesystem".into();
+        }
         root.file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "local folder".into())
@@ -128,14 +132,50 @@ fn options(args: &[String]) -> Result<Options, String> {
     })
 }
 
-fn safe_path(root: &Dir, path: &str, directory: bool) -> Result<PathBuf, String> {
+fn root_label(root: &Path) -> String {
+    if let Some(name) = root.file_name() {
+        return name.to_string_lossy().into_owned();
+    }
+    // canonicalize() uses extended-length drive paths on Windows; publish the
+    // ordinary drive root so browser tools can recognize absolute input.
+    #[cfg(windows)]
+    if let Some(Component::Prefix(prefix)) = root.components().next() {
+        if let std::path::Prefix::Disk(letter) | std::path::Prefix::VerbatimDisk(letter) =
+            prefix.kind()
+        {
+            return format!("{}:\\", char::from(letter));
+        }
+    }
+    root.display().to_string()
+}
+
+fn safe_path(
+    root: &Dir,
+    path: &str,
+    directory: bool,
+    filesystem_root: Option<&Path>,
+) -> Result<PathBuf, String> {
     if path.len() > 1024 || path.contains('\0') {
         return Err("invalid file path".into());
     }
     if path.is_empty() && directory {
         return Ok(PathBuf::from("."));
     }
-    let relative = Path::new(path);
+    let requested = Path::new(path);
+    let relative = if requested.is_absolute() {
+        match filesystem_root {
+            Some(base) => requested
+                .strip_prefix(base)
+                .or_else(|_| requested.strip_prefix(Path::new(&root_label(base))))
+                .map_err(|_| "path is outside the shared filesystem")?,
+            None => return Err("path must stay inside the connected folder".into()),
+        }
+    } else {
+        requested
+    };
+    if relative.as_os_str().is_empty() && directory {
+        return Ok(PathBuf::from("."));
+    }
     if relative.as_os_str().is_empty()
         || relative.is_absolute()
         || relative
@@ -159,10 +199,15 @@ fn safe_path(root: &Dir, path: &str, directory: bool) -> Result<PathBuf, String>
     Ok(current)
 }
 
-fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
+fn execute_scoped(
+    root: &Dir,
+    writable: bool,
+    job: &Job,
+    filesystem_root: Option<&Path>,
+) -> JobResult {
     let result: Result<serde_json::Value, String> = (|| match job.operation.as_str() {
         "read" => {
-            let path = safe_path(root, &job.path, false)?;
+            let path = safe_path(root, &job.path, false, filesystem_root)?;
             let metadata = root.metadata(&path).map_err(|error| error.to_string())?;
             if !metadata.is_file() {
                 return Err("only regular files can be read".into());
@@ -181,7 +226,7 @@ fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
             Ok(serde_json::Value::String(content))
         }
         "list" => {
-            let path = safe_path(root, &job.path, true)?;
+            let path = safe_path(root, &job.path, true, filesystem_root)?;
             let mut entries = Vec::new();
             for entry in root.read_dir(path).map_err(|error| error.to_string())? {
                 let entry = entry.map_err(|error| error.to_string())?;
@@ -208,7 +253,7 @@ fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
             if content.len() > 1_048_576 {
                 return Err("file exceeds the 1 MB write limit".into());
             }
-            let path = safe_path(root, &job.path, false)?;
+            let path = safe_path(root, &job.path, false, filesystem_root)?;
             let parent = path
                 .parent()
                 .filter(|parent| !parent.as_os_str().is_empty())
@@ -236,107 +281,181 @@ fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
     }
 }
 
-pub async fn run(args: &[String]) -> Result<(), String> {
-    let options = options(args)?;
-    // All file operations use this open directory capability, including when
-    // a path is replaced with a symlink between validation and I/O.
-    let root = Dir::open_ambient_dir(&options.root, ambient_authority())
-        .map_err(|error| format!("workspace root: {error}"))?;
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|error| error.to_string())?;
-    let endpoint = |name: &str| {
-        options
+/// A folder connection lives inside the attach future, so leaving the terminal
+/// drops its polling loop as well. No detached worker keeps accessing files.
+pub struct Connection {
+    options: Options,
+    root: Dir,
+    client: reqwest::Client,
+    token: String,
+    session: Option<String>,
+    failures: u32,
+}
+
+impl Connection {
+    fn endpoint(&self, name: &str) -> reqwest::Url {
+        let mut url = self
+            .options
             .site
             .join(&format!("api/connect/{name}"))
-            .expect("validated site origin")
-    };
-    let root_label = options
-        .root
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "workspace".into());
-    let response = client
-        .post(endpoint("offer"))
-        .json(&Offer {
-            label: &options.label,
-            root_label: &root_label,
-            writable: options.writable,
-        })
-        .send()
-        .await
-        .map_err(|error| format!("cannot reach site: {error}"))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "site refused connection offer: {}",
-            response.status()
-        ));
-    }
-    let offered: Offered = response.json().await.map_err(|error| error.to_string())?;
-    println!("Pair this folder at {}", options.site);
-    println!("Code: {} (expires in 5 minutes)", offered.code);
-    println!("Folder: {}", options.root.display());
-    println!(
-        "Access: {}",
-        if options.writable {
-            "read and write"
-        } else {
-            "read-only"
+            .expect("validated site origin");
+        if let Some(session) = &self.session {
+            url.query_pairs_mut().append_pair("session", session);
         }
-    );
-    println!("Anyone with this thread's private attach link can ask the agent to use this folder.");
-    println!(
-        "File contents read by the agent may be sent to the model provider and Harness Cloud."
-    );
-    println!("No Harness key is stored here. Press Ctrl-C to disconnect.\n");
-    let mut paired = false;
-    let mut failures = 0u32;
-    loop {
-        let response = client
-            .post(endpoint("poll"))
-            .bearer_auth(&offered.token)
+        url
+    }
+
+    pub fn description(&self) -> String {
+        format!(
+            "Sharing {}{} · {} · no shell. Exit to stop sharing.",
+            if self.options.root.parent().is_none() {
+                "whole filesystem "
+            } else {
+                ""
+            },
+            self.options.root.display(),
+            if self.options.writable {
+                "read + write"
+            } else {
+                "read-only"
+            }
+        )
+    }
+
+    async fn open(options: Options, session: Option<&str>) -> Result<Self, String> {
+        // Keep an open directory capability so path replacement cannot escape
+        // the selected root between validation and a filesystem operation.
+        let root =
+            Dir::open_ambient_dir(&options.root, ambient_authority()).map_err(|e| e.to_string())?;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| e.to_string())?;
+        let mut connection = Self {
+            options,
+            root,
+            client,
+            token: String::new(),
+            session: session.map(str::to_owned),
+            failures: 0,
+        };
+        let root_label = root_label(&connection.options.root);
+        let response = connection
+            .client
+            .post(connection.endpoint("offer"))
+            .json(&Offer {
+                label: &connection.options.label,
+                root_label: &root_label,
+                writable: connection.options.writable,
+            })
+            .send()
+            .await
+            .map_err(|e| format!("cannot reach site: {e}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "site refused connection offer: {}",
+                response.status()
+            ));
+        }
+        let offered: Offered = response.json().await.map_err(|e| e.to_string())?;
+        connection.token = offered.token;
+        let mut browser_url = connection.options.site.clone();
+        if let Some(session) = session {
+            browser_url
+                .query_pairs_mut()
+                .append_pair("session", session);
+        }
+        println!("Pair this folder at {browser_url}");
+        println!("Code: {} (expires in 5 minutes)", offered.code);
+        println!("Folder: {}", connection.options.root.display());
+        if connection.options.root.parent().is_none() {
+            println!("Scope: Whole filesystem accessible to this process, subject to OS permissions. Use --root <folder> to restrict access.");
+        }
+        println!(
+            "Access: {}",
+            if connection.options.writable {
+                "read and write"
+            } else {
+                "read-only"
+            }
+        );
+        println!(
+            "Anyone with this thread's private attach link can ask the agent to use this folder."
+        );
+        println!(
+            "File contents read by the agent may be sent to the model provider and Harness Cloud."
+        );
+        println!("No Harness key is stored here. Press Ctrl-C to disconnect.\n");
+        Ok(connection)
+    }
+
+    async fn poll(&mut self, quiet: bool) -> Result<Option<Poll>, String> {
+        let response = self
+            .client
+            .post(self.endpoint("poll"))
+            .bearer_auth(&self.token)
             .send()
             .await;
         let response = match response {
             Ok(response) if !response.status().is_server_error() => {
-                if failures > 0 {
+                if self.failures > 0 && !quiet {
                     println!("Site connection restored.");
-                    failures = 0;
                 }
+                self.failures = 0;
                 response
             }
             _ => {
-                if failures == 0 {
+                if self.failures == 0 && !quiet {
                     eprintln!("Site connection interrupted; retrying without a new pairing code.");
                 }
-                failures = failures.saturating_add(1);
-                tokio::time::sleep(Duration::from_secs(1_u64 << failures.min(4))).await;
-                continue;
+                self.failures = self.failures.saturating_add(1);
+                tokio::time::sleep(Duration::from_secs(1_u64 << self.failures.min(4))).await;
+                return Ok(None);
             }
         };
         if response.status() == reqwest::StatusCode::GONE {
             return Err("pairing expired or this connection was revoked".into());
         }
+        if response.status() == reqwest::StatusCode::CONFLICT {
+            return Err("Pair this folder in the same chat as your attach command. Run the command again for a new code.".into());
+        }
         if !response.status().is_success() {
             return Err(format!("connection rejected: {}", response.status()));
         }
-        let poll: Poll = response.json().await.map_err(|error| error.to_string())?;
-        if poll.paired && !paired {
-            println!("Connected. Browser requests can now use this folder.");
-            paired = true;
+        let poll: Poll = response.json().await.map_err(|e| e.to_string())?;
+        // Older hosts may ignore the session query. Never serve their jobs when
+        // we cannot establish that they belong to the attached conversation.
+        if self.session.is_some() && poll.session_matched != Some(true) {
+            return Err("This host needs an update before attach can share a folder. Use the separate connect command with browser pairing.".into());
         }
+        Ok(Some(poll))
+    }
+
+    async fn handle(&self, poll: Poll, quiet: bool) -> Result<(), String> {
         if let Some(job) = poll.job {
+            if !poll.paired {
+                return Err("The host requested a file before pairing.".into());
+            }
             let body = ResultBody {
                 id: &job.id,
-                result: execute(&root, options.writable, &job),
+                result: execute_scoped(
+                    &self.root,
+                    self.options.writable,
+                    &job,
+                    self.options
+                        .root
+                        .parent()
+                        .is_none()
+                        .then_some(self.options.root.as_path()),
+                ),
             };
-            // A result POST is idempotent. Do not fetch another job until it is acknowledged.
+            // Retry delivery, never execution: a write may already be on disk.
             loop {
-                match client
-                    .post(endpoint("result"))
-                    .bearer_auth(&offered.token)
+                match self
+                    .client
+                    .post(self.endpoint("result"))
+                    .bearer_auth(&self.token)
                     .json(&body)
                     .send()
                     .await
@@ -346,7 +465,11 @@ pub async fn run(args: &[String]) -> Result<(), String> {
                         return Err("connection was revoked".into())
                     }
                     Ok(response) if response.status() == reqwest::StatusCode::NOT_FOUND => {
-                        eprintln!("A file result arrived after its request expired; reconnecting.");
+                        if !quiet {
+                            eprintln!(
+                                "A file result arrived after its request expired; reconnecting."
+                            );
+                        }
                         break;
                     }
                     Ok(response) if response.status().is_client_error() => {
@@ -361,6 +484,62 @@ pub async fn run(args: &[String]) -> Result<(), String> {
         } else {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
+        Ok(())
+    }
+
+    async fn wait_for_pair(&mut self) -> Result<(), String> {
+        loop {
+            if let Some(poll) = self.poll(false).await? {
+                let paired = poll.paired;
+                self.handle(poll, false).await?;
+                if paired {
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    pub async fn serve(mut self) -> Result<(), String> {
+        loop {
+            if let Some(poll) = self.poll(true).await? {
+                self.handle(poll, true).await?;
+            }
+        }
+    }
+}
+
+pub async fn prepare_attached(
+    site: &str,
+    session: &str,
+    root: &Path,
+    writable: bool,
+) -> Result<Connection, String> {
+    let mut args = vec![
+        "--site".into(),
+        site.into(),
+        "--root".into(),
+        root.to_string_lossy().into_owned(),
+    ];
+    if writable {
+        args.push("--allow-write".into());
+    }
+    let mut connection = Connection::open(options(&args)?, Some(session)).await?;
+    println!(
+        "Enter this code in that chat's connect folder form. The terminal opens after pairing."
+    );
+    connection.wait_for_pair().await?;
+    println!("Folder paired. Opening the shared chat…");
+    Ok(connection)
+}
+
+pub async fn run(args: &[String]) -> Result<(), String> {
+    let mut connection = Connection::open(options(args)?, None).await?;
+    connection.wait_for_pair().await?;
+    println!("Connected. Browser requests can now use this folder.");
+    loop {
+        if let Some(poll) = connection.poll(false).await? {
+            connection.handle(poll, false).await?;
+        }
     }
 }
 
@@ -368,6 +547,53 @@ pub async fn run(args: &[String]) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
+        execute_scoped(root, writable, job, None)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn canonical_drive_roots_use_normal_drive_labels() {
+        assert_eq!(root_label(Path::new(r"\\?\C:\")), "C:\\");
+        assert_eq!(root_label(Path::new(r"C:\")), "C:\\");
+        assert_eq!(root_label(Path::new(r"\\?\C:\project")), "project");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn whole_filesystem_reads_absolute_paths_but_restricted_folders_do_not() {
+        let path = root().canonicalize().unwrap();
+        let note = path.join("note.txt");
+        std::fs::write(&note, "real filesystem fixture").unwrap();
+        let machine = Dir::open_ambient_dir("/", ambient_authority()).unwrap();
+        let folder = Dir::open_ambient_dir(&path, ambient_authority()).unwrap();
+        let read = Job {
+            id: "root-read".into(),
+            operation: "read".into(),
+            path: note.display().to_string(),
+            content: None,
+        };
+        assert_eq!(
+            execute_scoped(&machine, false, &read, Some(Path::new("/"))).value,
+            Some(serde_json::json!("real filesystem fixture"))
+        );
+        assert!(!execute(&folder, false, &read).ok);
+        let write = Job {
+            operation: "write".into(),
+            content: Some("updated".into()),
+            ..read
+        };
+        assert!(!execute_scoped(&machine, false, &write, Some(Path::new("/"))).ok);
+        assert!(execute_scoped(&machine, true, &write, Some(Path::new("/"))).ok);
+        assert_eq!(std::fs::read_to_string(&note).unwrap(), "updated");
+        assert_eq!(
+            safe_path(&machine, "/", true, Some(Path::new("/"))).unwrap(),
+            PathBuf::from(".")
+        );
+        assert!(safe_path(&machine, "/../outside", false, Some(Path::new("/"))).is_err());
+        std::fs::remove_dir_all(path).unwrap();
+    }
 
     fn root() -> PathBuf {
         let id = SystemTime::now()

@@ -33,7 +33,9 @@ replaces the executable and leaves your configuration and files untouched.
 
 The default changes in v0.2.0: `tress` and `tress ask` connect to a host. Run
 `tress setup` once to choose that host and session. Existing commands using
-`tress attach <url> -s <id>` keep working without setup.
+`tress attach <url> -s <id>` work without setup. In the updated CLI,
+attaching to a Tress site session offers the machine filesystem for browser
+pairing by default; add `--chat-only` to retain chat-only behavior.
 
 For the previous local behavior, use `tress --local` or
 `tress --local ask "your task"` with your existing `ANTHROPIC_API_KEY`. Run
@@ -68,7 +70,7 @@ Then use:
 tress                           # join the saved thread
 tress --ui                      # opt into the full terminal interface
 tress ask "explain these files"  # send a hosted prompt and exit
-tress attach -s <session-id>     # another thread on the saved host
+tress attach -s <session-id> --chat-only  # another thread on the saved host
 ```
 
 Explicit attachment still works without setup:
@@ -77,7 +79,20 @@ Explicit attachment still works without setup:
 tress attach https://your-tress-host.example -s <session-id>
 ```
 
-Files belong to the host's workspace, which may be a local directory on that
+With a Tress site session, attach shares the machine filesystem by default
+(`/` on macOS/Linux, the current drive root on Windows). Enter its pairing code
+in the browser chat to activate access. To restrict it to a project folder:
+
+```sh
+tress attach https://your-tress-host.example -s <session-id> --root . --ui
+```
+
+Add `--chat-only` to join without sharing files, or `--allow-write` for edits. Exit to stop sharing. See the
+[connected folder guide](connected-folder.md) for access rules and remote VMs.
+This requires the updated Tress site's connection API; the older `connect`
+command remains supported for a folder-only process.
+
+With `--chat-only`, plain `tress`, or `tress ask`, files belong to the host's workspace, which may be a local directory on that
 host, virtual files, or a sandbox. Connecting from a project directory does not
 upload that directory. `/pwd` describes the host's workspace. Client disconnects
 do not stop a host run.

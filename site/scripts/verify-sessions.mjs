@@ -178,7 +178,7 @@ try {
   let output = "";
   terminal = spawn(
     cli,
-    ["attach", "-s", a.config.session.attachId],
+    ["attach", "-s", a.config.session.attachId, "--chat-only"],
     { env: clientEnv, stdio: ["pipe", "pipe", "pipe"] },
   );
   terminal.stdout.on("data", (chunk) => (output += chunk));

@@ -198,3 +198,22 @@ test("file previews are opt-in, bounded, exclude hidden files and do not mutate 
     {},
   );
 });
+
+test("whole-filesystem tools translate absolute paths while folder tools remain scoped", async () => {
+  const folder = createBashWorkspace({ files: { "Users/demo/note.txt": "before" } });
+  const scoped = createWorkspaceTools(folder);
+  assert.equal((await scoped.execute("read", { path: "/Users/demo/note.txt" })).is_error, true);
+  const machine = { ...folder, filesystemRoot: "/" };
+  const readOnly = createWorkspaceTools(machine);
+  assert.equal((await readOnly.execute("read", { path: "/Users/demo/note.txt" })).content, "before");
+  assert.equal((await readOnly.execute("ls", { path: "/" })).content, "Users/");
+  assert.equal((await readOnly.execute("read", { path: "/../outside" })).is_error, true);
+  assert.equal((await readOnly.execute("write", { path: "/Users/demo/note.txt", content: "denied" })).is_error, true);
+  const writable = createWorkspaceTools(machine, { include: ["read", "ls", "write", "edit"] });
+  assert.equal((await writable.execute("edit", { path: "/Users/demo/note.txt", old: "before", new: "after" })).is_error, false);
+  assert.equal(await folder.readFile("Users/demo/note.txt"), "after");
+  const drive = createWorkspaceTools({ ...folder, filesystemRoot: "C:\\" });
+  assert.equal((await drive.execute("read", { path: "c:\\Users\\demo\\note.txt" })).content, "after");
+  assert.equal((await drive.execute("read", { path: "D:\\Users\\demo\\note.txt" })).is_error, true);
+  assert.throws(() => createWorkspaceTools({ ...folder, filesystemRoot: "/Users/demo" }), /filesystemRoot/);
+});

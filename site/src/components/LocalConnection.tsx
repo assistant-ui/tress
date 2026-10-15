@@ -33,7 +33,7 @@ export function LocalConnection({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
-  const command = `tress connect --site ${origin || "https://your-tress-site"}`;
+  const command = `tress attach ${origin || "https://your-tress-site"} -s ${attachId} --ui`;
 
   useEffect(() => {
     let alive = true;
@@ -142,7 +142,7 @@ export function LocalConnection({
       </div>
       {!device && expanded ? (
         <div className="local-connect-steps">
-          <p>Run this inside a project folder on your computer, VM, or remote host. Files appear here after pairing. Add <code>--allow-write</code> to allow the agent to edit; shell execution is not part of this connection.</p>
+          <p>Run this on your computer, VM, or remote host. After pairing, it shares the whole filesystem accessible to that terminal and opens this chat. Add <code>--root /path/to/project</code> to restrict access to a folder, or <code>--allow-write</code> to allow edits. Shell execution is not included.</p>
           <div className="attach-command">
             <span aria-hidden="true">$</span>
             <code>{command}</code>
@@ -163,7 +163,7 @@ export function LocalConnection({
               {pending ? "Connecting…" : "Connect"}
             </button>
           </form>
-          <p>Anyone with this thread’s private attach link can browse this folder and ask the agent to use it. Files read by the agent enter its model conversation.</p>
+          <p>Keep the terminal open while using its files. Anyone with this thread’s private attach link can access the shared scope, including personal files your terminal can read. Files read by the agent enter its model conversation.</p>
         </div>
       ) : null}
       {device && !manageable ? <p className="local-connect-viewer">This folder is shared with this thread. Only its owner can disconnect it.</p> : null}

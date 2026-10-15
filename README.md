@@ -7,7 +7,7 @@ A tiny coding agent with a shared thread. Its native terminal client and browser
 ```sh
 tress setup              # connect to a host; no personal API key needed
 tress                    # join your saved thread
-tress attach -s <id>     # join another thread on that host
+tress attach -s <id> --chat-only  # join another thread on that host
 ```
 
 [Install and configuration guide](docs/setup.md). Use v0.3.0 or newer for connected
@@ -68,10 +68,12 @@ See [managed demo setup, credentials, and visitor steps](docs/public-demo.md)
 or the [site reference](site/README.md) for storage details.
 
 The managed public demo can also use a visitor's local folder without giving
-the visitor a Harness key. Run `tress connect --site <site-url>` in
-that folder, then enter its short pairing code in your browser thread. The
-current directory is used by default; optionally pass `--root <path>` to
-choose another folder. It is read-only by default; add `--allow-write` to
+the visitor a Harness key. Run
+`tress attach <site-url> -s <session-id> --root . --ui` in that folder, then
+enter its pairing code in the same browser chat. The terminal UI opens after
+pairing and keeps folder access running until you exit. Use `--root <path>` to
+choose another folder. Omit `--root` to share the whole filesystem accessible
+to your process, or use `--chat-only` for no file sharing. Access is read-only by default; add `--allow-write` to
 permit file edits. This native process serves scoped file requests and does
 **not** become the agent host or
 expose a shell. See [connected-folder setup and access rules](docs/connected-folder.md).

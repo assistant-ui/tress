@@ -23,6 +23,9 @@ export type WorkspaceDetails = {
 export interface Workspace {
   readonly kind: string;
   readonly details?: WorkspaceDetails;
+  /** Full OS filesystem root ("/" or a drive root). Tools may accept absolute
+   * input here and convert it to the relative paths used by adapter methods. */
+  readonly filesystemRoot?: string;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
   listFiles(path?: string): Promise<FileEntry[]>;

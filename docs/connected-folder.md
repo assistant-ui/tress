@@ -1,24 +1,33 @@
 # Connect a computer or VM workspace
 
-The site owns the model credentials and, in managed mode, the Harness credentials. `tress connect` does
-not log into Harness, need an API key, or open an inbound port. It offers one
-folder to one browser-owned demo thread through a short-lived pairing code.
+The site owns the model credentials and, in managed mode, the Harness credentials. `tress attach` does
+not log into Harness, need an API key, or open an inbound port. It offers a filesystem
+to one browser-owned demo thread through a short-lived pairing code.
 
 ## Visitor steps
 
 1. Open the public site, create or select a thread, and choose **connect folder**.
-2. Install the native `tress` binary. In the directory you want to share, run:
+2. Install the updated native `tress` binary. On the machine you want to access, run:
 
    ```sh
-   tress connect --site https://your-tress-site.example
+   tress attach https://your-tress-site.example -s YOUR_SESSION_ID --ui
    ```
 
-   The current directory is used by default. `--root <path>` is optional and
-   selects another folder. This grants read/list access only. To allow the
-   agent to edit files inside that folder, add `--allow-write`. No native
-   shell commands are exposed in connected-folder mode.
+   Copy the site and session from your browser chat. Without `--root`, this
+   shares the filesystem root (`/` on macOS/Linux, the current drive root on
+   Windows), subject to the process's OS permissions. Add `--root .` to share
+   only the current folder, or `--root /path/to/project` for another folder.
+   Access is read-only unless you add `--allow-write`. Use `--chat-only` to
+   join the conversation without offering any filesystem. No native shell
+   commands are exposed. Symlink paths and special files remain unavailable.
+
+   Whole-filesystem access includes personal files readable by that process.
+   The CLI prints the exact scope before pairing, and the browser labels it
+   **Whole filesystem**. No file content is sent until a file is requested.
 3. Enter the code printed by the binary in the browser's pairing form. The
-   code expires after five minutes. The browser shows the folder label,
+   code expires after five minutes. Pair in the same chat as the command.
+   After pairing, the terminal UI opens and the same process serves file requests.
+   Omit `--ui` for plain terminal output. The browser shows the folder label,
    permissions, and actual online/offline state. The file browser opens with
    the real directory listing. Open subfolders and files, or use **Refresh**
    after an external change. **Ask about file** prepares a prompt; **Ask to edit**
@@ -26,12 +35,15 @@ folder to one browser-owned demo thread through a short-lived pairing code.
    it through the agent's existing tools.
    On a VM, run the same command inside its project directory. The site address
    must be reachable from that VM; `localhost` refers to the VM itself.
-4. Ask about or edit files in the same conversation from the browser or an
-   attached terminal. Close the binary or use **disconnect** to stop local
+4. Ask about or edit files in the same conversation from the browser or that
+   terminal. `/exit`, `/disconnect`, or closing the process stops sharing;
+   switching chats requires exiting first. The browser’s **disconnect** also stops local
    access. The managed conversation remains available when the device is
    offline, but local file operations will not silently switch to demo files.
 
-The binary prints the exact canonical root before pairing. It keeps a
+The binary prints the exact canonical root before pairing. Whole-filesystem
+connections accept absolute paths such as `/Users/mac/oss/riftri/README.md`;
+folder-scoped connections require paths relative to that folder. It keeps a
 revocable, thread-scoped device token in memory for that process only; it
 does not save the token or the Harness project key. Restarting it currently
 requires a new pairing. Temporary network failures are retried while the
@@ -64,9 +76,16 @@ read/list/write jobs through PostgreSQL; a long-running gateway service is
 not required for this first version.
 
 Pairing also works with a long-running local thread host (`TRESS_THREAD_MODE=local`)
-and a configured model; Harness Cloud is not needed for that setup. A terminal
-attached with `tress attach` only joins the chat. Use `tress connect` separately
-to grant access to a folder. New threads start without seeded example files.
+and a configured model; Harness Cloud is not needed for that setup.
+New threads start without seeded example files. Folder attachment requires the
+Tress site connection API and a session; application thread URLs without a Tress session (including
+`--headers-file` connections) continue to use their application-owned workspace.
+Plain `tress` and `tress ask` also use the saved host workspace; this default
+filesystem sharing applies to the explicit `attach` command.
+
+The older `tress connect --site <url> [--root <folder>] [--allow-write]` command
+remains available for a folder-only process without terminal chat. It uses the
+current directory by default and the same browser pairing form.
 
 For local development without PostgreSQL, the connector store is in memory.
 It resets when the dev server restarts, so reconnect and pair again after a
