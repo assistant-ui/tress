@@ -1,0 +1,17 @@
+{
+  "name": "@assistant-ui/tress",
+  "private": true,
+  "description": "The Tress terminal client for a shared assistant-ui conversation",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/assistant-ui/tress.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/assistant-ui/tress#readme",
+  "engines": { "node": ">=20" },
+  "bin": { "tress": "bin/tress.mjs" },
+  "files": ["bin", "lib", "README.md", "LICENSE"],
+  "scripts": { "test": "node --test tests/*.test.mjs" }
+}

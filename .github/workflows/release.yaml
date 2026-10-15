@@ -56,6 +56,10 @@ jobs:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
         run: cargo build --locked --release -p tress --target ${{ matrix.target }}
+      - name: Test npm installation with this release binary
+        run: npm --prefix packages/cli test
+        env:
+          TRESS_TEST_BINARY: ${{ github.workspace }}/target/${{ matrix.target }}/release/tress
       - name: Smoke test and package
         env:
           TARGET: ${{ matrix.target }}
@@ -76,11 +80,24 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - uses: actions/download-artifact@v4
         with:
           pattern: tress-*
           merge-multiple: true
           path: dist
+      - name: Package npm distributions
+        run: node scripts/package-npm.mjs --artifacts dist --out dist/npm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: |
+            dist/npm/*.tgz
+            dist/npm/release.json
+          if-no-files-found: error
       - name: Publish binaries and checksums
         working-directory: dist
         env:
@@ -89,4 +106,24 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           sha256sum tress-* > SHA256SUMS
-          gh release create "$RELEASE_TAG" tress-* SHA256SUMS --verify-tag --generate-notes
+          gh release create "$RELEASE_TAG" tress-* SHA256SUMS npm/*.tgz npm/release.json --verify-tag --generate-notes
+
+  publish-npm:
+    needs: publish
+    if: vars.TRESS_NPM_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-packages
+          path: dist/npm
+      - name: Publish native packages, then the CLI
+        run: node scripts/publish-npm.mjs dist/npm

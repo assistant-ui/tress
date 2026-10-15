@@ -5,6 +5,18 @@ on:
   pull_request:
 
 jobs:
+  npm:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm --prefix packages/cli test
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -23,6 +35,10 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - name: Test npm installation with the native CLI
+        run: npm --prefix packages/cli test
+        env:
+          TRESS_TEST_BINARY: ${{ github.workspace }}/target/debug/tress
       - run: python3 scripts/verify-cli-release.py target/debug/tress
       - run: python3 scripts/test-setup-pty.py
       - run: npm --prefix packages/access test

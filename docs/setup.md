@@ -26,6 +26,30 @@ with Rust instead:
 cargo install --locked --path crates/tress
 ```
 
+### npm / npx (pending first publication)
+
+The npm installer is implemented in this repository but has not been published
+yet. Once the first npm release is available, Node.js 20+ users on macOS/Linux
+(ARM64 or x64) will be able to run:
+
+```sh
+npm install -g @assistant-ui/tress
+tress setup
+```
+
+Or, without a global install:
+
+```sh
+npx @assistant-ui/tress@latest setup
+npx @assistant-ui/tress@latest attach https://your-host.example -s <session-id> --root . --ui
+```
+
+npm selects a prebuilt binary; no Rust compiler or install script is needed.
+Keep optional dependencies enabled. `--ignore-scripts` is supported. Windows
+users need WSL with Linux Node.js. The unscoped `tress` package on npm belongs
+to another project. See the [npm package](../packages/cli/README.md) and
+[release instructions](releasing.md#npm-publication).
+
 ## Upgrade from v0.1.0
 
 Rerun the install command to upgrade to the latest release. The installer

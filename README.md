@@ -14,6 +14,12 @@ tress attach -s <id> --chat-only  # join another thread on that host
 folders and environment-based startup. The v0.1.0 binary requires an explicit
 URL with `tress attach`.
 
+**npm distribution (not published yet):** this repository includes
+[`@assistant-ui/tress`](packages/cli/README.md), which packages the native client
+for `npm install -g` and `npx`. Its first npm release still needs publication;
+use the existing installer or build from source in the meantime. The unscoped
+`tress` npm package is an unrelated project.
+
 **Existing assistant-ui applications:** the [source preview](examples/existing-app/README.md)
 connects the browser and terminal to your server-owned Harness thread, with
 your authentication and revocation. Build the CLI from this checkout; this
