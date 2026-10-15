@@ -1,6 +1,6 @@
-# Connect a local folder to the public demo
+# Connect a computer or VM workspace
 
-The site owns the model and managed Harness credentials. `tress connect` does
+The site owns the model credentials and, in managed mode, the Harness credentials. `tress connect` does
 not log into Harness, need an API key, or open an inbound port. It offers one
 folder to one browser-owned demo thread through a short-lived pairing code.
 
@@ -19,7 +19,13 @@ folder to one browser-owned demo thread through a short-lived pairing code.
    shell commands are exposed in connected-folder mode.
 3. Enter the code printed by the binary in the browser's pairing form. The
    code expires after five minutes. The browser shows the folder label,
-   permissions, and actual online/offline state.
+   permissions, and actual online/offline state. The file browser opens with
+   the real directory listing. Open subfolders and files, or use **Refresh**
+   after an external change. **Ask about file** prepares a prompt; **Ask to edit**
+   is available only when the connector permits writes. Send the prompt to run
+   it through the agent's existing tools.
+   On a VM, run the same command inside its project directory. The site address
+   must be reachable from that VM; `localhost` refers to the VM itself.
 4. Ask about or edit files in the same conversation from the browser or an
    attached terminal. Close the binary or use **disconnect** to stop local
    access. The managed conversation remains available when the device is
@@ -30,12 +36,13 @@ revocable, thread-scoped device token in memory for that process only; it
 does not save the token or the Harness project key. Restarting it currently
 requires a new pairing. Temporary network failures are retried while the
 process stays open. Connected folders do not mirror the whole directory
-to the site: the agent requests individual paths, and tool output may be sent
-to the model provider and stored in the Harness conversation.
+to the site: the browser and agent request individual paths. Browser previews are loaded
+on demand; selecting a file alone does not call the model. Agent tool output
+may be sent to the model provider and stored in the conversation.
 
 The thread owner cookie can pair or disconnect a folder. A shared `-s` thread
-attach ID can join a conversation and ask the agent to use the connected
-folder, but cannot manage its device. Treat the attach link as access to the
+attach ID can join a conversation, browse files, and ask the agent to use the
+connected folder, but cannot manage its device. Treat the attach link as access to the
 folder while the connector is online; do not share it with people you would
 not trust with those files. Pairing a
 second folder to the same thread revokes the first connection. Keep the
@@ -55,6 +62,11 @@ the site server. Run the site's PostgreSQL migrations, including
 never be sent to the browser or the native binary. The site routes scoped
 read/list/write jobs through PostgreSQL; a long-running gateway service is
 not required for this first version.
+
+Pairing also works with a long-running local thread host (`TRESS_THREAD_MODE=local`)
+and a configured model; Harness Cloud is not needed for that setup. A terminal
+attached with `tress attach` only joins the chat. Use `tress connect` separately
+to grant access to a folder. New threads start without seeded example files.
 
 For local development without PostgreSQL, the connector store is in memory.
 It resets when the dev server restarts, so reconnect and pair again after a

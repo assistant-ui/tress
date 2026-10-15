@@ -15,7 +15,7 @@ import {
   type Workspace,
 } from "@tress/workspaces";
 import { openSession } from "./agent";
-import { SEED_FILES } from "./seed";
+import { connectedDevice, createConnectedWorkspace } from "./connected-workspace";
 import { openWorkspace, workspaceConfig, workspaceInfo } from "./workspace";
 import type { Entry, ThreadState } from "../lib/thread";
 import { createPresenceTracker } from "./presence";
@@ -32,16 +32,28 @@ const createThreadElement = (
   let workspace: Promise<Workspace> | undefined;
   let initialized = false;
   let previewRevision = 0;
-  const getWorkspace = () =>
-    (workspace ??= openWorkspace(scope).catch((error) => {
+  let deviceWorkspace: { id: string; value: Workspace } | undefined;
+  const getWorkspace = async () => {
+    const device = scope ? await connectedDevice(scope) : undefined;
+    if (device) {
+      // Check liveness on every selection; an offline device must not silently
+      // fall back to the server's filesystem or an old virtual workspace.
+      const value = createConnectedWorkspace(scope!, device);
+      if (deviceWorkspace?.id !== device.id)
+        deviceWorkspace = { id: device.id, value };
+      return deviceWorkspace!.value;
+    }
+    deviceWorkspace = undefined;
+    return (workspace ??= openWorkspace(scope).catch((error) => {
       workspace = undefined;
       throw error;
     }));
+  };
   return resource(() => {
     const [state] = useStatewireState<ThreadState>(() => ({
       entries: [],
       status: "idle",
-      files: config.mode === "memory" ? SEED_FILES() : {},
+      files: {},
       runs: 0,
       clients: [],
       workspace: workspaceInfo(scope),
@@ -54,8 +66,10 @@ const createThreadElement = (
 
     const refreshFiles = async () => {
       const revision = ++previewRevision;
-      const files = config.paths.length
-        ? await snapshotWorkspace(await getWorkspace(), { paths: config.paths })
+      const active = await getWorkspace();
+      // Connected files are fetched on demand by the browser, never mirrored.
+      const files = active.kind !== "connected-local" && config.paths.length
+        ? await snapshotWorkspace(active, { paths: config.paths })
         : {};
       if (revision === previewRevision) state.files = files;
     };
@@ -102,7 +116,15 @@ const createThreadElement = (
         const index = state.entries.length - 1;
 
         try {
-          session ??= await openSession(await getWorkspace(), {
+          const active = await getWorkspace();
+          let messages: unknown[] | undefined;
+          if (session && session.workspace !== active) {
+            messages = session.checkpoint();
+            session.dispose();
+            session = undefined;
+          }
+          session ??= await openSession(active, {
+            messages,
             onToolResult: refreshFiles,
             onObserverError: (error) =>
               console.error("File preview failed:", error),

@@ -1,6 +1,5 @@
 import type { Workspace, WorkspaceDetails } from "@tress/workspaces";
 import { createBashWorkspace } from "@tress/workspaces/just-bash";
-import { SEED_FILES } from "./seed";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -71,7 +70,7 @@ export function workspaceInfo(scope?: string) {
 /** Replace this factory to use your own provider. Clients never choose a host path. */
 export async function openWorkspace(scope?: string): Promise<Workspace> {
   const { mode, root, localDemo, environment } = workspaceConfig(scope);
-  if (mode === "memory") return createBashWorkspace({ files: SEED_FILES() });
+  if (mode === "memory") return createBashWorkspace({ files: {} });
   if (mode === "local" || mode === "overlay") {
     if (!root)
       throw new Error(

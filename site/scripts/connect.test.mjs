@@ -321,3 +321,41 @@ test("separate PostgreSQL workers deliver exactly one scoped file job", {
     await Promise.all([first.end(), second.end()]);
   }
 });
+
+test("browser file browsing is scoped to the session and current device", async () => {
+  const a = await visitor();
+  const b = await visitor();
+  const offer = await (await call(json("offer", { label: "Project VM", rootLabel: "project", writable: false }), "offer")).json();
+  const claimed = await (await call(json("claim", { code: offer.code, threadId: a.session.thread.id }, a.cookie), "claim")).json();
+  await call(json("poll", {}, undefined, offer.token), "poll");
+  const request = (params = {}, session = a.session.token) => new Request(url("files", `?${new URLSearchParams({
+    thread: a.session.thread.id, session, device: claimed.device.id, operation: "list", path: "", ...params,
+  })}`));
+  assert.equal((await call(request({}, b.session.token), "files")).status, 404);
+  assert.equal((await call(new Request(request({}, b.session.token), { headers: { Cookie: a.cookie } }), "files")).status, 404);
+  assert.equal((await call(request({ path: "../outside" }), "files")).status, 400);
+  assert.equal((await call(request({ path: "/private" }), "files")).status, 400);
+  assert.equal((await call(request({ operation: "write" }), "files")).status, 400);
+  assert.equal((await call(request({ device: randomUUID() }), "files")).status, 409);
+  assert.equal((await call(new Request(request(), { headers: { Origin: "https://other.example" } }), "files")).status, 403);
+  const listing = call(request(), "files");
+  const listJob = await nextJob(offer.token);
+  assert.equal(listJob.operation, "list");
+  const entries = [{ name: "src", type: "directory" }, { name: "hello.txt", type: "file" }];
+  await call(json("result", { id: listJob.id, result: { ok: true, value: entries } }, undefined, offer.token), "result");
+  const listed = await listing;
+  assert.equal(listed.status, 200);
+  assert.match(listed.headers.get("Cache-Control"), /no-store/);
+  assert.deepEqual((await listed.json()).value, entries);
+  const reading = call(request({ operation: "read", path: "hello.txt" }), "files");
+  const readJob = await nextJob(offer.token);
+  assert.equal(readJob.path, "hello.txt");
+  await call(json("result", { id: readJob.id, result: { ok: true, value: "From the VM\n" } }, undefined, offer.token), "result");
+  assert.equal((await (await reading).json()).value, "From the VM\n");
+  const malformed = call(request(), "files");
+  const badJob = await nextJob(offer.token);
+  await call(json("result", { id: badJob.id, result: { ok: true, value: [{ name: "../outside", type: "file" }] } }, undefined, offer.token), "result");
+  assert.equal((await malformed).status, 502);
+  await devices.revoke(a.session.thread.id);
+  assert.equal((await call(request(), "files")).status, 409);
+});

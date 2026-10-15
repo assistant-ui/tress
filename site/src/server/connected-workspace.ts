@@ -23,7 +23,9 @@ export const connectedCall = async (
   content?: string,
   store: ConnectStore = connectStore(),
   expectedDeviceId?: string,
+  signal?: AbortSignal,
 ) => {
+  signal?.throwIfAborted();
   if (path.length > 1024 || path.includes("\0"))
     throw new Error("Invalid connected file path.");
   if (content !== undefined && Buffer.byteLength(content, "utf8") > 1_048_576)
@@ -41,6 +43,7 @@ export const connectedCall = async (
     const until = Date.now() + 60_000;
     let checkConnectionAt = 0;
     while (Date.now() < until) {
+      signal?.throwIfAborted();
       const state = await store.result(id);
       if (state?.status === "done") {
         if (!state.result.ok)

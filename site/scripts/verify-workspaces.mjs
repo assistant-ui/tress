@@ -109,6 +109,8 @@ try {
         TRESS_DEMO_SHARED: "1",
         TRESS_WORKSPACE: mode,
         TRESS_WORKSPACE_ROOT: root,
+        TRESS_SESSION_DIR: join(root, "sessions"),
+        TRESS_DATABASE_URL: "",
         TRESS_VISIBLE_FILES: '["demo.txt"]',
         TRESS_ALLOW_WRITES: "1",
       },
@@ -155,9 +157,13 @@ try {
       2,
       "presence uses distinct Statewire client identities",
     );
-    void first.commands.send("Create the demo file").catch(() => {});
+    let sendError;
+    void first.commands.send("Create the demo file").catch((error) => { sendError = error; });
     await waitFor(
-      () => second.state.files["demo.txt"] === "changed by the shared host\n",
+      () => {
+        if (sendError) throw sendError;
+        return second.state.files["demo.txt"] === "changed by the shared host\n";
+      },
       "live file update",
     ).catch((error) => {
       throw new Error(

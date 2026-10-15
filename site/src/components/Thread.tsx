@@ -15,6 +15,7 @@ import { observeDemoConfig, type DemoConfig } from "../lib/demo-config";
 import { describeWorkspace } from "../lib/workspace-info";
 import { CopyButton } from "./CopyButton";
 import { SourcePane } from "./SourcePane";
+import { ConnectedFiles } from "./ConnectedFiles";
 import { Markdown } from "./Markdown";
 import { ModelBadge } from "./ModelBadge";
 import { Badge } from "./terminal/Badge";
@@ -78,29 +79,6 @@ const TOOL_LABELS: Record<string, string> = {
   edit: "Edit file",
   bash: "Run shell command",
 };
-const SUGGESTIONS = [
-  {
-    label: "Fix the retry bug",
-    prompt: "retry.js hammers the server on failure — fix it so the tests pass",
-  },
-  {
-    label: "Explain this workspace",
-    prompt:
-      "Read retry.js and retry.test.js and explain what is wrong. Do not edit the files yet.",
-  },
-];
-const LOCAL_SUGGESTIONS = [
-  {
-    label: "Make a disk edit",
-    prompt:
-      "Read notes.md and append a new bullet saying 'Local files work.' Then run cat notes.md to verify the file was saved. Leave the existing notes intact.",
-  },
-  {
-    label: "Explore these files",
-    prompt:
-      "Read README.md and notes.md and briefly explain this local workspace. Do not edit any files.",
-  },
-];
 type Client = StatewireClient<ThreadState | undefined, ThreadCommands>;
 
 export function Thread({
@@ -119,7 +97,7 @@ export function Thread({
   drafts?: Map<string, string>;
 } = {}) {
   const [input, setInput] = useState("");
-  const [open, setOpen] = useState("retry.js");
+  const [open, setOpen] = useState("");
   const [showFiles, setShowFiles] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -146,7 +124,6 @@ export function Thread({
   const configRequest = useRef<ReturnType<typeof observeDemoConfig> | null>(
     null,
   );
-  const workspaceInitialized = useRef(false);
   const pinnedConfigUrl = useRef<string | undefined>(undefined);
   const draft = useRef(input);
   draft.current = input;
@@ -158,6 +135,8 @@ export function Thread({
 
   useEffect(() => {
     setLocalDevice(null);
+    setShowFiles(false);
+    setOpen("");
   }, [config?.session?.id]);
 
   useEffect(() => {
@@ -179,14 +158,6 @@ export function Thread({
           onReady?.(result.config);
           setConfigFailed(false);
           setConfigError(undefined);
-          if (
-            !workspaceInitialized.current &&
-            result.config.workspace?.localDemo
-          ) {
-            setShowFiles(true);
-            setOpen("notes.md");
-          }
-          workspaceInitialized.current = true;
         }
       },
       (url, init) => fetch(pinnedConfigUrl.current ?? url, init),
@@ -263,31 +234,34 @@ export function Thread({
       onActivity?.(config.session.id, state.status === "running", firstPrompt);
   }, [config?.session?.id, state.status, firstPrompt, onActivity]);
 
-  const demo = !localDevice && (!config?.workspace || config.workspace.mode === "memory");
-  const localDemo = !localDevice && config?.workspace?.localDemo === true;
   const workspace = state.workspace ?? config?.workspace;
+  const hasWorkspace = Boolean(localDevice || (workspace && ["local", "overlay", "vercel"].includes(workspace.mode)));
   const workspaceDescription = localDevice
     ? {
         label: localDevice.rootLabel,
         description: `${localDevice.label} is ${localDevice.online ? "online" : "offline"}; ${localDevice.writable ? "file edits enabled" : "read-only"}.`,
       }
-    : workspace && describeWorkspace(workspace.mode);
-  const suggestions =
-    localDemo && config?.workspace?.writes
-      ? LOCAL_SUGGESTIONS
-      : demo
-        ? SUGGESTIONS
-        : [
-            {
-              label: "Explore this workspace",
-              prompt:
-                "List the workspace and explain its structure. Do not change any files.",
-            },
-          ];
+    : hasWorkspace && workspace ? describeWorkspace(workspace.mode) : undefined;
+  const workspaceWritable = localDevice?.writable ?? workspace?.details?.writable ?? config?.workspace?.writes ?? false;
+  const shell = localDevice ? "none" : workspace?.details?.shell ?? "none";
+  const suggestions = hasWorkspace ? [{
+    label: "Explore workspace",
+    prompt: "List the workspace and explain its structure. Do not change any files.",
+  }, ...(shell === "native" ? [{
+    label: "Check project",
+    prompt: "Inspect the project's documented checks and run the appropriate non-destructive checks. Report the actual results.",
+  }] : [])] : [{
+    label: "What can Tress do?",
+    prompt: "Explain how this shared conversation works and how I can connect a folder from my computer or a VM.",
+  }];
   const connected =
     attached &&
     connection === "connected" &&
     (!state.harness || state.harness.connection === "connected");
+  const deviceId = localDevice?.id;
+  useEffect(() => {
+    if (deviceId) setShowFiles(true);
+  }, [deviceId]);
   const running = state.status === "running";
   const clients = state.clients ?? [];
   const hostLabel = config?.host?.label ?? "tress host";
@@ -459,7 +433,8 @@ export function Thread({
           setShowHelp(true);
           break;
         case "/files":
-          setShowFiles((visible) => !visible);
+          if (hasWorkspace) setShowFiles((visible) => !visible);
+          else setNotice("Connect a folder on your computer or VM to browse its files. Attaching a terminal alone does not share its filesystem.");
           break;
         case "/pwd":
           showWorkspaceInfo();
@@ -495,7 +470,7 @@ export function Thread({
                 <dt>Runs</dt>
                 <dd>{state.runs} completed</dd>
                 <dt>Files</dt>
-                <dd>{localDevice ? "on connected device" : Object.keys(state.files).length}</dd>
+                <dd>{localDevice ? "on connected device" : hasWorkspace ? Object.keys(state.files).length : "No workspace connected"}</dd>
                 {localDevice ? (
                   <>
                     <dt>Local folder</dt>
@@ -628,7 +603,7 @@ export function Thread({
               </span>
             ) : null}
           </span>
-          <button
+          {hasWorkspace ? <button
             type="button"
             className="files-toggle"
             aria-label={showFiles ? "Hide files" : "Show files"}
@@ -637,7 +612,7 @@ export function Thread({
             onClick={() => setShowFiles((visible) => !visible)}
           >
             <TerminalIcon name="files" /> <span>files</span>
-          </button>
+          </button> : null}
         </div>
 
         <details className="terminal-attach" ref={attachDetails} open>
@@ -658,7 +633,7 @@ export function Thread({
           </p>
         </details>
 
-        {config?.session && hostRuntime === "managed" ? (
+        {config?.session ? (
           <LocalConnection
             key={config.session.id}
             threadId={config.session.id}
@@ -680,7 +655,7 @@ export function Thread({
               <Badge>{workspaceDescription.label}</Badge> <kbd>/pwd</kbd>
             </button>
           ) : (
-            <Badge>workspace</Badge>
+            <span className="workspace-unconnected">No workspace connected</span>
           )}
           <span className="connection-status" role="status">
             <Badge bordered={false} variant={connected ? "success" : "warning"}>
@@ -735,45 +710,11 @@ export function Thread({
             </div>
           ) : state.entries.length === 0 ? (
             <div className="empty-state">
-              {localDevice ? (
-                <p>
-                  Connected to {localDevice.label} · {localDevice.rootLabel} ·{" "}
-                  {localDevice.writable ? "file edits enabled" : "read-only"}.
-                </p>
-              ) : localDemo ? (
-                <p>
-                  Try editing{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen("notes.md");
-                      setShowFiles(true);
-                    }}
-                  >
-                    notes.md
-                  </button>
-                  . Open this folder in your editor to follow along.
-                </p>
-              ) : demo ? (
-                <p>
-                  A shared workspace with a bug in{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen("retry.js");
-                      setShowFiles(true);
-                    }}
-                  >
-                    retry.js
-                  </button>
-                  .
-                </p>
-              ) : (
-                <p>
-                  A shared {config?.workspace?.mode} workspace ·{" "}
-                  {config?.workspace?.writes ? "editing enabled" : "read only"}.
-                </p>
-              )}
+              <p>{localDevice
+                ? `${localDevice.label} · ${localDevice.rootLabel}. ${localDevice.online ? "Browse files below or ask Tress to work on this project." : "Reconnect the host to work with its files."}`
+                : hasWorkspace
+                  ? "Your host workspace is available. Browse the shared files or ask Tress to explore the project."
+                  : "Start a conversation, or connect a folder on your computer or VM to work with real files."}</p>
               <div className="suggestions">
                 <span>try</span>
                 {suggestions.map(({ label, prompt }) => (
@@ -782,10 +723,6 @@ export function Thread({
                     type="button"
                     disabled={!canSend}
                     onClick={() => {
-                      if (localDemo) {
-                        setOpen("notes.md");
-                        setShowFiles(true);
-                      }
                       send(prompt);
                     }}
                   >
@@ -1053,12 +990,22 @@ export function Thread({
           </div>
         </form>
 
-        {showFiles ? (
+        {showFiles && hasWorkspace ? (
           <div id="workspace" className="workspace">
-            {localDevice ? (
-              <p className="local-files-note">Files stay on {localDevice.label}. Ask Tress to list or read them; the site does not mirror the whole folder.</p>
+            <div className="workspace-capabilities">
+              <span>{workspaceWritable ? "Read + edit" : "Read only"}</span>
+              <span>{shell === "native" ? "Host shell available" : shell === "simulated" ? "File commands only" : "No shell access"}</span>
+              <span>Actions run on the connected host</span>
+            </div>
+            {localDevice && config?.session ? (
+              <ConnectedFiles key={localDevice.id} device={localDevice}
+                threadId={config.session.id} attachId={config.session.attachId}
+                refreshKey={state.runs} actionsDisabled={!canSend}
+                onAsk={(prompt) => { setInput(prompt); promptInput.current?.focus(); }} />
             ) : (
-              <SourcePane files={state.files} open={open} onOpen={setOpen} />
+              <SourcePane files={state.files} open={open} onOpen={setOpen}
+                writable={workspaceWritable} actionsDisabled={!canSend}
+                onAsk={(prompt) => { setInput(prompt); promptInput.current?.focus(); }} />
             )}
           </div>
         ) : null}
@@ -1084,13 +1031,11 @@ export function Thread({
               title={
                 state.harness
                   ? "Start a new cloud thread; keep the previous conversation in Harness"
-                  : demo
-                    ? "Clear the conversation and restore example files"
-                    : "Clear the conversation; keep workspace files"
+                  : "Clear the conversation; keep host workspace files"
               }
               onClick={() => void invoke("reset")}
             >
-              {demo ? "reset" : "clear chat"}
+              clear chat
             </button>
           ) : null}
         </div>

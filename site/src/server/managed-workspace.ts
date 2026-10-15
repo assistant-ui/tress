@@ -2,7 +2,6 @@ import type { UIMessage } from "ai";
 import { snapshotWorkspace, type Workspace } from "@tress/workspaces";
 import { createBashWorkspace } from "@tress/workspaces/just-bash";
 import { openWorkspace, workspaceConfig } from "./workspace";
-import { SEED_FILES } from "./seed";
 import { workspaceFiles } from "./workspace-storage";
 import { connectedDevice, createConnectedWorkspace } from "./connected-workspace";
 
@@ -80,7 +79,7 @@ export const managedWorkspace = async (
           scope && process.env.TRESS_SERVERLESS === "1"
             ? await (await import("./relay-store")).relayStore().files(scope)
             : undefined;
-        return createBashWorkspace({ files: stored ?? files ?? SEED_FILES() });
+        return createBashWorkspace({ files: stored ?? files ?? {} });
       }
       const value = await openWorkspace(scope);
       if (config.mode === "overlay" && files)
@@ -108,7 +107,7 @@ export const refreshManagedFiles = async (
     // Observers never save an instance's stale filesystem over an agent's work.
     return (
       (await (await import("./relay-store")).relayStore().previews(scope)) ??
-      SEED_FILES()
+      {}
     );
   }
   const paths = workspaceConfig().paths;
