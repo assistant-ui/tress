@@ -19,10 +19,29 @@ try {
     for (const path of ["/", "/docs", "/docs/local", "/docs/authentication", "/docs/production"]) {
       const response = await app.fetch(new Request("https://example.test" + path));
       const html = await response.text();
-      if (response.status !== 200 || !html.includes("<h1")) {
+      if (response.status !== 200 || !response.headers.get("content-type")?.startsWith("text/html") || !html.includes("<h1")) {
         throw new Error(path + " returned " + response.status + ": " + html.slice(0, 500));
       }
       console.log(response.status, path);
+    }
+    for (const path of ["/docs.md", "/docs/local.md"]) {
+      for (const accept of ["text/html", "text/markdown"]) {
+        const response = await app.fetch(new Request("https://example.test" + path, {
+          headers: { Accept: accept },
+        }));
+        const expected = "text/plain";
+        if (response.status !== 200 || !response.headers.get("content-type")?.startsWith(expected)) {
+          throw new Error(path + " did not serve " + expected + " for " + accept);
+        }
+        if (response.headers.get("content-disposition") !== "inline" || response.headers.get("x-content-type-options") !== "nosniff") {
+          throw new Error(path + " should display in the browser");
+        }
+        const markdown = await response.text();
+        if (!markdown.includes("title:") || markdown.includes("<DocsPageActions")) {
+          throw new Error(path + " returned invalid Markdown source");
+        }
+        console.log(response.status, path, expected);
+      }
     }
     process.exit(0);
   `], {
