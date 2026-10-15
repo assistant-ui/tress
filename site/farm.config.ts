@@ -1,7 +1,8 @@
 import { defineConfig } from "@farm.js/core";
 import { wasm } from "@farm.js/wasm";
+import { withDocs } from "@farming-labs/farmjs/config";
 
-export default defineConfig({
+export default withDocs(defineConfig({
   deploy:
     process.env.FARM_DEPLOY_TARGET === "vercel"
       ? { target: "vercel" }
@@ -26,12 +27,11 @@ export default defineConfig({
         name: "tress-server-workspace-dependencies",
         config: () => ({
           ssr: {
+            // Keep Harness, Statewire, and tap in Farm's React bundle. Leaving
+            // them external creates runtime React imports outside that bundle.
             external: [
               "just-bash",
               "@vercel/sandbox",
-              "harness-sdk",
-              "statewire",
-              "@assistant-ui/tap",
               "pg",
             ],
           },
@@ -39,4 +39,4 @@ export default defineConfig({
       },
     ],
   },
-});
+}), { codeBlockThemes: { light: "github-light-default", dark: "vesper" } });

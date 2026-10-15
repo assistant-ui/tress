@@ -1,9 +1,22 @@
 # Consumer setup: existing app to production
 
-Status: proposed integration contract. This is a design for upcoming work, not
-an installation guide for capabilities available in Tress v0.3.0. Existing
+Status: original design contract. The first implementation now has a
+[runnable source preview](../examples/existing-app/README.md) and
+[local-to-production docs](../site/docs/index.mdx). It supports known Harness
+thread endpoints, application credentials, and revocation. Discovery, generic
+login, terminal-created threads, and scaffolding below remain proposals.
+This document is not an installation guide for Tress v0.3.0. Existing
 Tress-host setup remains documented in [setup](setup.md). Implementation order
 and deferred managed authentication are in the [roadmap](roadmap.md).
+
+Access clarification: `createTressAccess` is optional. Reuse an application's
+existing session checks and authorized Harness host. The helper adds request
+checks and live grant expiry/revocation; no external identity service is
+required. The Tress demo already offers a separate capability-token sharing
+flow, where the copied command itself grants access. That flow is not
+automatically installed into arbitrary Harness apps. See the current
+[access guide](../site/docs/authentication.mdx) for shipped behavior and the
+native server/browser authorization hooks.
 
 ## The product the consumer installs
 

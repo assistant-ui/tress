@@ -1,0 +1,193 @@
+---
+title: Authentication & revocation
+description: Reuse session access. Add custom authorization and revocation when needed.
+---
+
+# Authentication & revocation
+
+**`createTressAccess` is optional.** You do not need an external authentication
+service to connect a terminal. Keep the host's existing access flow, whether
+that is the Tress demo's shared session or your application's login and thread
+permissions.
+
+## Session access and shared commands
+
+The Tress demo creates a secret session token and includes it in the copied
+connection command:
+
+```sh
+tress attach https://your-demo.example -s YOUR_SESSION_TOKEN
+```
+
+That token grants access to the shared conversation. The server looks up its
+hash and checks the session before serving stream and command requests. It is
+different from the thread's public ID. Anyone holding the command can join
+that session, so share it only with its intended participants. No additional
+`createTressAccess` setup is needed for this demo flow.
+
+For an existing Harness app, reuse its session/access implementation. Tress
+does not automatically add the demo's token issuance and routes to arbitrary
+apps. A browser cookie stays in the browser; the app must provide a credential
+or session-sharing mechanism the terminal can present too. The wrapper is
+optional; the server's access check still matters.
+
+## Use Harness's existing authorization hook
+
+The `statewireHost` used by Harness already accepts `authorize`. If your host
+uses it, keep it. For example, inside your server's host configuration:
+
+```ts
+import { statewireHost } from "statewire-node";
+
+const host = statewireHost({
+  ...existingHostOptions, // transport, protocol, key, storage, onError
+  authorize: async ({ headers }) => {
+    // Application functions: resolve a browser session or terminal credential.
+    const session = await app.authenticateHeaders(headers);
+    if (!session) throw new Response("Sign in", { status: 401 });
+    if (!await app.canAccessThread(session.userId, threadId)) {
+      throw new Response("Forbidden", { status: 403 });
+    }
+    // Stable principal: avoid putting a rotating access token in this value.
+    return { subject: session.userId, threadId };
+  },
+});
+```
+
+`existingHostOptions`, `app`, and `threadId` are application code. In the pinned
+version, this hook gates each attachment and binds its client ID to the returned
+principal. Commands use the lease from that authorized attachment.
+
+The hook does **not** re-run on every `/frames` request or automatically close
+an open stream when an application session expires. Keep your existing request
+checks and connection-lifetime policy. If you want the helper to handle those
+checks and stream closure, use the optional adapter below.
+
+## Handle an unauthorized browser connection
+
+The pinned `useHarness` API has no option named `onUnauthorized`. Its
+`StatewireHttp` transport provides a `headers({ staleAuth })` resolver and an
+`onChange` callback. These work with either `useHarness` or assistant-ui's
+`HarnessThread`.
+
+For an app that uses bearer tokens in the browser:
+
+```tsx
+import { useHarness } from "harness-sdk";
+import { StatewireHttp } from "statewire";
+
+function useAppThread(threadId: string) {
+  return useHarness({
+    transport: StatewireHttp({
+      url: `/api/threads/${encodeURIComponent(threadId)}`,
+      headers: async ({ staleAuth }) => {
+        const token = await appAuth.getAccessToken({ refresh: staleAuth });
+        return { Authorization: `Bearer ${token}` };
+      },
+      onChange(connection) {
+        if (connection.status !== "stopped") return;
+        if (connection.reason === "unauthorized") appAuth.showSignIn();
+        if (connection.reason === "forbidden") appAuth.showAccessDenied();
+      },
+    }),
+  });
+}
+```
+
+`appAuth` represents your own login/refresh/UI functions, not Harness exports.
+Statewire gives a 401 rejection one recovery attempt with `staleAuth: true`;
+another rejection stops the connection. A 403 stops it as forbidden. For
+same-origin cookie sessions, omit `headers` and keep the normal browser login.
+After signing in again, call `harness.transport.connection.reconnect()` on the
+value returned by `useHarness`.
+
+These callbacks recover or display an access failure; server-side checks decide
+who can connect. They do not add credential refresh to the native Tress CLI.
+
+## Optional: application header credentials
+
+An app can issue a separate terminal credential for independent expiry and
+revocation. Store its hash, owner, allowed thread or workspace, expiration, and
+revocation status. Keep provider and project-wide keys on the server.
+
+The preview CLI reads HTTP headers from a private JSON file:
+
+```json
+{
+  "Authorization": "Bearer APP_ISSUED_TERMINAL_TOKEN"
+}
+```
+
+Replace the placeholder through your application's credential issuance flow.
+Custom application headers also work. On Unix, the file must have private
+permissions. HTTPS is required except on loopback for local development or
+SSH forwarding.
+
+```sh
+chmod 600 app-headers.json
+tress attach https://chat.example.com/api/threads/main \
+  --headers-file app-headers.json --ui
+```
+
+This works with your existing authorized host; `@tress/access` is not required.
+The client sends the headers on stream and command requests, refuses redirects,
+and does not forward them when switching to a different origin. Obtain a fresh
+file and reattach after expiry; the CLI does not implement OAuth or automatic
+token refresh.
+
+## Optional: extra checks and live revocation
+
+Use `createTressAccess` if you want a reusable adapter for per-request
+authorization, same-origin checks for cookie-authenticated writes, and closing
+expired or revoked streams. It works with your own session store or identity
+provider; it does not require an external auth service.
+
+```ts
+import { createTressAccess } from "@tress/access";
+
+const access = createTressAccess({
+  host: existingThreadHost,
+  origin: appOrigin,
+  authorize: async ({ request, action }) => {
+    // Your app validates the session/credential and this thread's permissions.
+    const grant = await app.authorizeThread(request, threadId, action);
+    if (!grant) throw new Response("Forbidden", { status: 403 });
+    return {
+      subject: grant.userId,
+      connectionId: grant.id,
+      expiresAt: grant.expiresAt, // milliseconds since Unix epoch
+    };
+  },
+});
+
+// Forward both /stream and /frames to this same long-lived instance.
+export const GET = (request: Request) => access.fetch(request);
+export const POST = GET;
+```
+
+`@tress/access` is a private source-preview package in `packages/access`, not a
+published npm dependency. Use a TypeScript-aware build or Node 24. Your app
+supplies the host, canonical origin, thread, and authorization function.
+The [reference app](/docs/local) demonstrates this optional setup.
+
+To revoke a connection, persist the decision in an authenticated application
+action, then notify the adapter:
+
+```ts
+await app.terminalGrants.revoke(connectionId, currentUser.id);
+access.revoke(connectionId);
+```
+
+Your app checks ownership and stores the revocation durably. `access.revoke`
+closes that grant's active streams and denies subsequent requests on this
+adapter. After restart, `authorize` must still reject revoked credentials.
+Give the browser and terminal separate grant IDs if they need independent
+revocation. Disconnecting a client does not undo admitted commands or stop
+the agent's run.
+
+For multiple workers, broadcast revocation to every worker holding an affected
+stream. A database update alone cannot close a stream on another process.
+The adapter also closes streams at expiry, even when the thread is quiet.
+
+A managed access service remains future, optional work. Neither it nor this
+adapter is required to reuse an application's existing authorized host.

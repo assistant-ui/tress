@@ -1,0 +1,120 @@
+---
+title: Connect an existing app
+description: Keep your assistant-ui UI and agent. Expose its server-owned thread.
+---
+
+# Connect an existing app
+
+
+This source preview needs a Statewire host using Harness protocol `2026-09-13`.
+The browser and terminal must connect to that **same thread host**. An ordinary
+AI SDK `/api/chat` route does not, by itself, own a shared conversation.
+
+Start with the [runnable local example](/docs/local) to see all of this working
+together, then bring these integration points into your application.
+
+## 1. Reuse the thread host
+
+If your app already has a server-owned Harness thread, keep it and its existing
+session/access checks. Its fetch handler is the integration point.
+**`createTressAccess` is optional.** Tress does not require another auth provider
+or a wrapper around an already authorized host.
+
+```ts
+// Inside your existing authenticated route/middleware:
+// GET/POST /api/threads/:id/stream
+// POST     /api/threads/:id/frames
+export const GET = async (request: Request) => {
+  // Application code: validate the session/credential and this thread's
+  // permissions, including your existing Origin/CSRF checks for writes.
+  await app.requireThreadAccess(request, threadId);
+  return existingThreadHost.fetch(request);
+};
+export const POST = GET;
+```
+
+`existingThreadHost`, `app`, and `threadId` come from your app.
+Resolve the thread and its owner before selecting the host. Do not create a
+fresh host on every HTTP request. A public thread ID alone does not authorize
+a connection. The terminal needs a credential your host understands; the
+browser's cookie is not automatically transferred to the CLI.
+
+The [access guide](/docs/authentication) covers the demo's built-in session
+sharing, Harness's native `authorize` hook, and the optional access adapter.
+
+## 2. If the browser currently owns the transport
+
+Move that transport to a server-owned host first. The upstream source packages
+provide this composition:
+
+```ts
+import { statewireHost } from "statewire-node";
+import { AISDKTransport } from "@harness-sdk/ai-sdk";
+import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
+import { DirectChatTransport } from "ai";
+
+const existingThreadHost = statewireHost({
+  protocol: HARNESS_HOST_PROTOCOL,
+  key: [threadId],
+  transport: (restored) => AISDKTransport({
+    threadId,
+    transport: new DirectChatTransport({ agent: existingAgent }),
+    ...(restored ? { initialState: restored as AISDKTransport.State } : {}),
+  }),
+  storage: {
+    load: () => app.threadSnapshots.load(threadId),
+    save: (snapshot) => app.threadSnapshots.save(threadId, snapshot),
+  },
+  onError: (error) => app.reportStorageError(error),
+});
+```
+
+This is a composition example: supply your existing AI SDK agent, snapshot
+store, and error reporting. These Harness adapters are currently upstream
+source packages; see [versions](/docs/reference). There is **no required
+`CHAT_BACKEND_URL`**. A transport can call the existing agent in-process. If
+your app already uses HTTP between services, keep its own configured transport.
+
+## 3. Point assistant-ui at the same thread
+
+Keep your chat components and change the runtime/provider wiring where needed:
+
+```tsx
+import { AuiConfig, AuiProvider } from "@assistant-ui/react";
+import { HarnessThread } from "@assistant-ui/react-harness-sdk";
+import { StatewireHttp } from "statewire";
+
+const config = AuiConfig({
+  thread: HarnessThread({
+    transport: StatewireHttp({ url: "/api/threads/main" }),
+  }),
+});
+
+export function Assistant() {
+  return <AuiProvider config={config}><YourExistingChat /></AuiProvider>;
+}
+```
+
+For dynamic conversations, scope the provider and endpoint to the selected
+thread. Browser requests use the application's existing same-origin session.
+
+## 4. Connect the terminal
+
+Give the user the complete thread endpoint and the access method your app
+supports. For app-issued header credentials, use a private file so the copied
+command contains only its path:
+
+```sh
+chmod 600 app-headers.json
+tress attach http://localhost:3000/api/threads/main \
+  --headers-file app-headers.json
+```
+
+`--headers-file` is optional; use it when the endpoint requires application
+headers. The [Tress demo](/docs/try) instead includes a secret session token in
+its copied command. That built-in demo flow does not require this adapter or a
+separate login provider.
+
+The terminal negotiates Harness and loads the active conversation. Send from
+each client and reconnect. Verify your app's access-expiration policy before
+following the [production walkthrough](/docs/production).

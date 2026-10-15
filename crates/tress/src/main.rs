@@ -54,6 +54,7 @@ fn usage() -> String {
          tress attach <url>    join a thread with plain terminal output\n  \
          tress attach <url> -s <id>  join your demo session (--session also works)\n  \
          tress attach <url> --ui  opt into the full terminal interface\n  \
+         tress attach <url> --headers-file <path>  use app credentials from a private JSON file\n  \
          tress connect --site <url> [--root <path>] [--allow-write]\n  \
          tress --help          this text\n\n\
          environment:\n  \
@@ -117,7 +118,7 @@ async fn main() -> std::process::ExitCode {
         };
     }
     if args.first().is_some_and(|arg| arg == "attach") {
-        let (url, ui, session) = match attach_options(&args[1..]) {
+        let (url, ui, session, headers_file) = match attach_options(&args[1..]) {
             Ok(options) => options,
             Err(error) => {
                 eprintln!("tress attach: {error}");
@@ -131,7 +132,15 @@ async fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::FAILURE;
             }
         };
-        return match attach::run(&target.host, &style, ui, target.session.as_deref()).await {
+        return match attach::run(
+            &target.host,
+            &style,
+            ui,
+            target.session.as_deref(),
+            headers_file,
+        )
+        .await
+        {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("{}", style.paint(ansi::RED, &format!("error: {error}")));
@@ -151,9 +160,22 @@ async fn main() -> std::process::ExitCode {
     }
     let mut selected = config::UserConfig::default();
     let selection = (|| -> Result<bool, String> {
-        let rest = config::parse_flags(&args, &mut selected)?;
+        let mut rest = config::parse_flags(&args, &mut selected)?;
         if rest.first().is_some_and(|arg| arg == "ask") {
-            config::parse_flags(&rest[1..], &mut selected)?;
+            rest = config::parse_flags(&rest[1..], &mut selected)?;
+        }
+        if rest.first().is_some_and(|arg| {
+            matches!(
+                arg.as_str(),
+                "--host" | "--headers-file" | "-s" | "--session" | "--ui" | "--plain"
+            )
+        }) {
+            if selected.mode == Some(config::Mode::Local) {
+                return Err(
+                    "Choose a hosted connection or --local; they cannot be combined.".into(),
+                );
+            }
+            return Ok(false);
         }
         config::local_mode(&paths, selected.mode == Some(config::Mode::Local))
     })();
@@ -291,7 +313,7 @@ async fn hosted_session(
             "ask" if !ask => { ask = true; rest = &rest[1..]; }
             "--" => { rest = &rest[1..]; break; }
             "--ui" | "--plain" => { options.push(arg.clone()); rest = &rest[1..]; }
-            "--host" | "-s" | "--session" => {
+            "--host" | "-s" | "--session" | "--headers-file" => {
                 let value = rest.get(1).ok_or_else(|| format!("{arg} needs a value"))?;
                 options.extend([arg.clone(), value.clone()]); rest = &rest[2..];
             }
@@ -307,11 +329,29 @@ async fn hosted_session(
     {
         return Err("tress ask needs a prompt".into());
     }
-    let (url, ui, session) = attach_options(&options)?;
+    let (url, ui, session, headers_file) = attach_options(&options)?;
     let target = host::target(paths, url, session)?;
     match prompt {
-        Some(prompt) => attach::ask(&target.host, style, target.session.as_deref(), &prompt).await,
-        None => attach::run(&target.host, style, ui, target.session.as_deref()).await,
+        Some(prompt) => {
+            attach::ask(
+                &target.host,
+                style,
+                target.session.as_deref(),
+                &prompt,
+                headers_file,
+            )
+            .await
+        }
+        None => {
+            attach::run(
+                &target.host,
+                style,
+                ui,
+                target.session.as_deref(),
+                headers_file,
+            )
+            .await
+        }
     }
 }
 
@@ -351,11 +391,14 @@ fn session_options(args: &[String]) -> Result<(config::UserConfig, Option<String
     Ok((flags, Some(rest.join(" "))))
 }
 
-fn attach_options(args: &[String]) -> Result<(Option<&str>, bool, Option<&str>), String> {
+type AttachOptions<'a> = (Option<&'a str>, bool, Option<&'a str>, Option<&'a str>);
+
+fn attach_options(args: &[String]) -> Result<AttachOptions<'_>, String> {
     let mut url: Option<&str> = None;
     let mut ui = false;
     let mut plain = false;
     let mut session = None;
+    let mut headers_file = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -364,6 +407,16 @@ fn attach_options(args: &[String]) -> Result<(Option<&str>, bool, Option<&str>),
                     return Err("provide the host only once".into());
                 }
                 url = Some(args.next().ok_or("--host needs a URL")?.as_str());
+            }
+            "--headers-file" => {
+                if headers_file.is_some() {
+                    return Err("provide --headers-file only once".into());
+                }
+                let path = args.next().ok_or("--headers-file needs a path")?;
+                if path.starts_with('-') {
+                    return Err("--headers-file needs a path".into());
+                }
+                headers_file = Some(path.as_str());
             }
             "--ui" => ui = true,
             "--plain" => plain = true, // Keep the earlier explicit plain option working.
@@ -389,7 +442,10 @@ fn attach_options(args: &[String]) -> Result<(Option<&str>, bool, Option<&str>),
     if ui && plain {
         return Err("choose --ui or --plain, not both".into());
     }
-    Ok((url, ui, session))
+    if headers_file.is_some() && url.is_none() {
+        return Err("--headers-file requires an explicit thread URL or --host".into());
+    }
+    Ok((url, ui, session, headers_file))
 }
 
 async fn run_turn(
@@ -497,7 +553,7 @@ mod cli_tests {
             let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
             assert_eq!(
                 attach_options(&args),
-                Ok((Some("localhost:5311"), expected, None))
+                Ok((Some("localhost:5311"), expected, None, None))
             );
         }
     }
@@ -514,6 +570,16 @@ mod cli_tests {
             vec!["host", "-s"],
             vec!["host", "-s", "--ui"],
             vec!["host", "-s", "bad/id"],
+            vec!["host", "--headers-file"],
+            vec!["host", "--headers-file", "--ui"],
+            vec!["--headers-file", "headers.json"],
+            vec![
+                "host",
+                "--headers-file",
+                "one.json",
+                "--headers-file",
+                "two.json",
+            ],
             vec![
                 "host",
                 "-s",
@@ -539,7 +605,7 @@ mod cli_tests {
                     let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
                     assert_eq!(
                         attach_options(&args),
-                        Ok((Some("localhost:5311"), ui, Some(id)))
+                        Ok((Some("localhost:5311"), ui, Some(id), None))
                     );
                 }
             }

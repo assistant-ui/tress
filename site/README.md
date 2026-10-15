@@ -10,6 +10,12 @@ For the operator-to-visitor path—getting credentials, deploying the host,
 receiving a private session ID, and connecting a terminal or folder—start with
 the [managed demo guide](../docs/public-demo.md).
 
+The `/docs` section uses Farming Labs Docs, with content in `docs/*.mdx` and
+configuration in `docs.config.ts`. It documents the website trial separately
+from the [existing-app source preview](../examples/existing-app/README.md).
+Run the normal site dev/build commands below to serve both. No model key is
+needed to read the docs.
+
 ## Run locally
 
 ```sh
@@ -469,6 +475,19 @@ files. Session checks also verify separate visitors, exact native attachment via
 `-s`, cross-session access rejection, and registry/files surviving a restart.
 It starts isolated servers and does not touch your running demo.
 The development variant checks the same flow through Farm's Vite loader.
+
+Verify the Vercel artifact independently of the checkout's dependencies:
+
+```sh
+FARM_DEPLOY_TARGET=vercel npm run build
+npm run test:deployment
+```
+
+This copies the function into a temporary directory, restricts filesystem reads
+to that artifact with Node's permission model, and requests the app and docs
+pages through its exported handler. It catches missing packages and source
+files that a local server can accidentally resolve from the checkout. The
+postbuild step stages docs beside Nitro's generated entry for Farm beta.106.
 
 The [Farm WASM plugin](https://farmjs.dev/docs/plugins/wasm) handles imports of
 the generated `src/wasm/pkg/tress_wasm.js` entry point. Both `dev` and `build`

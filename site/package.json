@@ -8,6 +8,7 @@
     "demo:local": "node scripts/local-demo.mjs",
     "prebuild": "npm --prefix ../packages/workspaces run build && npm run wasm",
     "build": "farm build",
+    "postbuild": "node scripts/stage-docs.mjs",
     "preview": "farm preview",
     "test:config": "node --test scripts/demo-config.test.mjs",
     "test:install": "node --test scripts/install.test.mjs",
@@ -19,6 +20,7 @@
     "db:import": "node --env-file-if-exists=.env.local scripts/import-sessions.mjs",
     "test:host": "node --test scripts/local-demo.test.mjs scripts/workspace-info.test.mjs scripts/managed.test.mjs scripts/managed-backend.test.mjs scripts/demo-config.test.mjs scripts/markdown.test.mjs scripts/sessions.test.mjs scripts/health-policy.test.mjs scripts/connect.test.mjs && node scripts/verify-workspaces.mjs && node scripts/verify-managed-boot.mjs && node scripts/verify-sessions.mjs && node scripts/verify-health-policy.mjs && node scripts/verify-connected-agent.mjs",
     "test:host:dev": "node scripts/verify-workspaces.mjs --dev",
+    "test:deployment": "node scripts/verify-deployment.mjs",
     "test:sandbox:live": "node --env-file-if-exists=.env.local scripts/verify-live-sandbox.mjs",
     "wasm": "node scripts/build-wasm.mjs",
     "wasm:node": "node scripts/build-wasm.mjs nodejs",
@@ -26,8 +28,11 @@
   },
   "dependencies": {
     "@assistant-ui/tap": "^0.9.19",
-    "@farm.js/core": "0.1.0-beta.104",
+    "@farm.js/core": "0.1.0-beta.106",
     "@farm.js/wasm": "0.1.0-beta.0",
+    "@farming-labs/docs": "0.2.115",
+    "@farming-labs/farmjs": "0.2.115",
+    "@farming-labs/theme": "0.2.115",
     "@tress/workspaces": "file:../packages/workspaces",
     "@vercel/functions": "^3.9.9",
     "@vercel/sandbox": "^3.5.0",
@@ -42,11 +47,12 @@
     "statewire": "^0.19.4"
   },
   "devDependencies": {
-    "@farm.js/cli": "0.1.0-beta.104",
+    "@farm.js/cli": "0.1.0-beta.106",
     "@types/node": "^20.10.5",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "esbuild": "0.28.2",
     "typescript": "^5.3.3",
     "vite": "^5.0.10"
   },

@@ -14,6 +14,12 @@ tress attach -s <id>     # join another thread on that host
 folders and environment-based startup. The v0.1.0 binary requires an explicit
 URL with `tress attach`.
 
+**Existing assistant-ui applications:** the [source preview](examples/existing-app/README.md)
+connects the browser and terminal to your server-owned Harness thread, with
+your authentication and revocation. Build the CLI from this checkout; this
+integration is not in the published v0.3.0 binary. The site's `/docs` section
+covers application wiring, local setup, and production with code examples.
+
 For standalone work in your own project, choose `tress setup --local`:
 
 ```
