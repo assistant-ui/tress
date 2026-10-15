@@ -15,6 +15,29 @@ export default withDocs(defineConfig({
   vite: {
     plugins: [
       {
+        name: "tress-docs-page-actions",
+        enforce: "pre",
+        // Add the shared control only to rendered MDX. The .md endpoint reads
+        // the original source, keeping UI components out of copied Markdown.
+        transform(source, id) {
+          const path = id.split("?")[0].replaceAll("\\", "/");
+          const docsRoot = `${process.cwd().replaceAll("\\", "/")}/docs/`;
+          if (!path.startsWith(docsRoot) || !path.endsWith(".mdx")) return null;
+          if (source.includes('import { DocsPageActions }')) return null;
+          const slug = path.slice(docsRoot.length, -4).replace(/(^|\/)index$/, "");
+          const href = `/docs${slug ? `/${slug}` : ""}.md`;
+          const content = source.replace(
+            /^(# .+)$/m,
+            (_, title) => `${title}\n\n<DocsPageActions href=${JSON.stringify(href)} />`,
+          );
+          const code = content.replace(
+            /^(---\r?\n[\s\S]*?\r?\n---\r?\n)/,
+            '$1\nimport { DocsPageActions } from "/src/components/DocsPageActions.tsx";\n',
+          );
+          return { code, map: null };
+        },
+      },
+      {
         name: "tress-wasm-initialization",
         // Farm's SSR build marks modules as side-effect-free. wasm-bindgen's
         // entry point must run to initialize the re-exported session classes.

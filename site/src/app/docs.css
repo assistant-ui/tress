@@ -1,4 +1,128 @@
 /* Docs overrides stay scoped so the terminal demo keeps its own layout. */
+#nd-docs-layout :is(#nd-sidebar, #nd-sidebar-mobile) {
+  border-right: 1px solid var(--line);
+  background: #0d0d0d;
+}
+
+#nd-sidebar-mobile {
+  width: min(320px, 88vw);
+}
+
+#nd-sidebar-mobile > div:first-child > div::before {
+  content: "Documentation";
+  color: var(--text);
+  font: 500 12px/1.6 var(--mono);
+}
+
+#nd-sidebar-mobile button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+#nd-docs-layout #nd-sidebar-mobile a[data-active] {
+  min-height: 44px;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) > div:first-child {
+  gap: 20px;
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid #202020;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) > div:first-child a,
+#nd-subnav > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  font: 500 17px/1.4 var(--mono);
+  letter-spacing: -0.06em;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) > div:first-child a::before,
+#nd-subnav > a::before {
+  content: "";
+  width: 23px;
+  height: 23px;
+  flex: 0 0 23px;
+  background: url("/favicon.svg") center / contain no-repeat;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) > div:first-child a::after {
+  content: "docs";
+  margin-left: 3px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font: 11px/1.5 var(--mono);
+  letter-spacing: 0;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) [data-search-full] {
+  min-height: 36px;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #141414;
+  color: var(--muted);
+  font: 11px/1.5 var(--mono);
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) [data-search-full] svg {
+  width: 14px;
+  height: 14px;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) [data-search-full] kbd {
+  padding: 0 3px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font-size: 10px;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) [data-radix-scroll-area-viewport] {
+  padding: 16px 14px 32px;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) [data-disabled]:not([id]) > div:first-child:not([id]) {
+  margin: 20px 10px 8px;
+  padding: 0;
+  color: var(--dim);
+  font: 500 10px/1.6 var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+#nd-docs-layout :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active] {
+  position: relative;
+  min-height: 36px;
+  margin-block: 1px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: #a5a5a0;
+  font: 12px/1.6 var(--mono);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+#nd-docs-layout :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active="true"] {
+  /* The theme marks its active colors important. Keep Tress's accent here. */
+  background: rgb(206 149 124 / 9%) !important;
+  color: #e3b6a2 !important;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
 #nd-docs-layout #nd-page {
   --fd-body-size: 0.8125rem;
   --fd-body-line-height: 1.8;
@@ -59,7 +183,7 @@
 
 /* Riftri-style page actions: a quiet row at the reading column's right edge. */
 #nd-docs-layout .fd-below-title-block {
-  margin: 8px 0 24px;
+  margin: 8px 0 0;
 }
 
 #nd-docs-layout .fd-title-separator {
@@ -98,6 +222,31 @@
   height: 13px;
 }
 
+#nd-docs-layout .docs-page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 10px 0 24px;
+}
+
+#nd-docs-layout .docs-action-divider {
+  color: #555550;
+  font-size: 11px;
+}
+
+#nd-docs-layout .docs-page-actions button {
+  min-width: 86px;
+}
+
+#nd-docs-layout .docs-copy-error {
+  flex-basis: 100%;
+  color: var(--accent);
+  text-align: right;
+  font-size: 11px;
+}
+
 #nd-docs-layout .fd-page-action-btn[data-copied="true"] {
   color: var(--accent);
 }
@@ -117,11 +266,6 @@
   padding: 14px 48px 14px 16px;
   font-size: 0.75rem;
   line-height: 1.75;
-}
-
-#nd-docs-layout #nd-sidebar a[data-active] {
-  font-size: 0.75rem;
-  line-height: 1.6;
 }
 
 #nd-docs-layout #nd-toc,
@@ -222,6 +366,11 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
+  #nd-docs-layout :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active]:hover {
+    background: #1b1b1b;
+    color: #eeeeeb;
+  }
+
   #nd-docs-layout .fd-page-nav-card:hover {
     background: transparent;
   }
@@ -231,6 +380,23 @@
   #nd-docs-layout .fd-page-action-btn:hover {
     color: var(--accent);
   }
+}
+
+#nd-docs-layout :is(#nd-sidebar, #nd-sidebar-mobile, #nd-subnav, .docs-page-actions) :is(a, button):focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (pointer: coarse) {
+  #nd-docs-layout :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active],
+  #nd-docs-layout .fd-page-action-btn,
+  :is(#nd-sidebar, #nd-sidebar-mobile) [data-search-full] {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #nd-docs-layout :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active] { transition: none; }
 }
 
 @media (max-width: 767px) {

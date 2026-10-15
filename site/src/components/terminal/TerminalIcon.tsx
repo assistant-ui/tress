@@ -8,6 +8,11 @@ const paths = {
   terminal: <><path d="m4 6 5 5-5 5M12 17h8" /></>,
   chevron: <path d="m9 5 7 7-7 7" />,
   enter: <path d="M19 5v9H5m5-5-5 5 5 5" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  close: <path d="m6 6 12 12M6 18 18 6" />,
+  chat: <path d="M20 11.5a8 8 0 0 1-8 8H4l-1 1v-9a8.5 8.5 0 0 1 17 0Z" />,
+  more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
+  archive: <><path d="M4 8h16v12H4zM3 4h18v4H3zM10 12h4" /></>,
 } as const;
 
 export function TerminalIcon({

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { TerminalIcon } from "./terminal/TerminalIcon";
 
 export type ThreadSummary = {
   id: string;
@@ -87,23 +88,26 @@ export function ThreadSidebar(props: Props) {
       <div className="threads-heading">
         <h2>Threads</h2>
         <button
-          className="new-thread"
-          type="button"
-          aria-label="New thread"
-          title="New thread"
-          disabled={busy}
-          onClick={() => void onSelect()}
-        >
-          <span aria-hidden="true">+</span>
-        </button>
-        <button
           ref={closeButton}
           type="button"
           aria-label="Close threads"
           onClick={onClose}
         >
-          ×
+          <TerminalIcon name="close" />
         </button>
+      </div>
+      <button
+        className="new-thread"
+        type="button"
+        disabled={busy}
+        onClick={() => void onSelect()}
+      >
+        <TerminalIcon name="plus" />
+        New thread
+      </button>
+      <div className="thread-list-heading">
+        <span>{archived ? "Archived" : "Recent"}</span>
+        {loaded ? <span>{visible.length}</span> : null}
       </div>
       <div
         className="thread-list"
@@ -122,7 +126,7 @@ export function ThreadSidebar(props: Props) {
           </p>
         ) : null}
         {visible.map((thread) => (
-          <div className="thread-row" key={thread.id}>
+          <div className="thread-row" data-current={currentId === thread.id} key={thread.id}>
             {editing === thread.id ? (
               <form
                 className="thread-rename"
@@ -169,7 +173,9 @@ export function ThreadSidebar(props: Props) {
                   onClick={() => void onSelect(thread.id)}
                 >
                   <span className="thread-marker" aria-hidden="true">
-                    {currentId === thread.id ? (working ? "·" : "›") : ""}
+                    {currentId === thread.id && working
+                      ? <span className="thread-working-dot" />
+                      : <TerminalIcon name="chat" />}
                   </span>
                   <span className="thread-row-title">
                     {thread.title ?? "New thread"}
@@ -189,7 +195,7 @@ export function ThreadSidebar(props: Props) {
                   <summary
                     aria-label={`Manage ${thread.title ?? "new thread"}`}
                   >
-                    ···
+                    <TerminalIcon name="more" />
                   </summary>
                   <div>
                     <button
@@ -237,56 +243,69 @@ export function ThreadSidebar(props: Props) {
           aria-pressed={archived}
           onClick={() => setArchived((value) => !value)}
         >
+          <TerminalIcon name="archive" />
           {archived
-            ? "← All threads"
+            ? "Back to recent threads"
             : `Archived${threads.some((thread) => thread.archivedAt) ? ` (${threads.filter((thread) => thread.archivedAt).length})` : ""}`}
         </button>
       ) : null}
       {topology ? (
-        <section className="session-topology" aria-labelledby="session-topology-title">
-          <h3 id="session-topology-title">Connection roles</h3>
-          <div className="topology-role topology-host">
-            <span className="topology-role-label">host</span>
-            <div>
-              <strong>{topology.host.label}</strong>
-              <span>
-                {topology.host.runtime === "managed"
-                  ? "managed Harness runtime"
-                  : "local tress runtime"}
-                {topology.host.workspace
-                  ? ` · ${topology.host.workspace} workspace`
-                  : ""}
-              </span>
-              <small>Runs the agent and controls workspace access.</small>
+        <details className="session-topology">
+          <summary>
+            <span className="topology-summary-status">
+              <span className="topology-status-dot" data-connected={topology.connected} />
+              {topology.connected ? "Connected" : "Disconnected"}
+            </span>
+            <span className="topology-summary-count">
+              {topology.clients.length} {topology.clients.length === 1 ? "client" : "clients"}
+            </span>
+            <TerminalIcon name="chevron" />
+          </summary>
+          <div className="topology-details">
+            <h3>Connection details</h3>
+            <div className="topology-role topology-host">
+              <span className="topology-role-label">host</span>
+              <div>
+                <strong>{topology.host.label}</strong>
+                <span>
+                  {topology.host.runtime === "managed"
+                    ? "managed Harness runtime"
+                    : "local tress runtime"}
+                  {topology.host.workspace
+                    ? ` · ${topology.host.workspace} workspace`
+                    : ""}
+                </span>
+                <small>Runs the agent and controls workspace access.</small>
+              </div>
             </div>
-          </div>
-          <div className="topology-clients">
-            <div className="topology-clients-heading">
-              <span>clients</span>
-              <span>
-                {topology.clients.length} {topology.connected ? "live" : "last known"}
-              </span>
+            <div className="topology-clients">
+              <div className="topology-clients-heading">
+                <span>clients</span>
+                <span>
+                  {topology.clients.length} {topology.connected ? "live" : "last known"}
+                </span>
+              </div>
+              {topology.clients.length ? (
+                <ul>
+                  {topology.clients.map((client) => (
+                    <li key={client.id}>
+                      <span className="topology-client-kind">{client.kind}</span>
+                      <span title={client.label}>{client.label || client.kind}</span>
+                      <code>{client.id.slice(0, 6)}</code>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No attached clients.</p>
+              )}
             </div>
-            {topology.clients.length ? (
-              <ul>
-                {topology.clients.map((client) => (
-                  <li key={client.id}>
-                    <span className="topology-client-kind">{client.kind}</span>
-                    <span title={client.label}>{client.label || client.kind}</span>
-                    <code>{client.id.slice(0, 6)}</code>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>No attached clients.</p>
-            )}
+            <p className="topology-policy">
+              The person running or deploying tress assigns the host. Anyone with
+              this private thread link or session ID can join as a browser or
+              terminal client. Clients cannot become the host from this screen yet.
+            </p>
           </div>
-          <p className="topology-policy">
-            The person running or deploying tress assigns the host. Anyone with
-            this private thread link or session ID can join as a browser or
-            terminal client. Clients cannot become the host from this screen yet.
-          </p>
-        </section>
+        </details>
       ) : null}
     </>
   );
