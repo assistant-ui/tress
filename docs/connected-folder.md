@@ -2,7 +2,12 @@
 
 The site owns the model credentials and, in managed mode, the Harness credentials. `tress attach` does
 not log into Harness, need an API key, or open an inbound port. It offers a filesystem
-to one browser-owned demo thread through a short-lived pairing code.
+to the browser thread authorized by the session command. With the updated host
+and CLI, no pairing code is needed by default. The host can opt into an extra
+browser-owner approval with `TRESS_REQUIRE_PAIRING=1`.
+
+This connection behavior is in the source preview; it requires an updated CLI
+and host. Older clients and hosts retain their pairing-code flow.
 
 ## Visitor steps
 
@@ -22,11 +27,12 @@ to one browser-owned demo thread through a short-lived pairing code.
    commands are exposed. Symlink paths and special files remain unavailable.
 
    Whole-filesystem access includes personal files readable by that process.
-   The CLI prints the exact scope before pairing, and the browser labels it
+   The CLI prints the exact scope when connecting, and the browser labels it
    **Whole filesystem**. No file content is sent until a file is requested.
-3. Enter the code printed by the binary in the browser's pairing form. The
-   code expires after five minutes. Pair in the same chat as the command.
-   After pairing, the terminal UI opens and the same process serves file requests.
+3. The session command connects the folder directly to that chat and opens the
+   terminal UI. If the host requires pairing, or either side uses an older
+   version, enter the printed code in that chat's **connect folder** form first.
+   Codes expire after five minutes. The same process serves file requests.
    Omit `--ui` for plain terminal output. The browser shows the folder label,
    permissions, and actual online/offline state. The file browser opens with
    the real directory listing. Open subfolders and files, or use **Refresh**
@@ -41,20 +47,24 @@ to one browser-owned demo thread through a short-lived pairing code.
    access. The managed conversation remains available when the device is
    offline, but local file operations will not silently switch to demo files.
 
-The binary prints the exact canonical root before pairing. Whole-filesystem
+The binary prints the exact canonical root when connecting. Whole-filesystem
 connections accept absolute paths such as `/Users/mac/oss/riftri/README.md`;
 folder-scoped connections require paths relative to that folder. It keeps a
 revocable, thread-scoped device token in memory for that process only; it
 does not save the token or the Harness project key. Restarting it currently
-requires a new pairing. Temporary network failures are retried while the
+connects again using the session command; when the host requires pairing, it
+requires a fresh code. Temporary network failures are retried while the
 process stays open. Connected folders do not mirror the whole directory
 to the site: the browser and agent request individual paths. Browser previews are loaded
 on demand; selecting a file alone does not call the model. Agent tool output
 may be sent to the model provider and stored in the conversation.
 
-The thread owner cookie can pair or disconnect a folder. A shared `-s` thread
-attach ID can join a conversation, browse files, and ask the agent to use the
-connected folder, but cannot manage its device. Treat the attach link as access to the
+The thread owner cookie can approve a pairing code or disconnect a folder.
+By default, a shared `-s` session command can also attach a machine or replace
+the thread's connected machine, as well as join the conversation and use its
+files. With `TRESS_REQUIRE_PAIRING=1`, attaching or replacing a machine additionally
+requires the browser owner's approval. Session commands do not transfer browser
+ownership or grant access to the owner's other threads. Treat the attach link as access to the
 folder while the connector is online; do not share it with people you would
 not trust with those files. Pairing a
 second folder to the same thread revokes the first connection. Keep the
@@ -75,6 +85,19 @@ never be sent to the browser or the native binary. The site routes scoped
 read/list/write jobs through PostgreSQL; a long-running gateway service is
 not required for this first version.
 
+To require a short-lived pairing code for new session connections, set this on
+the **host**, not on the user's terminal:
+
+```dotenv
+TRESS_REQUIRE_PAIRING=1
+```
+
+Unset it or use `0` for direct session attachment. The browser reflects the host
+policy; the CLI cannot override a host that requires pairing. Existing connected
+devices are not revoked by changing this setting; disconnect them separately.
+Direct attachment still validates the session before creating a device, checks
+that session on polling and results, and keeps file permissions and revocation.
+
 Pairing also works with a long-running local thread host (`TRESS_THREAD_MODE=local`)
 and a configured model; Harness Cloud is not needed for that setup.
 New threads start without seeded example files. Folder attachment requires the
@@ -85,10 +108,12 @@ filesystem sharing applies to the explicit `attach` command.
 
 The older `tress connect --site <url> [--root <folder>] [--allow-write]` command
 remains available for a folder-only process without terminal chat. It uses the
-current directory by default and the same browser pairing form.
+current directory by default. Because it has no session, it always uses a code
+to select and authorize the destination browser thread. On a host that connects
+sessions directly, choose **Have a pairing code?** to reveal that form.
 
 For local development without PostgreSQL, the connector store is in memory.
-It resets when the dev server restarts, so reconnect and pair again after a
+It resets when the dev server restarts, so reconnect after a
 restart. Public deployments should use PostgreSQL, HTTPS, request-rate
 limits, and the site's existing session/run quotas. One connector currently
 serves one thread; the binary polls approximately once per second. A file

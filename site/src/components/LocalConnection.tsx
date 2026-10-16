@@ -29,6 +29,8 @@ export function LocalConnection({
   deviceRef.current = device;
   const [visible, setVisible] = useState(false);
   const [manageable, setManageable] = useState(false);
+  const [pairingRequired, setPairingRequired] = useState(true);
+  const [manualPairing, setManualPairing] = useState(false);
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -53,6 +55,7 @@ export function LocalConnection({
         const data = await response.json();
         setVisible(true);
         setManageable(data.manageable === true);
+        setPairingRequired(data.pairingRequired !== false);
         setDevice(data.device);
         onDevice(data.device);
         setError("");
@@ -142,27 +145,39 @@ export function LocalConnection({
       </div>
       {!device && expanded ? (
         <div className="local-connect-steps">
-          <p>Run this on your computer, VM, or remote host. After pairing, it shares the whole filesystem accessible to that terminal and opens this chat. Add <code>--root /path/to/project</code> to restrict access to a folder, or <code>--allow-write</code> to allow edits. Shell execution is not included.</p>
+          <p>Run this on your computer, VM, or remote host. It connects the whole filesystem accessible to that terminal and opens this chat. {pairingRequired ? "This host requires the pairing code below before connecting. " : "The session command connects directly; no pairing code is needed with the updated CLI. "}Add <code>--root /path/to/project</code> to restrict access to a folder, or <code>--allow-write</code> to allow edits. Shell execution is not included.</p>
           <div className="attach-command">
             <span aria-hidden="true">$</span>
             <code>{command}</code>
             <CopyButton text={command} label="Copy workspace connection command" compact disabled={!origin} />
           </div>
-          <form onSubmit={(event) => void claim(event)}>
-            <label htmlFor="local-pair-code">Pairing code printed by Tress</label>
-            <input
-              id="local-pair-code"
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={32}
-              required
-            />
-            <button type="submit" disabled={pending || !code.trim()}>
-              {pending ? "Connecting…" : "Connect"}
+          {!pairingRequired ? (
+            <button
+              type="button"
+              aria-expanded={manualPairing}
+              aria-controls="local-pair-form"
+              onClick={() => setManualPairing((shown) => !shown)}
+            >
+              {manualPairing ? "Hide pairing form" : "Have a pairing code?"}
             </button>
-          </form>
+          ) : null}
+          {pairingRequired || manualPairing ? (
+            <form id="local-pair-form" onSubmit={(event) => void claim(event)}>
+              <label htmlFor="local-pair-code">Pairing code printed by Tress</label>
+              <input
+                id="local-pair-code"
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={32}
+                required
+              />
+              <button type="submit" disabled={pending || !code.trim()}>
+                {pending ? "Connecting…" : "Connect"}
+              </button>
+            </form>
+          ) : null}
           <p>Keep the terminal open while using its files. Anyone with this thread’s private attach link can access the shared scope, including personal files your terminal can read. Files read by the agent enter its model conversation.</p>
         </div>
       ) : null}

@@ -7,6 +7,7 @@ const local = process.argv.includes("--local");
 const attach = process.argv.includes("--attach");
 const ui = process.argv.includes("--ui");
 const whole = process.argv.includes("--whole-filesystem");
+const requirePairing = process.argv.includes("--require-pairing");
 if (whole && !attach) throw new Error("Whole filesystem fixture requires --attach.");
 if (attach && !local) throw new Error("The attach fixture requires --local.");
 import { spawn } from "node:child_process";
@@ -96,6 +97,7 @@ try {
       TRESS_THREAD_MODE: local ? "local" : "cloud",
       TRESS_SERVERLESS: local ? "0" : "1",
       TRESS_DEMO_SHARED: "0",
+      TRESS_REQUIRE_PAIRING: requirePairing ? "1" : "0",
       TRESS_WORKSPACE: "memory",
       TRESS_SESSION_DIR: join(root, "sessions"),
       TRESS_DATABASE_URL: "",
@@ -144,18 +146,20 @@ try {
     });
     connector.stdout.on("data", (part) => { connectorOutput += part; });
     connector.stderr.on("data", (part) => { connectorOutput += part; });
-    await waitFor(() => {
-      if (connector.exitCode !== null) throw new Error(connectorOutput);
-      return /Code: [A-Za-z0-9_-]{12}/.test(connectorOutput);
-    }, "native pairing code");
-    if (attach) assert(!connectorOutput.includes("\x1b[?1049h"), "UI waits for browser pairing");
-    const code = connectorOutput.match(/Code: ([A-Za-z0-9_-]{12})/)[1];
-    const claim = await fetch(`${origin}/api/connect/claim`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookies, Origin: origin },
-      body: JSON.stringify({ threadId: mode.session.id, code }),
-    });
-    assert.equal(claim.status, 200, await claim.text());
+    if (!attach || requirePairing) {
+      await waitFor(() => {
+        if (connector.exitCode !== null) throw new Error(connectorOutput);
+        return /Code: [A-Za-z0-9_-]{12}/.test(connectorOutput);
+      }, "native pairing code");
+      if (attach) assert(!connectorOutput.includes("\x1b[?1049h"), "UI waits for browser pairing");
+      const code = connectorOutput.match(/Code: ([A-Za-z0-9_-]{12})/)[1];
+      const claim = await fetch(`${origin}/api/connect/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookies, Origin: origin },
+        body: JSON.stringify({ threadId: mode.session.id, code }),
+      });
+      assert.equal(claim.status, 200, await claim.text());
+    }
     await waitFor(async () => {
       const response = await fetch(`${origin}/api/connect/status?thread=${mode.session.id}`, {
         headers: { Cookie: cookies },
@@ -167,7 +171,8 @@ try {
       await waitFor(() => {
         if (connector.exitCode !== null) throw new Error(connectorOutput);
         return ui ? connectorOutput.includes("\x1b[?1049h") : connectorOutput.includes("shared thread");
-      }, "attach chat opens after pairing");
+      }, "attach chat opens after connecting");
+      if (!requirePairing) assert(!/Code: [A-Za-z0-9_-]{12}/.test(connectorOutput), "session attachment must not ask for a pairing code by default");
     }
   };
   const turn = async (text) => {

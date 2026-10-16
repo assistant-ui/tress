@@ -34,8 +34,9 @@ replaces the executable and leaves your configuration and files untouched.
 The default changes in v0.2.0: `tress` and `tress ask` connect to a host. Run
 `tress setup` once to choose that host and session. Existing commands using
 `tress attach <url> -s <id>` work without setup. In the updated CLI,
-attaching to a Tress site session offers the machine filesystem for browser
-pairing by default; add `--chat-only` to retain chat-only behavior.
+attaching to a Tress site session connects the machine filesystem by default;
+add `--chat-only` to retain chat-only behavior. Updated hosts connect directly
+using the session command unless they opt into `TRESS_REQUIRE_PAIRING=1`.
 
 For the previous local behavior, use `tress --local` or
 `tress --local ask "your task"` with your existing `ANTHROPIC_API_KEY`. Run
@@ -80,8 +81,9 @@ tress attach https://your-tress-host.example -s <session-id>
 ```
 
 With a Tress site session, attach shares the machine filesystem by default
-(`/` on macOS/Linux, the current drive root on Windows). Enter its pairing code
-in the browser chat to activate access. To restrict it to a project folder:
+(`/` on macOS/Linux, the current drive root on Windows). The updated CLI connects
+directly when the host allows it; if it prints a pairing code, enter that code
+in the browser chat. To restrict it to a project folder:
 
 ```sh
 tress attach https://your-tress-host.example -s <session-id> --root . --ui

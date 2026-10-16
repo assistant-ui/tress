@@ -53,7 +53,7 @@ fn usage() -> String {
          tress attach -s <id>  join a thread on the saved host\n  \
          tress attach <url>    join a thread with plain terminal output\n  \
          tress attach <url> --ui  opt into the full terminal interface\n  \
-         tress attach <site> -s <id>  pair this machine's filesystem, then chat (--session also works)\n  \
+         tress attach <site> -s <id>  connect this machine's filesystem and chat (--session also works)\n  \
          tress attach <site> -s <id> --chat-only  join without sharing files\n  \
          tress attach <site> -s <id> --root . --allow-write --ui  share a folder and chat\n  \
          tress attach <url> --headers-file <path>  use app credentials from a private JSON file\n  \

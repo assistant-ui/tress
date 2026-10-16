@@ -16,6 +16,9 @@ const jsonHeaders = {
   "Cache-Control": "private, no-store",
   Vary: "Cookie, Authorization",
 };
+// Session commands already carry a thread capability. Operators can require
+// a second, browser-owner approval before that capability can attach a device.
+const pairingRequired = () => ["1", "true"].includes(process.env.TRESS_REQUIRE_PAIRING?.trim().toLowerCase() ?? "");
 function fail(message: string, status: number): never {
   throw new SessionError(message, status);
 }
@@ -133,9 +136,12 @@ export const connectRequest = async (
 ): Promise<Response> => {
   try {
     if (action === "offer" && request.method === "POST") {
-      if (new URL(request.url).searchParams.has("session"))
-        await resolveDemoSession(request, false, registry);
+      const scoped = new URL(request.url).searchParams.has("session");
+      const session = scoped ? await resolveDemoSession(request, false, registry) : undefined;
+      if (scoped && !session) fail("This host does not support session attachment.", 400);
       const body = await bodyOf(request);
+      if (body.direct !== undefined && typeof body.direct !== "boolean")
+        fail("Invalid direct-connection capability.", 400);
       const label = clean(body.label, 80, "device label");
       const rootLabel = clean(body.rootLabel, 160, "folder label");
       if (typeof body.writable !== "boolean") fail("Invalid write permission.", 400);
@@ -155,6 +161,13 @@ export const connectRequest = async (
         writable: body.writable,
         expiresAt: Date.now() + 5 * 60_000,
       });
+      // Old clients omit `direct` and continue to receive a pairing code.
+      // An unscoped offer must always be claimed by the browser owner.
+      if (session && body.direct === true && !pairingRequired()) {
+        if (!(await devices.claim(connectHash(code), session.thread.id)))
+          fail("Could not connect this device. Run the attach command again.", 409);
+        return Response.json({ token, paired: true }, { status: 201, headers: jsonHeaders });
+      }
       return Response.json({ code, token, expiresInSeconds: 300 }, { status: 201, headers: jsonHeaders });
     }
     if (action === "claim" && request.method === "POST") {
@@ -229,7 +242,7 @@ export const connectRequest = async (
         writable: device.writable,
         online: deviceOnline(device),
         details: deviceDetails(device.label, device.writable),
-      } : null, manageable }, { headers: jsonHeaders });
+      } : null, manageable, pairingRequired: pairingRequired() }, { headers: jsonHeaders });
     }
     if (action === "poll" && request.method === "POST") {
       const hash = bearer(request);
