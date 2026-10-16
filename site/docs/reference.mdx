@@ -17,6 +17,11 @@ description: What this preview supports, and what still needs upstream release w
 | Optional access adapter | `packages/access`, source package; Node 24 or a TypeScript-aware build. Existing host auth can be used directly. |
 | Harness adapters | Upstream source at `c07dab9b1eb32a3800d2bad25e807efa0cfeedef`; several are not published on npm. |
 
+The installer currently provides v0.3.0. Its `attach` joins chat; use the
+separate `connect` command for paired folders. Combined `attach` file sharing
+and the Harness commands below require a source build. See the
+[release and source-preview steps](/docs/try#build-the-source-preview).
+
 The CLI can negotiate the existing Tress host or a Harness host, display the
 active branch's text and tool activity, and submit text to a known thread.
 Harness preloads its recent message window. Full history pagination, generic

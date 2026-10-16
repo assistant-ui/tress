@@ -16,11 +16,13 @@ curl -fsSL https://tress-theta.vercel.app/tress.sh | sh
 The installer downloads a binary, verifies its checksum, and installs to
 `~/.local/bin`. Follow its PATH instructions if needed.
 
-Use **v0.3.0 or newer** for connected folders, automatic local startup, and
+Published **v0.3.0** supports paired folders through `tress connect`, automatic local startup, and
 the `TRESS_HOST` / `TRESS_SESSION` environment shortcuts. Hosted setup and
 complete `tress ask` replies remain supported.
-Check `tress --version` after installation. To build the current checkout
-with Rust instead:
+Check `tress --version` after installation. Combined `attach` file sharing
+(`--root`, `--allow-write`, and `--chat-only`) and existing Harness app support
+are **source previews**, not included in that release. For these workflows,
+build the current checkout with Rust from the repository root:
 
 ```sh
 cargo install --locked --path crates/tress
@@ -33,7 +35,7 @@ replaces the executable and leaves your configuration and files untouched.
 
 The default changes in v0.2.0: `tress` and `tress ask` connect to a host. Run
 `tress setup` once to choose that host and session. Existing commands using
-`tress attach <url> -s <id>` work without setup. In the updated CLI,
+`tress attach <url> -s <id>` work without setup. In the source-preview CLI,
 attaching to a Tress site session offers the machine filesystem for browser
 pairing by default; add `--chat-only` to retain chat-only behavior.
 
@@ -70,7 +72,7 @@ Then use:
 tress                           # join the saved thread
 tress --ui                      # opt into the full terminal interface
 tress ask "explain these files"  # send a hosted prompt and exit
-tress attach -s <session-id> --chat-only  # another thread on the saved host
+tress attach -s <session-id>     # another thread on the saved host
 ```
 
 Explicit attachment still works without setup:
@@ -79,7 +81,7 @@ Explicit attachment still works without setup:
 tress attach https://your-tress-host.example -s <session-id>
 ```
 
-With a Tress site session, attach shares the machine filesystem by default
+In the source preview, with a Tress site session, attach shares the machine filesystem by default
 (`/` on macOS/Linux, the current drive root on Windows). Enter its pairing code
 in the browser chat to activate access. To restrict it to a project folder:
 
@@ -90,7 +92,14 @@ tress attach https://your-tress-host.example -s <session-id> --root . --ui
 Add `--chat-only` to join without sharing files, or `--allow-write` for edits. Exit to stop sharing. See the
 [connected folder guide](connected-folder.md) for access rules and remote VMs.
 This requires the updated Tress site's connection API; the older `connect`
-command remains supported for a folder-only process.
+command remains supported for a folder-only process. With published v0.3.0,
+run this in a separate terminal and enter its pairing code in the browser:
+
+```sh
+tress connect --site https://your-tress-host.example --root .
+```
+
+This shares the current folder read-only. Add `--allow-write` to permit edits.
 
 With `--chat-only`, plain `tress`, or `tress ask`, files belong to the host's workspace, which may be a local directory on that
 host, virtual files, or a sandbox. Connecting from a project directory does not

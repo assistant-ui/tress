@@ -34,6 +34,7 @@ export function LocalConnection({
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
   const command = `tress attach ${origin || "https://your-tress-site"} -s ${attachId} --ui`;
+  const releasedCommand = `tress connect --site ${origin || "https://your-tress-site"} --root .`;
 
   useEffect(() => {
     let alive = true;
@@ -142,12 +143,22 @@ export function LocalConnection({
       </div>
       {!device && expanded ? (
         <div className="local-connect-steps">
+          <p><strong>Source preview.</strong> This combined file-sharing command requires a <a href="/docs/try#build-the-source-preview">CLI built from source</a>; the installer currently provides v0.3.0.</p>
           <p>Run this on your computer, VM, or remote host. After pairing, it shares the whole filesystem accessible to that terminal and opens this chat. Add <code>--root /path/to/project</code> to restrict access to a folder, or <code>--allow-write</code> to allow edits. Shell execution is not included.</p>
           <div className="attach-command">
             <span aria-hidden="true">$</span>
             <code>{command}</code>
             <CopyButton text={command} label="Copy workspace connection command" compact disabled={!origin} />
           </div>
+          <details>
+            <summary>Using the released v0.3.0 CLI?</summary>
+            <p>Run this in the folder you want to share, in a separate terminal. Enter its pairing code below. Add <code>--allow-write</code> to permit edits.</p>
+            <div className="attach-command">
+              <span aria-hidden="true">$</span>
+              <code>{releasedCommand}</code>
+              <CopyButton text={releasedCommand} label="Copy v0.3.0 folder connection command" compact disabled={!origin} />
+            </div>
+          </details>
           <form onSubmit={(event) => void claim(event)}>
             <label htmlFor="local-pair-code">Pairing code printed by Tress</label>
             <input
