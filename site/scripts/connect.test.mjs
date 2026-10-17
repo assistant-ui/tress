@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { after, test } from "node:test";
@@ -336,6 +336,22 @@ test("the native CLI pairs over HTTP and performs scoped file operations", {
     ]);
     await connectedCall(session.thread.id, "write", "note.txt", "after", store);
     assert.equal(await readFile(join(root, "note.txt"), "utf8"), "after");
+    if (process.platform !== "win32") {
+      execFileSync("mkfifo", [join(root, "pipe")]);
+      await assert.rejects(
+        connectedCall(session.thread.id, "write", "pipe", "must not block", store, undefined, AbortSignal.timeout(3000)),
+        /only regular files/,
+      );
+      await assert.rejects(
+        connectedCall(session.thread.id, "read", "pipe", undefined, store, undefined, AbortSignal.timeout(3000)),
+        /only regular files/,
+      );
+      assert.deepEqual(await connectedCall(session.thread.id, "list", "", undefined, store), [
+        { name: "note.txt", type: "file" },
+      ]);
+      assert.equal(await connectedCall(session.thread.id, "read", "note.txt", undefined, store), "after",
+        "rejecting a special file leaves the connector usable");
+    }
     await assert.rejects(connectedCall(session.thread.id, "read", "../outside.txt", undefined, store), /stay inside/);
     if (process.platform !== "win32")
       await assert.rejects(connectedCall(session.thread.id, "read", "escape.txt", undefined, store), /symlinks/);

@@ -1,12 +1,14 @@
 //! An explicitly rooted file connector for the public site. Harness and model
 //! credentials remain on the site; this process receives only scoped file jobs.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use cap_std::ambient_authority;
-use cap_std::fs::Dir;
+#[cfg(unix)]
+use cap_std::fs::OpenOptionsExt;
+use cap_std::fs::{Dir, File, OpenOptions};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
@@ -218,6 +220,27 @@ fn safe_path(
     Ok(current)
 }
 
+// Validate the opened handle before reading or truncating it. O_NONBLOCK also
+// prevents a regular file replaced by a FIFO during open from hanging the CLI.
+fn open_regular_file(root: &Dir, path: &Path, write: bool) -> Result<File, String> {
+    let error = "only regular files can be read or written";
+    match root.metadata(path) {
+        Ok(metadata) if !metadata.is_file() => return Err(error.into()),
+        Ok(_) => {}
+        Err(error) if write && error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.to_string()),
+    }
+    let mut options = OpenOptions::new();
+    options.read(!write).write(write).create(write);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NONBLOCK);
+    let file = root.open_with(path, &options).map_err(|e| e.to_string())?;
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+        return Err(error.into());
+    }
+    Ok(file)
+}
+
 fn execute_scoped(
     root: &Dir,
     writable: bool,
@@ -234,7 +257,7 @@ fn execute_scoped(
             if metadata.len() > 1_048_576 {
                 return Err("file exceeds the 1 MB read limit".into());
             }
-            let file = root.open(path).map_err(|error| error.to_string())?;
+            let file = open_regular_file(root, &path, false)?;
             let mut content = String::new();
             file.take(1_048_577)
                 .read_to_string(&mut content)
@@ -250,7 +273,7 @@ fn execute_scoped(
             for entry in root.read_dir(path).map_err(|error| error.to_string())? {
                 let entry = entry.map_err(|error| error.to_string())?;
                 let kind = entry.file_type().map_err(|error| error.to_string())?;
-                if kind.is_symlink() {
+                if !kind.is_file() && !kind.is_dir() {
                     continue;
                 }
                 entries.push(Entry {
@@ -280,7 +303,9 @@ fn execute_scoped(
             if root.open_dir(parent).is_err() {
                 return Err("parent directory does not exist".into());
             }
-            root.write(path, content)
+            let mut file = open_regular_file(root, &path, true)?;
+            file.set_len(0).map_err(|error| error.to_string())?;
+            file.write_all(content.as_bytes())
                 .map_err(|error| error.to_string())?;
             Ok(serde_json::Value::String(format!("Wrote {}", job.path)))
         }
