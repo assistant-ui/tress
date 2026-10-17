@@ -45,6 +45,7 @@ after(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 process.env.TRESS_DEMO_SHARED = "0";
+process.env.TRESS_REQUIRE_PAIRING = "0";
 const registry = createFileThreadStore(join(directory, "registry"));
 const devices = createMemoryConnectStore();
 const url = (action, query = "") => `https://demo.example/api/connect/${action}${query}`;
@@ -59,6 +60,10 @@ const json = (action, body, cookie, token) =>
     body: JSON.stringify(body),
   });
 const call = (request, action) => connectRequest(request, action, devices, registry);
+const scopedRequest = (action, session, token, body = {}) => new Request(url(action, `?session=${session}`), {
+  method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  body: JSON.stringify(body),
+});
 const visitor = async () => {
   const request = new Request("https://demo.example/api/mode");
   const owner = await resolveDemoOwner(request, true, registry);
@@ -128,6 +133,70 @@ test("a visitor can claim only their own thread; a device can read and be revoke
   await assert.rejects(interrupted, /disconnected/);
   assert.equal((await call(json("poll", {}, undefined, token), "poll")).status, 410);
   assert.equal(await devices.device(a.session.thread.id), undefined);
+});
+
+test("session commands connect directly with scoped file access and owner revocation", async () => {
+  const a = await visitor();
+  const b = await visitor();
+  const body = { label: "Direct laptop", rootLabel: "project", writable: false, direct: true };
+  assert.equal((await call(scopedRequest("offer", "invalid", undefined, body), "offer")).status, 404);
+  const response = await call(scopedRequest("offer", a.session.token, undefined, body), "offer");
+  assert.equal(response.status, 201);
+  const offer = await response.json();
+  assert.equal(offer.paired, true);
+  assert.equal(offer.code, undefined);
+  assert.equal(offer.token.length, 43);
+  assert.equal(await devices.device(b.session.thread.id), undefined);
+  const poll = await (await call(scopedRequest("poll", a.session.token, offer.token), "poll")).json();
+  assert.equal(poll.paired, true);
+  assert.equal(poll.sessionMatched, true);
+  assert.equal((await call(scopedRequest("poll", b.session.token, offer.token), "poll")).status, 409);
+  const device = await devices.device(a.session.thread.id);
+  const workspace = createConnectedWorkspace(a.session.thread.id, device, devices);
+  await assert.rejects(workspace.writeFile("note.txt", "blocked"), /read-only/);
+  const read = workspace.readFile("note.txt");
+  const job = await nextJob(offer.token);
+  const result = { id: job.id, result: { ok: true, value: "direct file contents" } };
+  assert.equal((await call(scopedRequest("result", b.session.token, offer.token, result), "result")).status, 409);
+  assert.equal((await call(scopedRequest("result", a.session.token, offer.token, result), "result")).status, 200);
+  assert.equal(await read, "direct file contents");
+  const status = await call(new Request(url("status", `?thread=${a.session.thread.id}&session=${a.session.token}`)), "status");
+  assert.equal((await status.json()).pairingRequired, false);
+  const revoke = await call(new Request(url("status", `?thread=${a.session.thread.id}`), {
+    method: "DELETE", headers: { Cookie: a.cookie, Origin: "https://demo.example" },
+  }), "status");
+  assert.equal(revoke.status, 200);
+  assert.equal((await call(scopedRequest("poll", a.session.token, offer.token), "poll")).status, 410);
+});
+
+test("a host can require browser-owner pairing even for a direct session command", async (t) => {
+  process.env.TRESS_REQUIRE_PAIRING = "1";
+  t.after(() => { process.env.TRESS_REQUIRE_PAIRING = "0"; });
+  const a = await visitor();
+  const offer = await (await call(scopedRequest("offer", a.session.token, undefined, {
+    label: "Approval required", rootLabel: "project", writable: true, direct: true,
+  }), "offer")).json();
+  assert.equal(offer.paired, undefined);
+  assert.equal(offer.code.length, 12);
+  assert.equal((await (await call(scopedRequest("poll", a.session.token, offer.token), "poll")).json()).paired, false);
+  assert.equal(await devices.device(a.session.thread.id), undefined);
+  const status = await call(new Request(url("status", `?thread=${a.session.thread.id}`), { headers: { Cookie: a.cookie } }), "status");
+  assert.equal((await status.json()).pairingRequired, true);
+  assert.equal((await call(json("claim", { code: offer.code, threadId: a.session.thread.id }), "claim")).status, 404);
+  assert.equal((await call(json("claim", { code: offer.code, threadId: a.session.thread.id }, a.cookie), "claim")).status, 200);
+  assert.equal((await (await call(scopedRequest("poll", a.session.token, offer.token), "poll")).json()).paired, true);
+});
+
+test("unscoped connections and older clients keep the pairing-code flow", async () => {
+  const a = await visitor();
+  const body = { label: "Compatibility", rootLabel: "project", writable: false };
+  for (const request of [json("offer", { ...body, direct: true }), scopedRequest("offer", a.session.token, undefined, body)]) {
+    const offer = await (await call(request, "offer")).json();
+    assert.equal(offer.code.length, 12);
+    assert.equal(offer.paired, undefined);
+    assert.equal((await (await call(json("poll", {}, undefined, offer.token), "poll")).json()).paired, false);
+  }
+  assert.equal((await call(scopedRequest("offer", a.session.token, undefined, { ...body, direct: "true" }), "offer")).status, 400);
 });
 
 test("a writable connection can edit; jobs never cross thread boundaries", async () => {

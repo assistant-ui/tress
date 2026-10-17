@@ -23,13 +23,32 @@ struct Offer<'a> {
     label: &'a str,
     root_label: &'a str,
     writable: bool,
+    direct: bool,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Offered {
-    code: String,
+    code: Option<String>,
     token: String,
+    #[serde(default)]
+    paired: bool,
+}
+
+impl Offered {
+    fn pairing_code(&self, scoped: bool) -> Result<Option<&str>, String> {
+        if self.paired {
+            if !scoped {
+                return Err("A connection without a session must be paired in the browser.".into());
+            }
+            return Ok(None);
+        }
+        self.code
+            .as_deref()
+            .filter(|code| !code.is_empty())
+            .map(Some)
+            .ok_or_else(|| "The host did not provide a connection or pairing code.".into())
+    }
 }
 
 #[derive(Deserialize)]
@@ -290,6 +309,7 @@ pub struct Connection {
     token: String,
     session: Option<String>,
     failures: u32,
+    requires_pairing: bool,
 }
 
 impl Connection {
@@ -339,6 +359,7 @@ impl Connection {
             token: String::new(),
             session: session.map(str::to_owned),
             failures: 0,
+            requires_pairing: true,
         };
         let root_label = root_label(&connection.options.root);
         let response = connection
@@ -348,6 +369,7 @@ impl Connection {
                 label: &connection.options.label,
                 root_label: &root_label,
                 writable: connection.options.writable,
+                direct: session.is_some(),
             })
             .send()
             .await
@@ -359,6 +381,8 @@ impl Connection {
             ));
         }
         let offered: Offered = response.json().await.map_err(|e| e.to_string())?;
+        let code = offered.pairing_code(session.is_some())?.map(str::to_owned);
+        connection.requires_pairing = code.is_some();
         connection.token = offered.token;
         let mut browser_url = connection.options.site.clone();
         if let Some(session) = session {
@@ -366,8 +390,12 @@ impl Connection {
                 .query_pairs_mut()
                 .append_pair("session", session);
         }
-        println!("Pair this folder at {browser_url}");
-        println!("Code: {} (expires in 5 minutes)", offered.code);
+        if let Some(code) = code {
+            println!("Pair this folder at {browser_url}");
+            println!("Code: {code} (expires in 5 minutes)");
+        } else {
+            println!("Connecting this folder to {browser_url}");
+        }
         println!("Folder: {}", connection.options.root.display());
         if connection.options.root.parent().is_none() {
             println!("Scope: Whole filesystem accessible to this process, subject to OS permissions. Use --root <folder> to restrict access.");
@@ -524,11 +552,13 @@ pub async fn prepare_attached(
         args.push("--allow-write".into());
     }
     let mut connection = Connection::open(options(&args)?, Some(session)).await?;
-    println!(
-        "Enter this code in that chat's connect folder form. The terminal opens after pairing."
-    );
+    if connection.requires_pairing {
+        println!(
+            "Enter this code in that chat's connect folder form. The terminal opens after pairing."
+        );
+    }
     connection.wait_for_pair().await?;
-    println!("Folder paired. Opening the shared chat…");
+    println!("Folder connected. Opening the shared chat…");
     Ok(connection)
 }
 
@@ -547,6 +577,22 @@ pub async fn run(args: &[String]) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn offers_accept_direct_sessions_and_legacy_pairing_but_reject_unscoped_auto_connect() {
+        let direct: Offered =
+            serde_json::from_str(r#"{"token":"device-token","paired":true}"#).unwrap();
+        assert_eq!(direct.pairing_code(true).unwrap(), None);
+        assert!(direct.pairing_code(false).is_err());
+        let legacy: Offered = serde_json::from_str(
+            r#"{"token":"device-token","code":"pair-code","expiresInSeconds":300}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.pairing_code(true).unwrap(), Some("pair-code"));
+        assert_eq!(legacy.pairing_code(false).unwrap(), Some("pair-code"));
+        let invalid: Offered = serde_json::from_str(r#"{"token":"device-token"}"#).unwrap();
+        assert!(invalid.pairing_code(true).is_err());
+    }
 
     fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
         execute_scoped(root, writable, job, None)

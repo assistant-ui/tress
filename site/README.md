@@ -203,6 +203,11 @@ The public demo can also pair an opt-in native folder without sharing its
 Harness project key. See [connected folders](../docs/connected-folder.md) for
 visitor steps, permissions, and operator requirements.
 
+Updated session attach commands connect a machine directly by default. Set
+`TRESS_REQUIRE_PAIRING=1` on the host to require an additional browser-owner
+pairing code for new connections. Old clients and unscoped `tress connect`
+commands keep their code flow. This policy does not revoke existing devices.
+
 Set `HARNESS_API_KEY` in `site/.env.local` to connect this demo to managed Harness.
 The key stays on the server. Both the website and `tress attach` connect through
 the session selected by `-s <id>`. `/status` shows its cloud thread ID.
