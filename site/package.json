@@ -18,7 +18,7 @@
     "test:connect": "node --test scripts/connect.test.mjs",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
     "db:import": "node --env-file-if-exists=.env.local scripts/import-sessions.mjs",
-    "test:host": "node --test scripts/local-demo.test.mjs scripts/workspace-info.test.mjs scripts/managed.test.mjs scripts/managed-backend.test.mjs scripts/demo-config.test.mjs scripts/markdown.test.mjs scripts/sessions.test.mjs scripts/health-policy.test.mjs scripts/connect.test.mjs && node scripts/verify-workspaces.mjs && node scripts/verify-managed-boot.mjs && node scripts/verify-sessions.mjs && node scripts/verify-health-policy.mjs && node scripts/verify-connected-agent.mjs && node scripts/verify-connected-agent.mjs --local && node scripts/verify-connected-agent.mjs --local --attach && node scripts/verify-connected-agent.mjs --local --attach --ui && node scripts/verify-connected-agent.mjs --local --attach --whole-filesystem --ui",
+    "test:host": "node --test scripts/local-demo.test.mjs scripts/workspace-info.test.mjs scripts/managed.test.mjs scripts/managed-backend.test.mjs scripts/demo-config.test.mjs scripts/markdown.test.mjs scripts/sessions.test.mjs scripts/health-policy.test.mjs scripts/connect.test.mjs && node scripts/verify-workspaces.mjs && node scripts/verify-managed-boot.mjs && node scripts/verify-sessions.mjs && node scripts/verify-health-policy.mjs && node scripts/verify-connected-agent.mjs && node scripts/verify-connected-agent.mjs --local && node scripts/verify-connected-agent.mjs --local --attach && node scripts/verify-connected-agent.mjs --local --attach --ui && node scripts/verify-connected-agent.mjs --local --attach --whole-filesystem --ui && node scripts/verify-connected-agent.mjs --local --attach --require-pairing --ui",
     "test:host:dev": "node scripts/verify-workspaces.mjs --dev",
     "test:deployment": "node scripts/verify-deployment.mjs",
     "test:sandbox:live": "node --env-file-if-exists=.env.local scripts/verify-live-sandbox.mjs",
@@ -54,11 +54,17 @@
     "@types/react-dom": "^19.0.0",
     "esbuild": "0.28.2",
     "typescript": "^5.3.3",
-    "vite": "^5.0.10"
+    "vite": "7.3.7"
   },
   "overrides": {
     "@farm.js/wasm": {
       "@farm.js/core": "$@farm.js/core"
-    }
+    },
+    "nanoid@>=4 <6": "5.1.16",
+    "sharp": "0.35.5",
+    "toml": "4.2.0",
+    "vite": "$vite",
+    "yaml@>=2 <3": "2.9.1",
+    "ts-deepmerge": "8.0.0"
   }
 }

@@ -123,8 +123,11 @@ limits.
 The session ID is an **access capability**, not a login or a database
 password. Anyone with the complete ID or browser link can join and steer that
 thread, including using its paired folder while it is online. Do not post it
-publicly. Pairing and disconnecting a folder require the original browser's
-owner cookie; sharing the ID does not transfer ownership. For a non-demo
+publicly. Updated `tress attach <site> -s <id>` commands can attach or replace a
+machine directly using that capability. Hosts can require a browser-owner
+pairing code with `TRESS_REQUIRE_PAIRING=1`; the unscoped `connect` command above
+always requires one. Approving codes and disconnecting from the browser require
+the owner cookie; sharing the ID does not transfer ownership. For a non-demo
 product, add your own user authentication and authorization before treating
 these anonymous sessions as private accounts.
 

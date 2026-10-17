@@ -1,12 +1,14 @@
 //! An explicitly rooted file connector for the public site. Harness and model
 //! credentials remain on the site; this process receives only scoped file jobs.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use cap_std::ambient_authority;
-use cap_std::fs::Dir;
+#[cfg(unix)]
+use cap_std::fs::OpenOptionsExt;
+use cap_std::fs::{Dir, File, OpenOptions};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
@@ -23,13 +25,32 @@ struct Offer<'a> {
     label: &'a str,
     root_label: &'a str,
     writable: bool,
+    direct: bool,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Offered {
-    code: String,
+    code: Option<String>,
     token: String,
+    #[serde(default)]
+    paired: bool,
+}
+
+impl Offered {
+    fn pairing_code(&self, scoped: bool) -> Result<Option<&str>, String> {
+        if self.paired {
+            if !scoped {
+                return Err("A connection without a session must be paired in the browser.".into());
+            }
+            return Ok(None);
+        }
+        self.code
+            .as_deref()
+            .filter(|code| !code.is_empty())
+            .map(Some)
+            .ok_or_else(|| "The host did not provide a connection or pairing code.".into())
+    }
 }
 
 #[derive(Deserialize)]
@@ -199,6 +220,27 @@ fn safe_path(
     Ok(current)
 }
 
+// Validate the opened handle before reading or truncating it. O_NONBLOCK also
+// prevents a regular file replaced by a FIFO during open from hanging the CLI.
+fn open_regular_file(root: &Dir, path: &Path, write: bool) -> Result<File, String> {
+    let error = "only regular files can be read or written";
+    match root.metadata(path) {
+        Ok(metadata) if !metadata.is_file() => return Err(error.into()),
+        Ok(_) => {}
+        Err(error) if write && error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.to_string()),
+    }
+    let mut options = OpenOptions::new();
+    options.read(!write).write(write).create(write);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NONBLOCK);
+    let file = root.open_with(path, &options).map_err(|e| e.to_string())?;
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+        return Err(error.into());
+    }
+    Ok(file)
+}
+
 fn execute_scoped(
     root: &Dir,
     writable: bool,
@@ -215,7 +257,7 @@ fn execute_scoped(
             if metadata.len() > 1_048_576 {
                 return Err("file exceeds the 1 MB read limit".into());
             }
-            let file = root.open(path).map_err(|error| error.to_string())?;
+            let file = open_regular_file(root, &path, false)?;
             let mut content = String::new();
             file.take(1_048_577)
                 .read_to_string(&mut content)
@@ -231,7 +273,7 @@ fn execute_scoped(
             for entry in root.read_dir(path).map_err(|error| error.to_string())? {
                 let entry = entry.map_err(|error| error.to_string())?;
                 let kind = entry.file_type().map_err(|error| error.to_string())?;
-                if kind.is_symlink() {
+                if !kind.is_file() && !kind.is_dir() {
                     continue;
                 }
                 entries.push(Entry {
@@ -261,7 +303,9 @@ fn execute_scoped(
             if root.open_dir(parent).is_err() {
                 return Err("parent directory does not exist".into());
             }
-            root.write(path, content)
+            let mut file = open_regular_file(root, &path, true)?;
+            file.set_len(0).map_err(|error| error.to_string())?;
+            file.write_all(content.as_bytes())
                 .map_err(|error| error.to_string())?;
             Ok(serde_json::Value::String(format!("Wrote {}", job.path)))
         }
@@ -290,6 +334,7 @@ pub struct Connection {
     token: String,
     session: Option<String>,
     failures: u32,
+    requires_pairing: bool,
 }
 
 impl Connection {
@@ -339,6 +384,7 @@ impl Connection {
             token: String::new(),
             session: session.map(str::to_owned),
             failures: 0,
+            requires_pairing: true,
         };
         let root_label = root_label(&connection.options.root);
         let response = connection
@@ -348,6 +394,7 @@ impl Connection {
                 label: &connection.options.label,
                 root_label: &root_label,
                 writable: connection.options.writable,
+                direct: session.is_some(),
             })
             .send()
             .await
@@ -359,6 +406,8 @@ impl Connection {
             ));
         }
         let offered: Offered = response.json().await.map_err(|e| e.to_string())?;
+        let code = offered.pairing_code(session.is_some())?.map(str::to_owned);
+        connection.requires_pairing = code.is_some();
         connection.token = offered.token;
         let mut browser_url = connection.options.site.clone();
         if let Some(session) = session {
@@ -366,8 +415,12 @@ impl Connection {
                 .query_pairs_mut()
                 .append_pair("session", session);
         }
-        println!("Pair this folder at {browser_url}");
-        println!("Code: {} (expires in 5 minutes)", offered.code);
+        if let Some(code) = code {
+            println!("Pair this folder at {browser_url}");
+            println!("Code: {code} (expires in 5 minutes)");
+        } else {
+            println!("Connecting this folder to {browser_url}");
+        }
         println!("Folder: {}", connection.options.root.display());
         if connection.options.root.parent().is_none() {
             println!("Scope: Whole filesystem accessible to this process, subject to OS permissions. Use --root <folder> to restrict access.");
@@ -524,11 +577,13 @@ pub async fn prepare_attached(
         args.push("--allow-write".into());
     }
     let mut connection = Connection::open(options(&args)?, Some(session)).await?;
-    println!(
-        "Enter this code in that chat's connect folder form. The terminal opens after pairing."
-    );
+    if connection.requires_pairing {
+        println!(
+            "Enter this code in that chat's connect folder form. The terminal opens after pairing."
+        );
+    }
     connection.wait_for_pair().await?;
-    println!("Folder paired. Opening the shared chat…");
+    println!("Folder connected. Opening the shared chat…");
     Ok(connection)
 }
 
@@ -547,6 +602,22 @@ pub async fn run(args: &[String]) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn offers_accept_direct_sessions_and_legacy_pairing_but_reject_unscoped_auto_connect() {
+        let direct: Offered =
+            serde_json::from_str(r#"{"token":"device-token","paired":true}"#).unwrap();
+        assert_eq!(direct.pairing_code(true).unwrap(), None);
+        assert!(direct.pairing_code(false).is_err());
+        let legacy: Offered = serde_json::from_str(
+            r#"{"token":"device-token","code":"pair-code","expiresInSeconds":300}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.pairing_code(true).unwrap(), Some("pair-code"));
+        assert_eq!(legacy.pairing_code(false).unwrap(), Some("pair-code"));
+        let invalid: Offered = serde_json::from_str(r#"{"token":"device-token"}"#).unwrap();
+        assert!(invalid.pairing_code(true).is_err());
+    }
 
     fn execute(root: &Dir, writable: bool, job: &Job) -> JobResult {
         execute_scoped(root, writable, job, None)
