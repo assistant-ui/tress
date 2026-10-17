@@ -1,5 +1,10 @@
 # Connect a computer or VM workspace
 
+**Source preview:** combined `attach` file sharing below requires a CLI built
+from this checkout. The installer currently provides v0.3.0, where `attach`
+joins chat and `tress connect --site <url> --root .` shares a folder from a
+separate terminal. See [installation and release compatibility](setup.md#install).
+
 The site owns the model credentials and, in managed mode, the Harness credentials. `tress attach` does
 not log into Harness, need an API key, or open an inbound port. It offers a filesystem
 to the browser thread authorized by the session command. With the updated host

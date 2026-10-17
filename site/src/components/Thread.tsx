@@ -434,7 +434,7 @@ export function Thread({
           break;
         case "/files":
           if (hasWorkspace) setShowFiles((visible) => !visible);
-          else setNotice("Run the attach command on your computer or VM to connect its files. If the terminal prints a pairing code, enter it under connect folder.");
+          else setNotice("Open connect folder for the command to share files from your computer or VM. Combined attach file sharing requires the source-preview CLI.");
           break;
         case "/pwd":
           showWorkspaceInfo();
@@ -629,7 +629,7 @@ export function Thread({
           </div>
           <p>
             Same thread, live in both clients. Add <code>--ui</code> for the
-            full terminal interface. {config?.session ? <>The terminal connects its whole filesystem read-only. If this host requires pairing, enter the printed code under connect folder. Add <code>--root /path/to/project</code> to limit the scope, <code>--allow-write</code> for edits, or <code>--chat-only</code> to join without sharing files.</> : null}
+            full terminal interface. {config?.session ? <>The released v0.3.0 CLI joins the chat. Sharing this machine through <code>attach</code> requires the <a href="/docs/try#build-the-source-preview">source-preview CLI</a>.</> : null}
           </p>
         </details>
 
