@@ -1543,11 +1543,10 @@ footer > span {
   position: relative;
   min-width: 0;
   margin-bottom: 3px;
-  border-radius: 5px;
+  border-radius: 0;
 }
 .thread-row[data-current="true"] {
-  background: rgb(206 149 124 / 9%);
-  box-shadow: inset 2px 0 var(--accent);
+  background: #1d1d1d;
 }
 .thread-select {
   display: flex;
@@ -1557,21 +1556,21 @@ footer > span {
   min-height: 36px;
   padding: 8px 6px 8px 10px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 0;
   background: transparent;
   color: #a5a5a0;
   font-size: 12px;
   line-height: 1.6;
   text-align: left;
 }
-.thread-select[aria-current] { color: #ead7cd; }
+.thread-select[aria-current] { color: var(--text); font-weight: 500; }
 .thread-marker {
   display: grid;
   place-items: center;
   flex: 0 0 14px;
   color: var(--dim);
 }
-.thread-select[aria-current] .thread-marker { color: var(--accent); }
+.thread-select[aria-current] .thread-marker { color: var(--text); }
 .thread-working-dot {
   width: 5px;
   height: 5px;
@@ -1793,7 +1792,8 @@ footer > span {
 .thread-drawer .threads-heading button { width: 44px; height: 44px; }
 .thread-drawer .thread-row { grid-template-columns: minmax(0, 1fr) 44px; }
 @media (hover: hover) and (pointer: fine) {
-  .thread-row:hover { background: #1a1817; }
+  .thread-row:hover { background: #181818; }
+  .thread-row[data-current="true"]:hover { background: #252525; }
   .new-thread:hover:not(:disabled) { background: #29211d; border-color: #5c463b; }
   .thread-actions summary { opacity: 0; }
   .thread-row:hover .thread-actions summary,
