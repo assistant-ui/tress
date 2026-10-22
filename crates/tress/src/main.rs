@@ -16,6 +16,7 @@ mod config;
 mod connect;
 mod host;
 mod onboarding;
+mod runtime;
 
 pub mod ansi {
     pub const DIM: &str = "\x1b[2m";
@@ -48,7 +49,10 @@ fn usage() -> String {
          tress doctor          check setup (--check-api to verify access)\n  \
          tress                 join your saved host and session\n  \
          tress ask <prompt>    send a prompt to the host and exit\n  \
-         tress --local        run the standalone agent in this directory\n  \
+         tress --local        resume this project's persistent Harness thread\n  \
+         tress serve --open   start the machine's Harness host and open its browser\n  \
+         tress serve --stop   stop this project's host; keep thread and files\n  \
+         tress --ephemeral    run an unsaved standalone session\n  \
          tress setup --local  configure your own Anthropic key\n  \
          tress attach -s <id>  join a thread on the saved host\n  \
          tress attach <url>    join a thread with plain terminal output\n  \
@@ -75,7 +79,11 @@ fn usage() -> String {
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let ephemeral = args.first().is_some_and(|arg| arg == "--ephemeral");
+    if ephemeral {
+        args.remove(0);
+    }
     if args
         .first()
         .is_some_and(|arg| arg == "--help" || arg == "-h")
@@ -110,6 +118,15 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if args.first().is_some_and(|arg| arg == "serve") {
+        return match runtime::serve(&args[1..]).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     if args.first().is_some_and(|arg| arg == "connect") {
         return match connect::run(&args[1..]).await {
             Ok(()) => std::process::ExitCode::SUCCESS,
@@ -212,7 +229,10 @@ async fn main() -> std::process::ExitCode {
             }
             return Ok(false);
         }
-        config::local_mode(&paths, selected.mode == Some(config::Mode::Local))
+        config::local_mode(
+            &paths,
+            ephemeral || selected.mode == Some(config::Mode::Local),
+        )
     })();
     match selection {
         Ok(false) => {
@@ -247,6 +267,15 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if !ephemeral {
+        return match runtime::local(&root, &settings, one_shot.as_deref(), &style).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     if std::env::var_os("HARNESS_API_KEY").is_some() {
         eprintln!("tress: native local mode does not use HARNESS_API_KEY; this conversation is not synced to Harness. Use a configured host for a durable shared thread.");
     }

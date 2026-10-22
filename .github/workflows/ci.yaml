@@ -54,6 +54,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             packages/workspaces/package-lock.json
+            packages/harness-host/package-lock.json
             site/package-lock.json
       - run: npm --prefix packages/workspaces ci
       - run: npm --prefix packages/workspaces run build
@@ -67,6 +68,15 @@ jobs:
       - run: npm --prefix site run wasm
       - run: npm --prefix site run wasm:node
       - run: npm --prefix packages/workspaces run test:wasm
+      - run: npm --prefix packages/harness-host ci
+      - run: npm --prefix packages/harness-host run build
+      - run: cargo build -p tress
+        env:
+          TRESS_EMBED_RUNTIME: "1"
+      - run: npm --prefix packages/harness-host test
+        env:
+          TRESS_TEST_BINARY: ${{ github.workspace }}/target/debug/tress
+          TRESS_TEST_EMBEDDED: "1"
       - run: npx tsc --noEmit
         working-directory: site
       - run: npm --prefix site run build

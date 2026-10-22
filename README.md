@@ -22,7 +22,16 @@ your authentication and revocation. Build the CLI from this checkout; this
 integration is not in the published v0.3.0 binary. The site's `/docs` section
 covers application wiring, local setup, and production with code examples.
 
-For standalone work in your own project, choose `tress setup --local`:
+**Durable local workspace source preview:** `tress setup --local` now starts
+a machine-owned Harness SDK host. Browser and terminal control its saved
+thread; files and tool execution stay on the machine. See the
+[build and onboarding guide](docs/local-harness.md) and
+[fx.sh parity checklist](docs/fx-parity.md). Node 22+ is required. Managed
+Harness is selectable on the host; live managed deployment verification is
+still pending.
+
+The published v0.3.0 standalone mode (retained as `--ephemeral` in this
+checkout) uses the native terminal loop and does not persist its conversation:
 
 ```
 tress 0.3.0 · ~/oss/tress · claude-sonnet-5
@@ -124,7 +133,7 @@ attached to that host. See [managed setup](site/README.md#managed-harness-and-pe
 ## What it does
 
 - **Five tools**: `read`, `write`, `edit`, `ls`, `bash`. Files belong to the host workspace; explicit local mode scopes them to the directory you started in.
-- **You approve native shell commands.** In local mode, every `bash` call asks before it runs; answer `a` to stop being asked for the rest of the session. With no terminal attached (a pipe, CI), gated calls are denied rather than silently run.
+- **Native shell permissions depend on the host.** The standalone `--ephemeral` loop asks before each `bash` call. The machine Harness preview disables shell by default; `tress serve --allow-exec` grants native execution for that host without per-command prompts.
 - **Streaming**: replies appear as they are generated; tool activity stays inline in the transcript.
 - **Portable core**: the engine, tools, and message assembly build for `wasm32` — the HTTP transport and terminal are the only native-only parts.
 

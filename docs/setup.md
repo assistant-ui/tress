@@ -169,8 +169,11 @@ credential, including after an error.
 
 ## Explicit local execution
 
-Use local mode when you want the native agent to work in the terminal's current
-directory with your own Anthropic key:
+Use local mode when you want the agent to work in the terminal's current
+directory with your own Anthropic key. **Source preview:** the machine runs a
+Harness SDK host, saves its conversation, and prints a browser URL. Build the
+embedded runtime and install Node 22+ using the [machine host guide](local-harness.md).
+The published v0.3.0 local mode still uses the older unsaved native loop.
 
 ```sh
 tress setup --local
@@ -186,17 +189,22 @@ tress --local ask "fix the failing test"
 ```
 
 With no saved mode or `TRESS_HOST`, an exported `ANTHROPIC_API_KEY` now selects
-native local mode automatically, so `cd your-project && tress` works without
+local mode automatically, so `cd your-project && tress` works without
 running setup. An explicitly saved host or local mode still wins over this
 automatic choice; use `--local` to override a saved host for one run. Local
 mode uses that process's current directory, whether the binary is running on
-your laptop or inside a sandbox. It does **not** sync the conversation to
-Harness or keep it after exit. If `HARNESS_API_KEY` is also exported, the CLI
-warns that this key is unused in native local mode.
+your laptop or inside a VM. In this source preview, reopening the CLI resumes
+the same project's Harness thread. Local snapshots stay on the machine;
+managed storage requires explicit `TRESS_THREAD_MODE=cloud` and the Harness
+configuration in the [machine host guide](local-harness.md#managed-harness).
+Exporting `HARNESS_API_KEY` alone does not select managed mode.
 
 Run `tress setup` again to select hosted mode. `tress attach` always connects to
-a host, regardless of the saved mode. Local mode does not start a shareable
-server or persist its conversation through a process restart.
+a host, regardless of the saved mode. The source-preview local host stays
+running after you leave; `tress serve --stop` stops it without deleting the
+thread or files. It binds to loopback and prints a private browser URL and
+terminal attach command. To retain the old unsaved standalone behavior, use
+`tress --ephemeral`.
 
 Local setup hides key input and saves it separately in `credentials.json`
 (mode `0600`). Enter preserves an existing saved or environment key; an
@@ -228,6 +236,11 @@ Local settings resolve as flags > environment > current directory's
 Put flags before the prompt; use `--` for a prompt beginning with a dash.
 Reaching the step limit reports an error and preserves tool results in the
 current conversation. Send another prompt to continue.
+
+A running machine host retains its original model, permissions, and key.
+Stop and restart it to apply configuration changes. The default local host
+permits file edits and disables shell execution; `tress serve --allow-write
+--allow-exec` opts into native shell execution with the host's permissions.
 
 `tress config --local` shows local values and sources. `tress doctor --local
 --check-api` checks the Anthropic Models API without generating a completion.

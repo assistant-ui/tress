@@ -355,6 +355,15 @@ impl TressHostSession {
     pub fn set_system(&mut self, system: String) {
         self.engine.set_system(system);
     }
+
+    #[wasm_bindgen(js_name = setMaxSteps)]
+    pub fn set_max_steps(&mut self, max_steps: usize) -> Result<(), JsValue> {
+        let value = std::num::NonZeroUsize::new(max_steps)
+            .filter(|value| value.get() <= 1024)
+            .ok_or_else(|| JsValue::from_str("maxSteps must be between 1 and 1024"))?;
+        self.engine.set_max_steps(value);
+        Ok(())
+    }
 }
 
 /// Reads a JS object into `(key, value)` string pairs; `null`/`undefined`

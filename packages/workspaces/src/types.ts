@@ -54,6 +54,7 @@ export interface HostSession {
   messages(): string;
   restoreMessages(json: string): void;
   setSystem(system: string): void;
+  setMaxSteps?(maxSteps: number): void;
   free(): void;
 }
 

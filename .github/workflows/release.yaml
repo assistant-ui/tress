@@ -8,7 +8,44 @@ permissions:
   contents: read
 
 jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm --prefix packages/workspaces ci
+      - run: npm --prefix packages/workspaces run build
+      - name: Install matching WASM bindings generator
+        run: |
+          tress_bindgen_version=$(python3 -c 'import tomllib; print(next(p["version"] for p in tomllib.load(open("Cargo.lock", "rb"))["package"] if p["name"] == "wasm-bindgen"))')
+          cargo install wasm-bindgen-cli --version "$tress_bindgen_version" --locked
+      - run: npm --prefix site run wasm:node
+      - run: npm --prefix packages/harness-host ci
+      - run: npm --prefix packages/harness-host run build
+      - run: cargo build --locked -p tress
+        env:
+          TRESS_EMBED_RUNTIME: "1"
+      - run: npm --prefix packages/harness-host test
+        env:
+          TRESS_TEST_BINARY: ${{ github.workspace }}/target/debug/tress
+          TRESS_TEST_EMBEDDED: "1"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: harness-host-runtime
+          path: packages/harness-host/dist
+          if-no-files-found: error
+
   build:
+    needs: runtime
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +61,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: harness-host-runtime
+          path: packages/harness-host/dist
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -52,6 +93,7 @@ jobs:
       - run: cargo test --locked -p tress
       - name: Build release binary
         env:
+          TRESS_EMBED_RUNTIME: "1"
           CC: ${{ runner.os == 'Linux' && 'musl-gcc' || 'cc' }}
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
