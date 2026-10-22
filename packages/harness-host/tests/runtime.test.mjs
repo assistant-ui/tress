@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { Harness } from "harness-sdk";
+import { createTressClient } from "@tress/client";
 import { StatewireHttp } from "statewire";
 import { DefaultChatTransport } from "ai";
 import { createBashWorkspace } from "@tress/workspaces/just-bash";
@@ -134,7 +135,7 @@ test("Harness owns the Rust/WASM conversation across clients and host restarts",
     });
     const server = await http((req) => host.fetch(req));
     const a = new Harness({ transport: StatewireHttp({ url: server.url }) });
-    const b = new Harness({ transport: StatewireHttp({ url: server.url }) });
+    const b = createTressClient({ url: server.url });
     await until(() => !a.isLoading && !b.isLoading);
     return {
       a,
@@ -479,16 +480,7 @@ test(
         },
       });
       const headers = JSON.parse(await readFile(host.headersFile, "utf8"));
-      browser = new Harness({
-        transport: StatewireHttp({
-          url: host.endpoint,
-          fetch: (url, init = {}) => {
-            const authenticated = new Headers(init.headers);
-            authenticated.set("Authorization", headers.Authorization);
-            return fetch(url, { ...init, headers: authenticated });
-          },
-        }),
-      });
+      browser = createTressClient({ url: host.endpoint, headers });
       await until(() => !browser.isLoading);
       await browser.sendMessage("Write managed.txt");
       await until(() => !browser.isBusy && browser.messages.length === 2);
@@ -582,6 +574,21 @@ test(
         ).length,
         1,
       );
+    const savedHost = JSON.parse(
+      await readFile(
+        join(directory, "state/tress/harness", namespace, "host.json"),
+        "utf8",
+      ),
+    );
+    const page = await fetch(savedHost.origin);
+    assert.match(await page.text(), /href="\/browser.css"/);
+    const css = await fetch(`${savedHost.origin}/browser.css`);
+    assert.match(css.headers.get("content-type"), /text\/css/);
+    assert.match(await css.text(), /\.tress-ui/);
+    assert.match(
+      await (await fetch(`${savedHost.origin}/browser.js`)).text(),
+      /Thread transcript/,
+    );
     const snapshot = JSON.parse(
       await readFile(
         join(directory, "state/tress/harness", namespace, "thread.json"),

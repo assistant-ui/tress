@@ -16,6 +16,11 @@ startup. Combined `attach` file sharing (`--root`, `--allow-write`, and
 `--chat-only`) is a **source preview**: build this checkout before using those
 options below. The installer currently downloads v0.3.0.
 
+**Bring your own UI or embed Tress:** the [client source preview](packages/client/README.md)
+provides `<TressThread url="/api/threads/main" />`, an existing-Harness-instance
+option, and a framework-neutral client. It reuses Tress's terminal UI and your
+host's agent, identity, and saved thread. The package is not yet published.
+
 **Existing assistant-ui applications:** the [source preview](examples/existing-app/README.md)
 connects the browser and terminal to your server-owned Harness thread, with
 your authentication and revocation. Build the CLI from this checkout; this

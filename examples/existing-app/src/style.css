@@ -7,25 +7,29 @@ header { margin-bottom: 60px; }
 a { color: inherit; text-underline-offset: 4px; }
 h1 { font-size: clamp(21px, 4vw, 27px); font-weight: 500; letter-spacing: -1px; line-height: 1.4; }
 h2 { font-size: 15px; font-weight: 500; margin: 26px 0 10px; }
-.muted, small { color: #999; }
+.muted, small:not(.tress-ui *) { color: #999; }
 .error { color: #f3a28b; }
-button, input, textarea { font: inherit; color: inherit; border: 1px solid #333; background: #121212; border-radius: 3px; padding: 9px 12px; }
+button:not(.tress-ui *), input:not(.tress-ui *), textarea:not(.tress-ui *) { font: inherit; color: inherit; border: 1px solid #333; background: #121212; border-radius: 3px; padding: 9px 12px; }
 button { cursor: pointer; }
-button:hover { border-color: #ce957c; }
-button:disabled { opacity: .5; cursor: wait; }
-:focus-visible { outline: 2px solid #ce957c; outline-offset: 3px; }
-form { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0; }
-form label { width: 100%; }
-input { min-width: 0; flex: 1; }
+button:hover:not(.tress-ui *) { border-color: #ce957c; }
+button:disabled:not(.tress-ui *) { opacity: .5; cursor: wait; }
+:focus-visible:not(.tress-ui *) { outline: 2px solid #ce957c; outline-offset: 3px; }
+form:not(.tress-ui *) { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0; }
+form label:not(.tress-ui *) { width: 100%; }
+input:not(.tress-ui *) { min-width: 0; flex: 1; }
 .thread { border: 1px solid #333; margin: 28px 0; }
 .messages { padding: 20px; min-height: 200px; max-height: 430px; overflow-y: auto; }
 .message { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 20px; border-left: 2px solid #ce957c; padding-left: 12px; }
-.composer { border-top: 1px solid #333; display: flex; gap: 10px; padding: 12px; margin: 0; }
-.composer textarea { flex: 1; min-width: 0; min-height: 44px; resize: vertical; }
-section { border-top: 1px solid #333; margin-top: 36px; padding-bottom: 24px; }
-pre { background: #111; padding: 14px; overflow-x: auto; font: inherit; font-size: 12px; border: 1px solid #292929; }
-ul { padding: 0; list-style: none; }
-li { border-top: 1px solid #292929; padding: 12px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-small { display: block; }
+.app-composer { border-top: 1px solid #333; display: flex; gap: 10px; padding: 12px; margin: 0; }
+.app-composer textarea { flex: 1; min-width: 0; min-height: 44px; resize: vertical; }
+section:not(.tress-ui *) { border-top: 1px solid #333; margin-top: 36px; padding-bottom: 24px; }
+pre:not(.tress-ui *) { background: #111; padding: 14px; overflow-x: auto; font: inherit; font-size: 12px; border: 1px solid #292929; }
+ul:not(.tress-ui *) { padding: 0; list-style: none; }
+li:not(.tress-ui *) { border-top: 1px solid #292929; padding: 12px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+small:not(.tress-ui *) { display: block; }
 footer { border-top: 1px solid #333; padding-top: 20px; margin-top: 20px; flex-wrap: wrap; }
 @media (max-width: 480px) { main { padding: 24px 16px; } header { margin-bottom: 36px; } }
+
+.interface-switch { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 24px 0 16px; }
+.interface-switch [aria-pressed="true"] { color: #ce957c; border-color: #ce957c; }
+.interface-switch span { margin-left: auto; font-size: 11px; }

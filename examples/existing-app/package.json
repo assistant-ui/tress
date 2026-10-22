@@ -23,7 +23,8 @@
     "react-dom": "19.2.8",
     "statewire": "0.19.4",
     "statewire-node": "file:../../site/vendor/statewire-node-0.0.1.tgz",
-    "ws": "8.22.0"
+    "ws": "8.22.0",
+    "@tress/client": "file:../../packages/client"
   },
   "devDependencies": {
     "vite": "8.3.4"

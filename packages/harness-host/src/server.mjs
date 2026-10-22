@@ -92,13 +92,17 @@ export async function startMachineHost(options) {
           headers: {
             "content-type": "text/html; charset=utf-8",
             "content-security-policy":
-              "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+              "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
             "referrer-policy": "no-referrer",
           },
         });
       if (url.pathname === "/browser.js")
         return new Response(options.browserJs, {
           headers: { "content-type": "text/javascript" },
+        });
+      if (url.pathname === "/browser.css")
+        return new Response(options.browserCss ?? "", {
+          headers: { "content-type": "text/css" },
         });
       if (
         options.cloud &&
@@ -125,6 +129,7 @@ export async function startMachineHost(options) {
         return json({
           ...binding,
           headersFile: join(directory, "headers.json"),
+          model: options.model,
           allowWrite: !!options.allowWrite,
           allowExec: !!options.allowExec,
         });
@@ -281,6 +286,4 @@ export async function startMachineHost(options) {
   }
 }
 
-const page = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tress workspace</title>
-<style>body{max-width:800px;margin:40px auto;padding:0 24px;font:16px/1.6 system-ui;color:#202020;background:#faf9f7}header{display:flex;justify-content:space-between}pre{white-space:pre-wrap;overflow-wrap:anywhere}article{border-bottom:1px solid #ddd;padding:16px 0}textarea{box-sizing:border-box;width:100%;font:inherit;padding:12px}button{font:inherit;margin:8px 8px 8px 0;padding:6px 14px}#status{color:#555}#error{color:#a21d1d}#files button{display:block}code{overflow-wrap:anywhere}</style>
-<header><strong>Tress</strong><span id="status">Connecting…</span></header><p id="workspace"></p><p id="error" role="alert"></p><main id="messages"></main><form id="composer"><label for="prompt">Message</label><textarea id="prompt" required rows="3"></textarea><button>Send</button></form><details><summary>Open in terminal</summary><p>Use the private credential file on the host machine.</p><code id="attach"></code></details><details><summary>Workspace files</summary><button id="refresh" type="button">Refresh</button><div id="files"></div></details><script type="module" src="/browser.js"></script></html>`;
+const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tress workspace</title><link rel="stylesheet" href="/browser.css"></head><body><div id="root"></div><noscript>Enable JavaScript to connect to your Tress host.</noscript><script type="module" src="/browser.js"></script></body></html>`;

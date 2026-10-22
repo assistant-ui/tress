@@ -1,0 +1,56 @@
+{
+  "name": "@tress/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Tress's existing terminal UI and a small client for server-owned Harness threads",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/types/react.d.ts",
+      "import": "./dist/react.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "LICENSE.termcn"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "esbuild": "0.28.2",
+    "harness-sdk": "file:../../site/vendor/harness-sdk-0.3.0.tgz",
+    "postcss": "^8.5.6",
+    "postcss-selector-parser": "^7.1.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "@types/react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "statewire": "0.19.4",
+    "typescript": "^5.3.3",
+    "@assistant-ui/tap": "0.9.24"
+  }
+}

@@ -1,6 +1,7 @@
 # Existing assistant-ui app + Tress
 
-A runnable source preview of one assistant-ui browser and a native Tress
+A runnable source preview of the original Tress browser UI, an assistant-ui
+application UI, and a native Tress
 terminal sharing a server-owned Harness thread. The included agent echoes
 messages so the complete flow needs no model key. `AGENT_MODULE` can replace it
 with your existing AI SDK agent, in process; no chat-backend URL is required.
@@ -17,6 +18,8 @@ Requires Node 24+, npm, and stable Rust. From the repository root:
 
 ```sh
 cargo build --locked -p tress
+npm --prefix packages/client ci
+npm --prefix packages/client run build
 npm --prefix examples/existing-app ci
 npm --prefix examples/existing-app run build
 cd examples/existing-app
@@ -24,7 +27,8 @@ APP_PASSWORD=local-example-password PUBLIC_ORIGIN=http://localhost:3000 npm star
 ```
 
 Open <http://localhost:3000>, sign in with that example password, and send a
-message. Select **Download terminal credential**. In a second terminal, use
+message. Switch between **Tress UI** and **App UI**: the conversation stays the
+same. Select **Download terminal credential**. In a second terminal, use
 the built binary and the downloaded file (adjust both paths to your checkout
 and download directory):
 
@@ -67,10 +71,16 @@ give the agent access to the terminal machine's files or shell.
 
 ## Adapt to your application
 
+For the minimal component, existing Harness instance, or framework-neutral
+client integration, follow the [client guide](../../packages/client/README.md).
+You do not need this example's password login or grants adapter to embed Tress.
+
 - `server.mjs` composes the Harness host, persistent snapshots, and access
   adapter. Reuse an existing server-owned host when you have one.
-- `src/main.jsx` uses assistant-ui components with `HarnessThread` and
-  `StatewireHttp`, then adds credential download and revocation controls.
+- `src/main.jsx` defaults to `<TressThread url="/api/threads/main" />` and can
+  switch to the original assistant-ui components with `HarnessThread` and
+  `StatewireHttp`. Both reuse the same authenticated endpoint. Credential
+  download and revocation controls belong to the application.
 - `../../packages/access` authorizes streams and commands with your callback.
   It binds commands to their authorized stream and closes revoked or expired
   connections. Your app owns grant issuance, storage, and cross-worker fanout.

@@ -26,6 +26,9 @@ jobs:
       - run: python3 scripts/verify-cli-release.py target/debug/tress
       - run: python3 scripts/test-setup-pty.py
       - run: npm --prefix packages/access test
+      - run: npm --prefix packages/client ci
+      - run: npm --prefix packages/client run build
+      - run: npm --prefix packages/client test
       - run: npm --prefix examples/existing-app ci
       - run: npm --prefix examples/existing-app run build
       - run: npm --prefix examples/existing-app test
@@ -53,6 +56,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: |
+            packages/client/package-lock.json
             packages/workspaces/package-lock.json
             packages/harness-host/package-lock.json
             site/package-lock.json
@@ -68,6 +72,9 @@ jobs:
       - run: npm --prefix site run wasm
       - run: npm --prefix site run wasm:node
       - run: npm --prefix packages/workspaces run test:wasm
+      - run: npm --prefix packages/client ci
+      - run: npm --prefix packages/client run build
+      - run: npm --prefix packages/client test
       - run: npm --prefix packages/harness-host ci
       - run: npm --prefix packages/harness-host run build
       - run: cargo build -p tress

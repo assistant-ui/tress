@@ -39,6 +39,8 @@ cargo install wasm-bindgen-cli --version "$tress_bindgen_version" --locked
 npm --prefix packages/workspaces ci
 npm --prefix packages/workspaces run build
 npm --prefix site run wasm:node
+npm --prefix packages/client ci
+npm --prefix packages/client run build
 npm --prefix packages/harness-host ci
 npm --prefix packages/harness-host run build
 TRESS_EMBED_RUNTIME=1 cargo build --release -p tress
@@ -61,7 +63,12 @@ An exported `ANTHROPIC_API_KEY` also selects local mode when no host or mode
 is configured. `tress --local` overrides a saved hosted choice. Each canonical
 project path has one saved thread. Reopening the CLI resumes that thread.
 The CLI prints a private browser URL: open it to control the same thread and
-browse/download files. The host stays running after the terminal exits.
+browse, preview, and download files in the existing Tress terminal-style UI.
+The host stays running after the terminal exits.
+
+For embedding that UI or keeping your own frontend, see the
+[client integration guide](../packages/client/README.md). Both connect to the
+same host-owned thread.
 
 ```sh
 tress serve --stop         # stop this project's host; keep thread and files

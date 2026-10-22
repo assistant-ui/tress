@@ -11,6 +11,7 @@ require replacing an existing assistant-ui application's agent or identity.
 | Capability | Tress status | Remaining work |
 | --- | --- | --- |
 | Interactive terminal and one-shot prompts | Existing CLI; Harness adapter implemented | Broaden terminal controls for generic Harness backends |
+| Embed Tress or retain an existing UI | `@tress/client` source preview, both UIs share the same Harness endpoint | Package publication and compatibility policy |
 | Same conversation from browser and terminal | Harness protocol integration tests pass | Verify complete production onboarding |
 | Save and reopen local conversations | Machine Harness host source preview | Interrupted-step recovery and session management |
 | Managed conversation storage | `HarnessCloud` host/proxy/tunnel fixtures pass | Live account, expiry, outage, and deployment validation |
@@ -47,6 +48,7 @@ The reference scope comes from the [fx CLI reference](https://fx.sh/docs/using-f
 - [x] Managed tunnel fixture exercises a real machine tool and remote thread storage.
 - [x] Release configuration embeds the host bundle, WASM, and browser assets.
 - [x] Verify browser prompt, native terminal follow-up, shared messages, and file listing together.
+- [x] Reuse Tress's original browser UI and verify switching to an existing application UI on the same thread.
 - [ ] Validate a live managed account, including reconnect and authorization errors.
 - [ ] Merge the focused PR after CI and review.
 - [ ] Publish a release and verify installation on all supported platforms.

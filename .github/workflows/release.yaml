@@ -29,6 +29,9 @@ jobs:
           tress_bindgen_version=$(python3 -c 'import tomllib; print(next(p["version"] for p in tomllib.load(open("Cargo.lock", "rb"))["package"] if p["name"] == "wasm-bindgen"))')
           cargo install wasm-bindgen-cli --version "$tress_bindgen_version" --locked
       - run: npm --prefix site run wasm:node
+      - run: npm --prefix packages/client ci
+      - run: npm --prefix packages/client run build
+      - run: npm --prefix packages/client test
       - run: npm --prefix packages/harness-host ci
       - run: npm --prefix packages/harness-host run build
       - run: cargo build --locked -p tress

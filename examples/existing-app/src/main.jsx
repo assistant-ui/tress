@@ -4,6 +4,8 @@ import { AuiConfig, AuiProvider, ThreadPrimitive, MessagePrimitive, ComposerPrim
 import { HarnessThread } from "@assistant-ui/react-harness-sdk";
 import { StatewireHttp } from "statewire";
 import "./style.css";
+import { TressThread } from "@tress/client/react";
+import "@tress/client/styles.css";
 
 function Message() {
   return <MessagePrimitive.Root className="message"><MessagePrimitive.Content /></MessagePrimitive.Root>;
@@ -17,7 +19,7 @@ function Chat() {
     <ThreadPrimitive.Viewport className="messages">
       <ThreadPrimitive.Empty><p className="muted">Send a message here, then continue from your terminal.</p></ThreadPrimitive.Empty>
       <ThreadPrimitive.Messages components={{ UserMessage: Message, AssistantMessage: Message }} />
-    <ComposerPrimitive.Root className="composer">
+    <ComposerPrimitive.Root className="app-composer">
       <ComposerPrimitive.Input placeholder="Message your existing agent…" aria-label="Message" />
       <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>
     </ComposerPrimitive.Root>
@@ -27,6 +29,7 @@ function Chat() {
 
 function App() {
   const [session, setSession] = useState();
+  const [interfaceMode, setInterfaceMode] = useState("tress");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -59,7 +62,12 @@ function App() {
         <input id="password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
         <button disabled={pending}>{pending ? "Signing in…" : "Sign in"}</button>
       </form> : <>
-        <Chat />
+        <div className="interface-switch" role="group" aria-label="Conversation interface">
+          <button aria-pressed={interfaceMode === "tress"} onClick={() => setInterfaceMode("tress")}>Tress UI</button>
+          <button aria-pressed={interfaceMode === "app"} onClick={() => setInterfaceMode("app")}>App UI</button>
+          <span className="muted">Same agent. Same saved thread.</span>
+        </div>
+        {interfaceMode === "tress" ? <TressThread url="/api/threads/main" title="existing app" /> : <Chat />}
         <section aria-labelledby="terminal-title">
           <h2 id="terminal-title">Open in terminal</h2>
           <p>Download a one-hour grant for this conversation, then run the command in the folder where you saved it.</p>

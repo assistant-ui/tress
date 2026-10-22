@@ -12,6 +12,7 @@ fn main() {
         for name in [
             "host.mjs",
             "browser.js",
+            "browser.css",
             "wasm/package.json",
             "wasm/tress_wasm.js",
             "wasm/tress_wasm_bg.wasm",

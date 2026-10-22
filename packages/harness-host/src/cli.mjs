@@ -46,6 +46,7 @@ const host = await startMachineHost({
   port: values.port ? Number(values.port) : undefined,
   Session: TressHostSession,
   browserJs: await readFile(new URL("./browser.js", import.meta.url), "utf8"),
+  browserCss: await readFile(new URL("./browser.css", import.meta.url), "utf8"),
   cloud,
   maxSteps: Number(process.env.TRESS_MAX_STEPS ?? 64),
   model: process.env.TRESS_MODEL ?? "claude-sonnet-5",

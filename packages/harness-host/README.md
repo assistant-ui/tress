@@ -13,13 +13,14 @@ See [setup, managed mode, storage, and limitations](../../docs/local-harness.md)
 authorization and provide exclusive ownership of its storage.
 
 The CLI wrapper adds disk storage, a project workspace, authenticated loopback
-HTTP, and a small browser interface. Managed mode uses `HarnessCloud` and a
+HTTP, and the existing Tress terminal-style browser UI via
+[`@tress/client`](../client/README.md). Managed mode uses `HarnessCloud` and a
 credential-preserving protocol proxy. Rust clients connect through the same
 Harness protocol as browser clients.
 
 ```sh
 npm ci
-npm run build   # requires built workspaces and site/src/server/pkg-node
+npm run build   # requires built client, workspaces, and site/src/server/pkg-node
 npm test       # protocol, disk, credential, and workspace integration tests
 ```
 
