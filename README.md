@@ -16,16 +16,12 @@ startup. Combined `attach` file sharing (`--root`, `--allow-write`, and
 `--chat-only`) is a **source preview**: build this checkout before using those
 options below. The installer currently downloads v0.3.0.
 
-**Bring your own UI or embed Tress:** the [client source preview](packages/client/README.md)
-provides `<TressThread url="/api/threads/main" />`, an existing-Harness-instance
-option, and a framework-neutral client. It reuses Tress's terminal UI and your
-host's agent, identity, and saved thread. The package is not yet published.
-
-**Existing assistant-ui applications:** the [source preview](examples/existing-app/README.md)
-connects the browser and terminal to your server-owned Harness thread, with
-your authentication and revocation. Build the CLI from this checkout; this
-integration is not in the published v0.3.0 binary. The site's `/docs` section
-covers application wiring, local setup, and production with code examples.
+**Existing assistant-ui applications:** add the native Tress terminal as another
+client of your app's existing server-owned Harness thread. Keep your browser UI,
+agent, tools, identity, and deployment. No Tress browser package or stylesheet is
+needed. Follow the [terminal integration guide](docs/terminal-integration.md) and
+[runnable example](examples/existing-app/README.md). Build the CLI from this
+checkout; this integration is not in the published v0.3.0 binary.
 
 **Durable local workspace source preview:** `tress setup --local` now starts
 a machine-owned Harness SDK host. Browser and terminal control its saved

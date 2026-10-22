@@ -9,7 +9,7 @@
     "dev": "node --experimental-strip-types server.mjs --dev",
     "build": "vite build",
     "start": "node --experimental-strip-types server.mjs",
-    "test": "node --test test.mjs"
+    "test": "node --test test.mjs terminal.test.mjs"
   },
   "dependencies": {
     "@assistant-ui/react": "0.15.28",
@@ -23,8 +23,7 @@
     "react-dom": "19.2.8",
     "statewire": "0.19.4",
     "statewire-node": "file:../../site/vendor/statewire-node-0.0.1.tgz",
-    "ws": "8.22.0",
-    "@tress/client": "file:../../packages/client"
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "vite": "8.3.4"

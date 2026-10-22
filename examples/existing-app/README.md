@@ -1,7 +1,6 @@
 # Existing assistant-ui app + Tress
 
-A runnable source preview of the original Tress browser UI, an assistant-ui
-application UI, and a native Tress
+A runnable source preview of one assistant-ui browser and a native Tress
 terminal sharing a server-owned Harness thread. The included agent echoes
 messages so the complete flow needs no model key. `AGENT_MODULE` can replace it
 with your existing AI SDK agent, in process; no chat-backend URL is required.
@@ -12,14 +11,25 @@ model, not a required layer for Tress. An existing app can keep its session
 checks and authorized Harness host. The [access guide](../../site/docs/authentication.mdx)
 also covers the demo's built-in session command and Harness's auth callbacks.
 
+## What an existing app adds
+
+Keep your assistant-ui components and existing agent. Expose the same authorized
+Harness thread endpoint to the native Tress CLI, using a credential issued by
+your app. **No `@tress/client`, Tress React component, or Tress stylesheet is
+required.** The terminal is the additional client.
+
+If your app already has a server-owned Harness endpoint and a suitable terminal
+credential, no new Tress server package is needed either. The optional access
+adapter in this example demonstrates grant expiry and revocation. Its browser
+credential controls can be replaced with your app's existing credential flow.
+See the [minimal terminal integration](../../docs/terminal-integration.md).
+
 ## Run locally
 
 Requires Node 24+, npm, and stable Rust. From the repository root:
 
 ```sh
 cargo build --locked -p tress
-npm --prefix packages/client ci
-npm --prefix packages/client run build
 npm --prefix examples/existing-app ci
 npm --prefix examples/existing-app run build
 cd examples/existing-app
@@ -27,8 +37,7 @@ APP_PASSWORD=local-example-password PUBLIC_ORIGIN=http://localhost:3000 npm star
 ```
 
 Open <http://localhost:3000>, sign in with that example password, and send a
-message. Switch between **Tress UI** and **App UI**: the conversation stays the
-same. Select **Download terminal credential**. In a second terminal, use
+message. Select **Download terminal credential**. In a second terminal, use
 the built binary and the downloaded file (adjust both paths to your checkout
 and download directory):
 
@@ -71,16 +80,10 @@ give the agent access to the terminal machine's files or shell.
 
 ## Adapt to your application
 
-For the minimal component, existing Harness instance, or framework-neutral
-client integration, follow the [client guide](../../packages/client/README.md).
-You do not need this example's password login or grants adapter to embed Tress.
-
 - `server.mjs` composes the Harness host, persistent snapshots, and access
   adapter. Reuse an existing server-owned host when you have one.
-- `src/main.jsx` defaults to `<TressThread url="/api/threads/main" />` and can
-  switch to the original assistant-ui components with `HarnessThread` and
-  `StatewireHttp`. Both reuse the same authenticated endpoint. Credential
-  download and revocation controls belong to the application.
+- `src/main.jsx` uses assistant-ui components with `HarnessThread` and
+  `StatewireHttp`, then adds credential download and revocation controls.
 - `../../packages/access` authorizes streams and commands with your callback.
   It binds commands to their authorized stream and closes revoked or expired
   connections. Your app owns grant issuance, storage, and cross-worker fanout.
@@ -116,11 +119,15 @@ npm --prefix packages/access test
 npm --prefix examples/existing-app test
 ```
 
-The integration test uses a real native binary and Harness browser client
+The integration tests use a real native binary and Harness browser client
 through an HTTP streaming proxy. It covers messages in both directions, a run
 surviving terminal exit, one-shot prompts, live revocation, browser continuity,
 and restart persistence. It uses the echo agent; repeat the production guide's
 checks with your own agent and real HTTPS deployment before rollout.
+
+A separate test attaches directly to an application-authorized Harness host
+without `@tress/access` or a Tress browser package. It verifies existing history,
+messages in both directions, and rejected terminal credentials.
 
 The preview dependencies are pinned in the lockfile and vendored archives;
 no sibling Harness checkout is required. See [provenance](../../site/vendor/README.md).

@@ -5,13 +5,18 @@ description: Keep your assistant-ui UI and agent. Expose its server-owned thread
 
 # Connect an existing app
 
+The integration adds **the native Tress terminal as another client**. Keep your
+assistant-ui interface, existing agent, tools, and login. There is no Tress
+React component, browser client package, or stylesheet to install.
 
 This source preview needs a Statewire host using Harness protocol `2026-09-13`.
 The browser and terminal must connect to that **same thread host**. An ordinary
 AI SDK `/api/chat` route does not, by itself, own a shared conversation.
 
-Start with the [runnable local example](/docs/local) to see all of this working
-together, then bring these integration points into your application.
+If you already have an authorized server-owned Harness endpoint and an
+app-issued terminal credential, skip to [connect the terminal](#4-connect-the-terminal).
+No new Tress server or browser dependency is required. Otherwise, the
+[runnable example](/docs/local) demonstrates the host and credential boundary.
 
 ## 1. Reuse the thread host
 
@@ -75,9 +80,11 @@ source packages; see [versions](/docs/reference). There is **no required
 `CHAT_BACKEND_URL`**. A transport can call the existing agent in-process. If
 your app already uses HTTP between services, keep its own configured transport.
 
-## 3. Point assistant-ui at the same thread
+## 3. Only if needed: point assistant-ui at the shared thread
 
-Keep your chat components and change the runtime/provider wiring where needed:
+Skip this step if your browser already uses that server-owned Harness thread.
+Keep its existing components and provider. If you moved a browser-owned
+transport to the server in step 2, update only the runtime/provider wiring:
 
 ```tsx
 import { AuiConfig, AuiProvider } from "@assistant-ui/react";

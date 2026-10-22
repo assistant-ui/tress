@@ -66,9 +66,10 @@ The CLI prints a private browser URL: open it to control the same thread and
 browse, preview, and download files in the existing Tress terminal-style UI.
 The host stays running after the terminal exits.
 
-For embedding that UI or keeping your own frontend, see the
-[client integration guide](../packages/client/README.md). Both connect to the
-same host-owned thread.
+This browser UI belongs to the standalone machine host. To connect a terminal
+to an **existing assistant-ui application**, follow the
+[terminal integration guide](terminal-integration.md). That application keeps
+its own browser UI and agent; it does not install this browser package.
 
 ```sh
 tress serve --stop         # stop this project's host; keep thread and files
