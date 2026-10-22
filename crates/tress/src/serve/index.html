@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tress · machine workspace</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header>
+      <a class="wordmark" href="">tress<span> / workspace</span></a
+      ><span id="connection" role="status">Connecting…</span>
+    </header>
+    <div class="workspace-bar">
+      <span id="workspace">Opening the machine workspace…</span
+      ><button id="copy" type="button">Copy terminal command</button>
+    </div>
+    <div id="error" role="alert" hidden></div>
+    <main>
+      <section class="chat" aria-label="Conversation">
+        <div id="messages" role="log" aria-label="Messages">
+          <div class="empty">
+            <h1>Your machine. One conversation.</h1>
+            <p>
+              Ask about the project or create an output. Files stay on the
+              machine running Tress.
+            </p>
+          </div>
+        </div>
+        <section id="approval" aria-labelledby="approval-title" hidden>
+          <h2 id="approval-title">Run this command on the host?</h2>
+          <p>
+            Native commands run with the host user's permissions and can access
+            files outside the project.
+          </p>
+          <pre id="command"></pre>
+          <div>
+            <button id="deny" type="button">Deny</button
+            ><button id="allow" type="button">Run once</button>
+          </div>
+        </section>
+        <form id="composer">
+          <label class="sr-only" for="prompt">Message</label
+          ><textarea
+            id="prompt"
+            rows="2"
+            placeholder="Ask about this project…"
+            required
+          ></textarea
+          ><button id="send" type="submit" disabled>Send</button>
+        </form>
+        <footer>
+          <span id="activity">Waiting for the host</span
+          ><button id="clear" type="button" disabled>Clear conversation</button>
+        </footer>
+      </section>
+      <section class="files" aria-labelledby="files-title">
+        <div class="files-heading">
+          <h2 id="files-title">Files & artifacts</h2>
+          <button id="refresh" type="button">Refresh</button>
+        </div>
+        <div class="path">
+          <button id="parent" type="button" disabled aria-label="Parent folder">
+            ↑</button
+          ><span id="directory">Project folder</span>
+        </div>
+        <div id="file-error" role="alert" hidden></div>
+        <nav id="files" aria-label="Workspace files"></nav>
+        <section id="preview-panel" hidden>
+          <div class="preview-heading">
+            <span id="filename"></span><a id="download" download>Download</a>
+          </div>
+          <pre id="preview"></pre>
+          <img id="image" alt="Selected workspace artifact" hidden />
+        </section>
+        <p class="storage-note">
+          Saved on the host's disk. Available here while this host is online.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

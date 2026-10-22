@@ -25,6 +25,7 @@ jobs:
       - run: cargo test
       - run: python3 scripts/verify-cli-release.py target/debug/tress
       - run: python3 scripts/test-setup-pty.py
+      - run: python3 scripts/test-machine-host.py
       - run: npm --prefix packages/access test
       - run: npm --prefix examples/existing-app ci
       - run: npm --prefix examples/existing-app run build

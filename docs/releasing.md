@@ -17,6 +17,7 @@ the CLI requires a version tag and a successful **Release CLI** workflow.
    ```sh
    python3 scripts/verify-cli-release.py target/release/tress
    python3 scripts/test-setup-pty.py target/release/tress
+   python3 scripts/test-machine-host.py target/release/tress
    ```
 
    These checks use temporary homes, a loopback mock host, and fake keys. They

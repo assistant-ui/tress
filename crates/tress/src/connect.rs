@@ -170,7 +170,7 @@ fn root_label(root: &Path) -> String {
     root.display().to_string()
 }
 
-fn safe_path(
+pub(super) fn safe_path(
     root: &Dir,
     path: &str,
     directory: bool,
@@ -222,7 +222,7 @@ fn safe_path(
 
 // Validate the opened handle before reading or truncating it. O_NONBLOCK also
 // prevents a regular file replaced by a FIFO during open from hanging the CLI.
-fn open_regular_file(root: &Dir, path: &Path, write: bool) -> Result<File, String> {
+pub(super) fn open_regular_file(root: &Dir, path: &Path, write: bool) -> Result<File, String> {
     let error = "only regular files can be read or written";
     match root.metadata(path) {
         Ok(metadata) if !metadata.is_file() => return Err(error.into()),

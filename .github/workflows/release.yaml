@@ -62,6 +62,7 @@ jobs:
         run: |
           python3 scripts/verify-cli-release.py "target/$TARGET/release/tress"
           python3 scripts/test-setup-pty.py "target/$TARGET/release/tress"
+          python3 scripts/test-machine-host.py "target/$TARGET/release/tress"
           mkdir dist
           cp "target/$TARGET/release/tress" "dist/tress-$TARGET"
       - uses: actions/upload-artifact@v4

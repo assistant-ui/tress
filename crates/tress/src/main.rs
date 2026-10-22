@@ -16,6 +16,7 @@ mod config;
 mod connect;
 mod host;
 mod onboarding;
+mod serve;
 
 pub mod ansi {
     pub const DIM: &str = "\x1b[2m";
@@ -48,6 +49,8 @@ fn usage() -> String {
          tress doctor          check setup (--check-api to verify access)\n  \
          tress                 join your saved host and session\n  \
          tress ask <prompt>    send a prompt to the host and exit\n  \
+         tress serve --open   host this folder for your browser\n  \
+         tress serve --help   machine hosting, permissions, and storage\n  \
          tress --local        run the standalone agent in this directory\n  \
          tress setup --local  configure your own Anthropic key\n  \
          tress attach -s <id>  join a thread on the saved host\n  \
@@ -89,6 +92,16 @@ async fn main() -> std::process::ExitCode {
     {
         println!("tress {}", env!("CARGO_PKG_VERSION"));
         return std::process::ExitCode::SUCCESS;
+    }
+
+    if args.first().is_some_and(|arg| arg == "serve") {
+        return match serve::run(&args[1..]).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress serve: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
     }
 
     let style = Style {
