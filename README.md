@@ -4,6 +4,12 @@
 
 A tiny coding agent with a shared thread. Its native terminal client and browser connect to the same host, which supplies the model and workspace.
 
+**Machine host (source preview):** build this checkout, run
+`tress serve --root ./my-project --allow-write --allow-exec --open`, and control
+the native agent from your browser. The machine stores the conversation and
+artifact files. This works locally or on a VM through SSH forwarding; it is
+not yet in published v0.3.0. See the [machine-host guide](docs/machine-host.md).
+
 ```sh
 tress setup              # connect to a host; no personal API key needed
 tress                    # join your saved thread

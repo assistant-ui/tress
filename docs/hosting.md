@@ -12,6 +12,7 @@ is not necessarily the host.
 | `tress ask <prompt>` in hosted mode | The saved site host | Sends one prompt, then exits; other clients stay attached | Yes |
 | `tress --local` | The native terminal process | That terminal only | No |
 | `tress --local ask <prompt>` | The native process for one run | None | No |
+| `tress serve` (source preview) | The native process and its project/state directories | Browser and terminal chat | Loopback or SSH forwarding |
 | tress site | The Node/Farm server | Browser tabs, `tress attach`, and API connections | Yes |
 | Embedded engine | The integrating application | Defined by that application | Application-specific |
 
@@ -25,8 +26,10 @@ endpoint. A browser or another terminal cannot attach to it. You can save
 local mode as your default with `tress setup --local`.
 
 Running `tress attach <url>` always makes that terminal a client. The current
-CLI does not have a `tress serve` command for turning a terminal session into a
-shareable host.
+published v0.3.0 CLI does not have a `tress serve` command. The source preview
+adds a separate native machine host with disk-backed history and artifacts;
+see [machine-host setup](machine-host.md). It starts its own shared conversation
+and does not adopt an existing standalone terminal conversation.
 
 `tress connect --site <url>` is different from `attach`: it offers the current
 directory as a workspace to a browser-owned thread. Optionally add

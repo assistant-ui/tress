@@ -20,7 +20,8 @@ Published **v0.3.0** supports paired folders through `tress connect`, automatic 
 the `TRESS_HOST` / `TRESS_SESSION` environment shortcuts. Hosted setup and
 complete `tress ask` replies remain supported.
 Check `tress --version` after installation. Combined `attach` file sharing
-(`--root`, `--allow-write`, and `--chat-only`) and existing Harness app support
+(`--root`, `--allow-write`, and `--chat-only`), existing Harness app support,
+and the [native machine host](machine-host.md) (`tress serve`)
 are **source previews**, not included in that release. For these workflows,
 build the current checkout with Rust from the repository root:
 
