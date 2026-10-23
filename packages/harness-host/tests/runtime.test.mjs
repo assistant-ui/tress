@@ -515,6 +515,8 @@ test(
     await mkdir(root);
     const requests = [];
     const model = await http(async (request) => {
+      assert.equal(request.headers.get("x-api-key"), "fixture-key");
+      assert.equal(request.headers.get("anthropic-workspace-id"), "fixture-workspace");
       requests.push(await request.json());
       return new Response(
         sse({
@@ -532,6 +534,7 @@ test(
       XDG_CONFIG_HOME: join(directory, "config"),
       XDG_STATE_HOME: join(directory, "state"),
       ANTHROPIC_API_KEY: "fixture-key",
+      ANTHROPIC_WORKSPACE_ID: "  fixture-workspace  ",
       ANTHROPIC_BASE_URL: model.url,
       TRESS_THREAD_MODE: "local",
       TRESS_HOST_RUNTIME: fileURLToPath(

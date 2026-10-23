@@ -38,6 +38,7 @@ if (
     "Managed mode needs HARNESS_ORIGIN, HARNESS_WORKSPACE, HARNESS_THREAD_ID, and HARNESS_API_KEY on this machine.",
   );
 const { TressHostSession } = require("./wasm/tress_wasm.js");
+const anthropicWorkspace = process.env.ANTHROPIC_WORKSPACE_ID?.trim();
 const host = await startMachineHost({
   root: values.root,
   stateDir: values["state-dir"],
@@ -54,6 +55,7 @@ const host = await startMachineHost({
   modelHeaders: {
     "x-api-key": process.env.ANTHROPIC_API_KEY ?? "",
     "anthropic-version": "2023-06-01",
+    ...(anthropicWorkspace && { "anthropic-workspace-id": anthropicWorkspace }),
   },
   onError: (error) => console.error(`tress host: ${error.message}`),
 });
