@@ -126,10 +126,13 @@ The session ID is an **access capability**, not a login or a database
 password. Anyone with the complete ID or browser link can join and steer that
 thread, including using its connected folder while it is online. Do not post it
 publicly. Updated `tress attach <site> -s <id>` commands can attach or replace a
-machine directly using that capability. Hosts can require a browser-owner
-pairing code with `TRESS_REQUIRE_PAIRING=1`. Leave this unset or `0` for the
-demo's direct connection flow. Only hosts opting into that policy show the
-pairing form and support the older unscoped `connect` browser flow.
+machine directly using that capability. Leave `TRESS_SHOW_PAIRING` and
+`TRESS_REQUIRE_PAIRING` unset or `0` for the demo's direct connection flow.
+Set `TRESS_SHOW_PAIRING=1` to also offer the legacy pairing UI while keeping
+modern session commands automatic. Set `TRESS_REQUIRE_PAIRING=1` to require a
+browser-owner code for new connections; this always shows the form, regardless
+of `TRESS_SHOW_PAIRING`. Restart or redeploy after changing these host settings.
+See the [pairing configuration table](connected-folder.md#operator-setup).
 Approving codes and disconnecting from the browser require
 the owner cookie; sharing the ID does not transfer ownership. For a non-demo
 product, add your own user authentication and authorization before treating

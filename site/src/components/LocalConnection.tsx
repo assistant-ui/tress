@@ -30,11 +30,14 @@ export function LocalConnection({
   const [visible, setVisible] = useState(false);
   const [manageable, setManageable] = useState(false);
   const [pairingRequired, setPairingRequired] = useState(true);
+  const [showPairing, setShowPairing] = useState(false);
+  const [manualPairing, setManualPairing] = useState(false);
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
   const command = `tress attach ${origin || "https://your-tress-site"} -s ${attachId} --ui`;
+  const releasedCommand = `tress connect --site ${origin || "https://your-tress-site"} --root .`;
 
   useEffect(() => {
     let alive = true;
@@ -55,6 +58,7 @@ export function LocalConnection({
         setVisible(true);
         setManageable(data.manageable === true);
         setPairingRequired(data.pairingRequired !== false);
+        setShowPairing(data.showPairing === true || data.pairingRequired !== false);
         setDevice(data.device);
         onDevice(data.device);
         setError("");
@@ -151,9 +155,30 @@ export function LocalConnection({
             <code>{command}</code>
             <CopyButton text={command} label="Copy workspace connection command" compact disabled={!origin} />
           </div>
-          {pairingRequired ? (
+          {showPairing ? (
+            <details>
+              <summary>Using the released v0.3.0 CLI?</summary>
+              <p>Run this in the folder you want to share, in a separate terminal. Enter its code in the pairing form below; choose “Have a pairing code?” to open it if needed. Add <code>--allow-write</code> to permit edits.</p>
+              <div className="attach-command">
+                <span aria-hidden="true">$</span>
+                <code>{releasedCommand}</code>
+                <CopyButton text={releasedCommand} label="Copy v0.3.0 folder connection command" compact disabled={!origin} />
+              </div>
+            </details>
+          ) : null}
+          {showPairing && !pairingRequired ? (
+            <button
+              type="button"
+              aria-expanded={manualPairing}
+              aria-controls="local-pair-form"
+              onClick={() => setManualPairing((shown) => !shown)}
+            >
+              {manualPairing ? "Hide pairing form" : "Have a pairing code?"}
+            </button>
+          ) : null}
+          {pairingRequired || (showPairing && manualPairing) ? (
             <form id="local-pair-form" onSubmit={(event) => void claim(event)}>
-              <p>This host requires browser approval. Enter the code printed by the terminal to connect.</p>
+              <p>{pairingRequired ? "This host requires browser approval. " : ""}Enter the code printed by the terminal to connect.</p>
               <label htmlFor="local-pair-code">Pairing code printed by Tress</label>
               <input
                 id="local-pair-code"

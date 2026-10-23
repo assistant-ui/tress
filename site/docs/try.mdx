@@ -95,16 +95,25 @@ read-only access. `/exit` or `/disconnect` stops sharing. No shell execution is
 exposed, and switching chats requires exiting first. The site must be reachable
 from the machine running the command; `localhost` always means that machine.
 
-## Hosts that require browser approval
+## Optional pairing and browser approval
 
-An operator can set `TRESS_REQUIRE_PAIRING=1` to require a short-lived code.
-Only hosts opting into that policy show the pairing form under **connect
-folder**. Enter the code printed by the terminal there before it connects.
-Older hosts may also require this step.
+Pairing remains available behind host environment flags:
+
+| Host settings | Behavior |
+| --- | --- |
+| Both flags unset or `0` | Default demo: direct connection, no pairing controls |
+| `TRESS_SHOW_PAIRING=1` | Adds **Have a pairing code?** under **connect folder**; modern `attach` still connects directly |
+| `TRESS_REQUIRE_PAIRING=1` | Requires browser-owner approval and always shows the code form, even with `TRESS_SHOW_PAIRING=0` |
+
+Both flags accept `1` or `true`. Change them on the server and restart or
+redeploy it. Showing optional pairing does not change access permissions.
+When pairing is required, enter the terminal's code in the browser before it
+connects. Older hosts may also require this step.
 
 On those hosts, the released v0.3.0 CLI can share a folder from a separate
-terminal with `tress connect --site <host-url> --root .`. That legacy code-based
-flow is not shown in the default demo; use the source-preview `attach` command
+terminal with `tress connect --site <host-url> --root .`. With optional pairing,
+choose **Have a pairing code?** to enter its code. That legacy code-based
+flow is hidden in the default demo; use the source-preview `attach` command
 for its direct connection.
 
 The public demo has its own access model. To connect an application you own,

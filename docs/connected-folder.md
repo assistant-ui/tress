@@ -8,8 +8,9 @@ separate terminal. See [installation and release compatibility](setup.md#install
 The site owns the model credentials and, in managed mode, the Harness credentials. `tress attach` does
 not log into Harness, need an API key, or open an inbound port. It offers a filesystem
 to the browser thread authorized by the session command. With the updated host
-and CLI, no pairing code is needed by default. The host can opt into an extra
-browser-owner approval with `TRESS_REQUIRE_PAIRING=1`.
+and CLI, no pairing code is needed by default. The host can show optional pairing
+with `TRESS_SHOW_PAIRING=1`, or require browser-owner approval with
+`TRESS_REQUIRE_PAIRING=1`.
 
 This connection behavior is in the source preview; it requires an updated CLI
 and host. Older clients and hosts retain their pairing-code flow.
@@ -37,8 +38,9 @@ and host. Older clients and hosts retain their pairing-code flow.
 3. The session command connects the folder directly to that chat and opens the
    terminal UI. The default demo has one connection command and no pairing
    form, code to copy back, or browser approval step. The same process serves
-   file requests. If your own host explicitly requires pairing, its connection
-   panel instead shows a code form; those codes expire after five minutes.
+   file requests. A host with optional pairing enabled shows **Have a pairing
+   code?** for legacy connectors. A host requiring pairing shows the form
+   immediately; those codes expire after five minutes.
    Omit `--ui` for plain terminal output. The browser shows the folder label,
    permissions, and actual online/offline state. The file browser opens with
    the real directory listing. Open subfolders and files, or use **Refresh**
@@ -91,15 +93,26 @@ never be sent to the browser or the native binary. The site routes scoped
 read/list/write jobs through PostgreSQL; a long-running gateway service is
 not required for this first version.
 
-To require a short-lived pairing code for new session connections, set this on
-the **host**, not on the user's terminal:
+Configure pairing on the **host**, not on the user's terminal. Both flags accept
+`1` or `true` to enable them; unset or `0` leaves them off.
+
+| Host configuration | Browser connection panel | Session-scoped `attach` |
+| --- | --- | --- |
+| Both flags unset or `0` (default demo) | Direct command only | Connects immediately |
+| `TRESS_SHOW_PAIRING=1` | Also offers **Have a pairing code?** and the legacy `connect` command | Still connects immediately |
+| `TRESS_REQUIRE_PAIRING=1` | Always shows the code form, even if `TRESS_SHOW_PAIRING=0` | Waits for browser-owner approval |
+
+To offer both connection methods without forcing a code for modern clients:
 
 ```dotenv
-TRESS_REQUIRE_PAIRING=1
+TRESS_SHOW_PAIRING=1
+TRESS_REQUIRE_PAIRING=0
 ```
 
-Unset it or use `0` for direct session attachment. The browser reflects the host
-policy; the CLI cannot override a host that requires pairing. Existing connected
+Restart the host after changing its environment, or redeploy the site on Vercel.
+`TRESS_SHOW_PAIRING` controls the UI only; it does not disable the pairing API or
+change authorization. `TRESS_REQUIRE_PAIRING` takes precedence and enforces
+approval on the server; the CLI cannot override it. Existing connected
 devices are not revoked by changing this setting; disconnect them separately.
 Direct attachment still validates the session before creating a device, checks
 that session on polling and results, and keeps file permissions and revocation.
@@ -116,8 +129,9 @@ The older `tress connect --site <url> [--root <folder>] [--allow-write]` command
 remains available for a folder-only process without terminal chat. It uses the
 current directory by default. Because it has no session, it always uses a code
 to select and authorize the destination browser thread. Its browser form is
-available on hosts configured with `TRESS_REQUIRE_PAIRING=1`. The default demo
-does not show this legacy flow. Use the updated session-scoped `attach` command
+available on hosts configured with `TRESS_SHOW_PAIRING=1` or
+`TRESS_REQUIRE_PAIRING=1`. With optional pairing, choose **Have a pairing code?**
+to enter its code. The default demo hides this legacy flow. Use the updated session-scoped `attach` command
 for its one-command connection. Published v0.3.0 still joins chat, but needs an
 upgrade to the source-preview CLI for combined chat and file sharing.
 

@@ -94,8 +94,8 @@ tress attach https://your-tress-host.example -s <session-id> --root . --ui
 Add `--chat-only` to join without sharing files, or `--allow-write` for edits. Exit to stop sharing. See the
 [connected folder guide](connected-folder.md) for access rules and remote VMs.
 This requires the updated Tress site's connection API; the older `connect`
-command remains supported for a folder-only process on hosts that explicitly
-enable the pairing form with `TRESS_REQUIRE_PAIRING=1`. With published v0.3.0
+command remains supported for a folder-only process on hosts that show optional
+pairing with `TRESS_SHOW_PAIRING=1` or require it with `TRESS_REQUIRE_PAIRING=1`. With published v0.3.0
 on such a host, run this separately and enter its code in the browser:
 
 ```sh
@@ -103,6 +103,7 @@ tress connect --site https://your-tress-host.example --root .
 ```
 
 This shares the current folder read-only. Add `--allow-write` to permit edits.
+For optional pairing, choose **Have a pairing code?** under **connect folder**.
 For the default demo, build the source-preview CLI and use the direct session
 command above; the v0.3.0 installer alone does not enable combined file sharing.
 

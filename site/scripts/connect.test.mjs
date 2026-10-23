@@ -46,6 +46,7 @@ after(async () => {
 });
 process.env.TRESS_DEMO_SHARED = "0";
 process.env.TRESS_REQUIRE_PAIRING = "0";
+process.env.TRESS_SHOW_PAIRING = "0";
 const registry = createFileThreadStore(join(directory, "registry"));
 const devices = createMemoryConnectStore();
 const url = (action, query = "") => `https://demo.example/api/connect/${action}${query}`;
@@ -161,7 +162,9 @@ test("session commands connect directly with scoped file access and owner revoca
   assert.equal((await call(scopedRequest("result", a.session.token, offer.token, result), "result")).status, 200);
   assert.equal(await read, "direct file contents");
   const status = await call(new Request(url("status", `?thread=${a.session.thread.id}&session=${a.session.token}`)), "status");
-  assert.equal((await status.json()).pairingRequired, false);
+  const policy = await status.json();
+  assert.equal(policy.pairingRequired, false);
+  assert.equal(policy.showPairing, false);
   const revoke = await call(new Request(url("status", `?thread=${a.session.thread.id}`), {
     method: "DELETE", headers: { Cookie: a.cookie, Origin: "https://demo.example" },
   }), "status");
@@ -169,7 +172,29 @@ test("session commands connect directly with scoped file access and owner revoca
   assert.equal((await call(scopedRequest("poll", a.session.token, offer.token), "poll")).status, 410);
 });
 
-test("a host can require browser-owner pairing even for a direct session command", async (t) => {
+test("optional pairing UI preserves direct attachment and owner-only legacy claims", async (t) => {
+  process.env.TRESS_SHOW_PAIRING = "true";
+  t.after(() => { process.env.TRESS_SHOW_PAIRING = "0"; });
+  const a = await visitor();
+  const status = await call(new Request(url("status", `?thread=${a.session.thread.id}`), { headers: { Cookie: a.cookie } }), "status");
+  const policy = await status.json();
+  assert.equal(policy.pairingRequired, false);
+  assert.equal(policy.showPairing, true);
+
+  const body = { label: "Optional pairing", rootLabel: "project", writable: false };
+  const direct = await (await call(scopedRequest("offer", a.session.token, undefined, { ...body, direct: true }), "offer")).json();
+  assert.equal(direct.paired, true);
+  assert.equal(direct.code, undefined);
+
+  const legacy = await (await call(json("offer", body), "offer")).json();
+  assert.equal(legacy.code.length, 12);
+  assert.equal((await (await call(json("poll", {}, undefined, legacy.token), "poll")).json()).paired, false);
+  assert.equal((await call(json("claim", { code: legacy.code, threadId: a.session.thread.id }), "claim")).status, 404);
+  assert.equal((await call(json("claim", { code: legacy.code, threadId: a.session.thread.id }, a.cookie), "claim")).status, 200);
+  assert.equal((await (await call(json("poll", {}, undefined, legacy.token), "poll")).json()).paired, true);
+});
+
+test("required pairing overrides hidden UI and enforces browser-owner approval for direct commands", async (t) => {
   process.env.TRESS_REQUIRE_PAIRING = "1";
   t.after(() => { process.env.TRESS_REQUIRE_PAIRING = "0"; });
   const a = await visitor();
@@ -181,7 +206,9 @@ test("a host can require browser-owner pairing even for a direct session command
   assert.equal((await (await call(scopedRequest("poll", a.session.token, offer.token), "poll")).json()).paired, false);
   assert.equal(await devices.device(a.session.thread.id), undefined);
   const status = await call(new Request(url("status", `?thread=${a.session.thread.id}`), { headers: { Cookie: a.cookie } }), "status");
-  assert.equal((await status.json()).pairingRequired, true);
+  const policy = await status.json();
+  assert.equal(policy.pairingRequired, true);
+  assert.equal(policy.showPairing, true);
   assert.equal((await call(json("claim", { code: offer.code, threadId: a.session.thread.id }), "claim")).status, 404);
   assert.equal((await call(json("claim", { code: offer.code, threadId: a.session.thread.id }, a.cookie), "claim")).status, 200);
   assert.equal((await (await call(scopedRequest("poll", a.session.token, offer.token), "poll")).json()).paired, true);
