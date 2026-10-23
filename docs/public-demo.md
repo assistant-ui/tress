@@ -27,6 +27,9 @@ browser / tress attach / tress connect
    for the model calls. This is separate from the
    Harness key: Harness stores and shares the thread; the Tress host runs the
    agent and pays for inference. The current host expects `ANTHROPIC_API_KEY`.
+   If the key is not scoped to a workspace, also configure
+   `ANTHROPIC_WORKSPACE_ID` with the `wrkspc_...` ID from Anthropic's Workspaces
+   settings. This is separate from `HARNESS_WORKSPACE`.
 3. Provision a PostgreSQL database that the site can reach. The site uses it
    for visitor/session ownership, access-token hashes, usage limits, hosted
    virtual files, and connected-device jobs. Harness—not PostgreSQL—stores the

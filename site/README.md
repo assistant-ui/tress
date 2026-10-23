@@ -29,6 +29,12 @@ a model; the default is `claude-sonnet-5`. Keys stay on the server. Without a ke
 the playground explains the setup and disables sending; it does not simulate a
 live agent.
 
+For an Anthropic personal or service-account key that is not scoped to a
+workspace, also set `ANTHROPIC_WORKSPACE_ID=wrkspc_...` on the host. Use the ID
+from the Anthropic Console's Workspaces page. The host sends it on model and
+diagnostic requests. Workspace-scoped keys can omit it. For Vercel, configure
+both variables in the intended environment and redeploy to activate them.
+
 Install the Rust `wasm32-unknown-unknown` target and `wasm-bindgen-cli` matching
 the `wasm-bindgen` version in `Cargo.lock`. Starting the site automatically builds
 the Rust engine and generates its bundler bindings:
