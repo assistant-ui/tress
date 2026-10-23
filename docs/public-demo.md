@@ -4,11 +4,11 @@ There are two different setup paths. The **operator** deploys the Tress site and
 provides its credentials once. A **visitor** opens that site and gets a private
 thread ID automatically; they do not create a Harness account, install the SDK,
 or supply a model or database key. The browser, an attached terminal, and an
-optionally paired local folder are clients of the same site host.
+optionally connected local folder are clients of the same site host.
 
 ```text
-browser / tress attach / tress connect
-                 │ private thread ID / pairing code
+browser / tress attach
+                 │ private session command
                  ▼
          Tress site (agent host) ── model provider
              │             │
@@ -89,7 +89,7 @@ limits.
 1. Open the deployed Tress site without a shared session link. The first visit
    creates a new private thread and shows its 12-character **session ID** in
    the demo header. The browser
-   keeps an HTTP-only owner cookie so it can select threads and manage paired
+   keeps an HTTP-only owner cookie so it can select threads and manage connected
    devices. A new visitor gets a different thread and workspace.
 2. [Install Tress](setup.md#install) to join that same conversation in a
    terminal, then copy the site's attach command. For example:
@@ -105,31 +105,38 @@ limits.
    tress
    ```
 
-3. To let the site work on files on your own computer, install Tress and run
-   this **separate** command from a folder you choose:
+3. To let the site work on files on your computer or VM, build the
+   [source-preview CLI](setup.md#install), open **connect folder**, and run its
+   session command on that machine. To share only your current project:
 
    ```sh
-   tress connect --site https://your-tress-site.example
+   tress attach https://your-tress-site.example -s <session-id> --root . --ui
    ```
 
-   The current directory is used by default; optionally add `--root <path>`
-   to choose another folder. Enter its short-lived pairing code in the
-   browser thread's **connect folder** control. This is read-only unless you
-   explicitly add `--allow-write`. The connector does not expose a shell or receive the
-   Harness key. Keep its process running while you want that folder online;
-   if it stops, the conversation survives but file access goes offline until
-   you pair again. See [connected-folder permissions](connected-folder.md).
+   The connection appears in the browser automatically and the same terminal
+   opens the chat. There is no pairing form or code-entry step in the default
+   demo. Use `--root <path>` for another folder; omitting it exposes the
+   filesystem accessible to the terminal. Access is read-only unless you add
+   `--allow-write`; `--chat-only` joins without sharing files. The connector
+   exposes no shell and receives no Harness key. Keep the process running;
+   exiting takes files offline while the conversation remains saved. Run the
+   same command to reconnect. See [connected-folder permissions](connected-folder.md).
 
-   `tress connect` requires v0.3.0 or newer. Rerun the installer to upgrade
-   an older binary, then check `tress --version`.
+   The installer currently supplies v0.3.0, which joins chat but does not
+   support this combined connection. Use the source build for file sharing.
 
 The session ID is an **access capability**, not a login or a database
 password. Anyone with the complete ID or browser link can join and steer that
-thread, including using its paired folder while it is online. Do not post it
+thread, including using its connected folder while it is online. Do not post it
 publicly. Updated `tress attach <site> -s <id>` commands can attach or replace a
-machine directly using that capability. Hosts can require a browser-owner
-pairing code with `TRESS_REQUIRE_PAIRING=1`; the unscoped `connect` command above
-always requires one. Approving codes and disconnecting from the browser require
+machine directly using that capability. Leave `TRESS_SHOW_PAIRING` and
+`TRESS_REQUIRE_PAIRING` unset or `0` for the demo's direct connection flow.
+Set `TRESS_SHOW_PAIRING=1` to also offer the legacy pairing UI while keeping
+modern session commands automatic. Set `TRESS_REQUIRE_PAIRING=1` to require a
+browser-owner code for new connections; this always shows the form, regardless
+of `TRESS_SHOW_PAIRING`. Restart or redeploy after changing these host settings.
+See the [pairing configuration table](connected-folder.md#operator-setup).
+Approving codes and disconnecting from the browser require
 the owner cookie; sharing the ID does not transfer ownership. For a non-demo
 product, add your own user authentication and authorization before treating
 these anonymous sessions as private accounts.
