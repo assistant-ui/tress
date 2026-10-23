@@ -51,7 +51,6 @@ The reference scope comes from the [fx CLI reference](https://fx.sh/docs/using-f
 - [x] Keep the existing assistant-ui browser and attach the native Tress client to its server-owned thread.
 - [x] Use Tress's original browser UI for the standalone machine host.
 - [ ] Validate a live managed account, including reconnect and authorization errors.
-- [ ] Merge the focused PR after CI and review.
 - [ ] Publish a release and verify installation on all supported platforms.
 
 The other draft host PR (#31) uses a custom conversation store. Its browser

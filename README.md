@@ -2,37 +2,49 @@
 
 [![CI](https://github.com/assistant-ui/tress/actions/workflows/ci.yaml/badge.svg)](https://github.com/assistant-ui/tress/actions/workflows/ci.yaml)
 
-A tiny coding agent with a shared thread. Its native terminal client and browser connect to the same host, which supplies the model and workspace.
+A coding agent workspace that lives on a machine and can be controlled from a
+browser or terminal. Harness owns the conversation; the host machine owns the
+files, artifacts, and tool execution. You can start with Tress's own agent and
+UI, or connect the terminal to an existing assistant-ui application.
+
+## Start on your own machine
+
+The durable machine host is a **source preview**. First follow the
+[build and install steps](docs/local-harness.md#build-and-start); it requires
+Node 22+ on the host as well as the bundled Rust/WASM engine and browser assets.
+Then:
 
 ```sh
-tress setup              # connect to a host; no personal API key needed
-tress                    # join your saved thread
-tress attach -s <id>      # join another thread on that host
+tress setup --local      # save your model credential and select local mode
+cd your-project
+tress                    # start/rejoin this project's saved Harness thread
 ```
 
-[Install and configuration guide](docs/setup.md). Published v0.3.0 supports
-chat attachment, `tress connect` for paired folders, and environment-based
-startup. Combined `attach` file sharing (`--root`, `--allow-write`, and
-`--chat-only`) is a **source preview**: build this checkout before using those
-options below. The installer currently downloads v0.3.0.
+Open the private browser URL printed by Tress to control the same thread and
+preview project files using Tress's existing UI. The host stays running after
+the terminal exits. `tress serve --stop` stops it without deleting its saved
+conversation or files. The preview has one thread per project; interrupted
+tools are not automatically recovered. Managed Harness is optional, and live
+managed deployment verification remains a release requirement.
 
-**Existing assistant-ui applications:** add the native Tress terminal as another
-client of your app's existing server-owned Harness thread. Keep your browser UI,
-agent, tools, identity, and deployment. No Tress browser package or stylesheet is
-needed. In this source preview, `tress attach <app-origin>` automatically
-lists all threads the app grants your credential when it exposes discovery;
-use `--api-key-env MY_APP_API_KEY` for bearer auth or omit auth when the app
-allows it. Follow the [terminal integration guide](docs/terminal-integration.md) and
-[runnable example](examples/existing-app/README.md). Build the CLI from this
-checkout; this integration is not in the published v0.3.0 binary.
+## Other ways to connect
 
-**Durable local workspace source preview:** `tress setup --local` now starts
-a machine-owned Harness SDK host. Browser and terminal control its saved
-thread; files and tool execution stay on the machine. See the
-[build and onboarding guide](docs/local-harness.md) and
-[fx.sh parity checklist](docs/fx-parity.md). Node 22+ is required. Managed
-Harness is selectable on the host; live managed deployment verification is
-still pending.
+| Starting point | What to do |
+| --- | --- |
+| Try the hosted demo | Open [the website](https://tress-theta.vercel.app) and use its connection command. The site supplies the host and agent. See [demo setup](docs/public-demo.md). |
+| Existing assistant-ui app | Keep its UI, agent, tools, and identity. Expose its authorized Harness list and threads, then use `tress attach <app-origin>`. See [terminal integration](docs/terminal-integration.md). |
+| Embed in your own application | Choose the Rust/WASM engine, workspace adapters, or host/client boundary. See [embedding and runtimes](site/docs/embedding.mdx). |
+
+Existing-app discovery automatically lists every conversation the app permits
+that credential to access. Use `--api-key-env MY_APP_API_KEY` for bearer access,
+no flag for an explicitly anonymous app, or a private header file for custom
+auth. This path adds terminal access without installing Tress UI components.
+
+**Release status:** the installer currently downloads v0.3.0. Durable local
+hosts, existing-app discovery, and combined `attach` file sharing are source
+previews, not capabilities of that binary. See [installation](docs/setup.md)
+and [current limits](site/docs/reference.mdx). The JavaScript packages are
+repository-local; no npm installation or new release is implied.
 
 The published v0.3.0 standalone mode (retained as `--ephemeral` in this
 checkout) uses the native terminal loop and does not persist its conversation:
@@ -48,7 +60,7 @@ I'll add the greeting function.
 Done — greet.py works, it printed "hello, tress".
 ```
 
-## Slash commands
+## Hosted demo commands
 
 Enter `/` or `/help` in an interactive session to see commands. `/files` lists
 workspace files, `/pwd` describes the workspace path, `/status` shows the
@@ -96,7 +108,7 @@ expose a shell. See [connected-folder setup and access rules](docs/connected-fol
 
 ### Host and clients
 
-The **host** is the tress server at the attach URL. It runs the agent and owns
+The **host** is the machine workspace or application server at the attach URL. It runs the agent and owns
 the model credentials, thread state, and workspace access. Browser tabs,
 terminals connected through `tress setup` or `tress attach`, and API connections
 are **clients** attached to it. A `tress connect` process is another client
@@ -105,8 +117,9 @@ configuration; neither needs a personal model key. The thread sidebar and
 `/status` show these roles separately.
 
 The server operator supplies the host address. Anyone holding a private thread
-link or session ID can join that thread. Setup connects to an existing host;
-it does not deploy a server or turn the terminal into a shareable host.
+link or session ID can join that thread. Hosted `tress setup` saves a connection to an existing host. In the source
+preview, `tress setup --local` selects machine mode; the next `tress` invocation
+starts or rejoins its background host.
 
 The host label defaults to the server address. `TRESS_HOST_LABEL` can replace
 that text with a friendly display label such as `Alice's Mac`; it does not
@@ -182,20 +195,16 @@ host's workspace, not the attached terminal's current directory.
 
 ## Status
 
-The [integration roadmap](docs/roadmap.md) describes the next milestone:
-terminal access to existing assistant-ui/Harness applications. Managed terminal
-authentication is deferred backlog work.
-The [consumer setup design](docs/consumer-setup.md) follows an existing app from
-browser and terminal use through production deployment.
+The [roadmap](docs/roadmap.md) tracks the machine-backed workspace, optional
+existing-app integration, and release requirements. The source preview has a
+durable local Harness host, shared browser/terminal conversation, and app thread
+discovery. Published v0.3.0 does not include those additions.
 
-Early. The engine is a library (`tress::Engine`) driving a `Provider` over a
-`Tools` surface, with no I/O of its own — which is what lets the terminal
-binary, the browser build, and embedded hosts share it. The site hosts a
-[statewire](https://github.com/assistant-ui/statewire-rs) thread that browsers and
-`tress attach` can watch and steer for each visitor. Managed Harness persists
-completed conversation turns across host restarts. Without Harness, conversation
-state stays in memory. Client disconnects do not stop a run, but resuming a tool
-interrupted by a host crash still requires application work.
+Local machine hosts save Harness snapshots; managed hosts use cloud conversation
+storage. Files remain in the configured workspace. Client disconnects do not
+stop a host run, but a host crash can interrupt tools and requires inspection
+before continuing. [The capability checklist](docs/fx-parity.md) records the
+remaining runtime, embedding, and agent features without claiming full parity.
 
 ## Configuration
 
@@ -204,7 +213,7 @@ credentials; the terminal does not need either key. `tress config` shows the
 selected mode and connection, and `tress doctor --check-api` checks the host.
 `tress ask <prompt>` sends a task to that host and exits when it finishes.
 
-Use `tress setup --local` to select standalone execution with your own Anthropic
+Use `tress setup --local` to select a machine workspace with your own Anthropic
 key, or `tress --local` for one invocation. Only local mode reads model settings
 from environment variables and an optional project `.tress.json`. Flags override
 environment, project defaults, and personal settings.

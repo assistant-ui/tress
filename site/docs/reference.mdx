@@ -30,9 +30,27 @@ and opening the picker. Harness preloads its recent message window; full
 message-history pagination, thread creation, and OAuth credential refresh
 remain follow-up work.
 
-Use the browser for Harness tool approvals and history management in this
-preview. Adding the client does not add cancellation, branching, or approval
+For an existing app, use its browser interface for approvals and history
+management when that app supports them. The standalone machine host does not
+provide per-command approval dialogs. Adding the client does not add cancellation, branching, or approval
 capabilities to your existing agent.
+
+## Machine host and embedding
+
+The [machine workspace](/docs/workspace) source preview starts or resumes one
+Harness conversation per project. Local snapshots survive completed-turn
+restarts; managed mode uses HarnessCloud while files and execution stay on the
+machine. Live managed deployment and the native release matrix remain to be
+validated. No new CLI release has been published.
+
+The host requires Node 22+, binds to loopback, and grants tool permissions at
+startup. It has no per-command approval dialog or automatic interrupted-tool
+recovery. Conversation persistence does not back up or version project files.
+
+The Rust engine runs natively or as WASM. The terminal remains a native client,
+and the browser uses the JavaScript Harness client. Public embedding packages
+and a self-contained V8 runtime remain future work; see
+[embedding and runtimes](/docs/embedding).
 
 ## Commands
 

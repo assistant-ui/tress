@@ -1,134 +1,71 @@
-# Terminal access for existing assistant-ui applications
+# Machine-backed workspaces and clients
 
-Status: the native Harness adapter and existing-app example are now available
-as a source preview; they are not part of the v0.3.0 release. Start with the
-[current terminal integration guide](terminal-integration.md). No Tress browser
-UI package is needed. The implementation sequence below records the original
-plan. Application discovery and authorized thread browsing are now implemented
-in this preview: ordinary attachment lists all permitted threads by default.
-Managed sign-in, scaffolding, and the remaining follow-ups are still proposals.
+Tress provides an agent workspace on a laptop, VM, or server. Browser and
+terminal interfaces act on the same host-owned work. Harness owns conversation
+state; the machine owns filesystem artifacts and tool execution. An existing
+assistant-ui application can expose its own Harness threads as an optional
+integration without replacing its UI, agent, tools, or identity.
 
-Tress should let a user open an existing assistant-ui/Harness conversation in
-a terminal and continue it from either client. Applications keep their agent,
-tools, model configuration, identity, and hosting. For users without an app,
-a later scaffold will create an assistant-ui/Harness app with the same
-integration.
+## Available in source
 
-Self-hosted applications are the first target. Managed terminal authentication
-is backlog work and is not a prerequisite for the first integration.
+These capabilities are implemented in the source preview, not the published
+v0.3.0 CLI. The [machine setup guide](local-harness.md),
+[terminal integration guide](terminal-integration.md), and
+[website overview](../site/docs/index.mdx) describe their separate onboarding.
 
-The [consumer setup design](consumer-setup.md) covers application integration,
-browser-first and terminal-first use, and the production acceptance walkthrough.
+- Local CLI startup starts or rejoins a background Harness host with one thread
+  per project. Completed conversation and engine context survive host restart.
+- The browser reuses Tress's existing UI and can browse, preview, and download
+  machine files. Browser and terminal share the same conversation.
+- The host bundles the Rust/WASM engine and browser assets. It requires Node
+  22+; the executable does not embed V8 or compile the terminal UI to WASM.
+- Managed mode uses HarnessCloud and its backend tunnel. Protocol fixtures pass;
+  live managed deployment validation is still required before release.
+- Existing applications expose an authorized Harness list and thread endpoints
+  through discovery. Attachment lists every permitted thread, including
+  archived threads. API-key, anonymous, and custom-header policies are supported.
+- Existing Tress hosted sessions and explicit unsaved `--ephemeral` execution
+  remain available. No client failure silently falls back to a personal agent.
 
-## Existing foundation and gaps
+## Release requirements
 
-Tress already attaches native clients to its site's Statewire endpoints. The
-site supplies a custom `ThreadState` with `entries`, `status`, `files`, and
-`runs`, plus `send` and `reset` commands. A generic Harness thread uses a
-different application protocol and message model. The shared transport alone
-does not make `tress attach` compatible with arbitrary assistant-ui apps.
+- Validate managed account configuration, tunnel reconnect, expiry, and outage
+  behavior against a live deployment.
+- Publish and verify the runtime-bearing native artifacts on the supported
+  platform matrix. Do not advertise source-preview commands as released.
+- Complete npm trusted-publisher/bootstrap work separately before offering an
+  npm installation path. The npm packaging PR is independent of the runtime.
+- Verify consumer onboarding: start a project, prompt in both interfaces,
+  inspect a real artifact, exit a client, restart the host, and restore history.
 
-The sibling Harness SDK source includes `HarnessThread` and `HarnessThreadList`
-for assistant-ui, `AISDKTransport` for an existing AI SDK endpoint, and
-`statewireHost` for server ownership and storage hooks. Tress's existing
-`site/src/app/api/chat/route.ts` already adapts its engine to an AI SDK UI
-message stream. Reuse these boundaries rather than introducing a second chat
-UI, wire protocol, or conversation database.
+## Further capabilities
 
-Some Harness packages inspected during planning are private source packages.
-Confirm and pin compatible package/protocol versions before implementation;
-do not assume they are installable from the public registry.
+- Multiple local threads per project, creation, fork/export, and full history
+  pagination. App lists currently refresh on connection and picker opening.
+- Interrupted-tool recovery, durable step records, and explicit replay policy.
+  Completed-turn persistence does not provide exactly-once tool execution.
+- Shared tool approvals and cancellation. The machine host currently grants
+  permissions at startup; its native shell is opt-in and has no approval dialog.
+- Stable public embedding packages and optional self-contained runtime packaging.
+  Browser-compatible WASM still needs supplied tool and storage capabilities.
+- Artifact metadata, versioning, and backup policy. Managed conversation storage
+  does not sync project files; a VM requires a persistent disk for those files.
+- Public multi-user machine hosting and provisioning. The standalone preview
+  is single-owner and loopback-only; use SSH forwarding for a remote machine.
 
-## Next upstream PR: attach to a Harness thread
+The [capability comparison](fx-parity.md) tracks the broader backlog. Full
+fx.sh parity is not claimed. [Issue #12](https://github.com/assistant-ui/tress/issues/12)
+records related recovery and client follow-ups.
 
-Deliver one browser-and-terminal integration against a server-owned Harness
-thread in an existing assistant-ui app.
+## Optional application authentication
 
-Prerequisite: the Rust Statewire HTTP client needs a caller-supplied credential
-mechanism for protected endpoints. Version 0.1.1 fixes streaming but does not
-provide that mechanism. Upstream transport authentication separately, then use
-it in the Tress adapter; see the consumer setup design for the required behavior.
+Existing apps retain their identity and per-thread authorization. The optional
+access helper is not a required auth provider. Managed terminal sign-in,
+generic browser/device login, automatic token refresh, connected-device
+management, and application scaffolding remain future work. They are not
+prerequisites for starting a local Tress workspace.
 
-- [ ] Establish the supported Harness protocol version and endpoint/auth
-  contract against an existing fixture. Keep credentials separate from URLs.
-- [ ] Add a terminal adapter for Harness messages, text streaming, run status,
-  and sending a prompt. Retain existing Tress host support. Report unsupported
-  capabilities explicitly rather than advertising nonfunctional controls.
-- [ ] Support the application's existing user-scoped authentication at the
-  transport boundary. Never require an end user to copy a project-wide Harness
-  key, model-provider key, or browser session cookie into the terminal.
-- [ ] Add a reproducible integration fixture using existing assistant-ui
-  components, a Harness host, and a scripted model endpoint.
-- [ ] Document how an existing app exposes the thread endpoint and how a user
-  joins the same thread. Separate current commands from proposed syntax.
-
-Acceptance checks:
-
-1. A browser-created thread opens in the terminal with the same history.
-2. A prompt sent from either client appears in both; only one agent run occurs.
-3. Disconnecting one client leaves the host run and the other client intact.
-   Reattachment catches up without resubmitting the prompt.
-4. Expired credentials and forbidden thread access fail clearly. Rejected
-   clients receive neither conversation data nor command access.
-5. Existing Tress attachment and one-shot completion behavior still pass.
-
-This PR proves the protocol and client adapter. It does not add a separate
-native Tress server, machine provisioning, remote shell access, or a managed
-authentication service.
-
-## Follow-up PRs
-
-1. **Application integration:** package discovery, connection metadata, and
-   adapters for the app's identity and thread authorization. Add an optional
-   browser "Open in terminal" action. Reuse existing Harness endpoints where
-   possible. A thread ID identifies a thread; application policy authorizes it.
-2. **Self-hosting example:** package the existing application/server pieces
-   with storage, configured public URLs, and local/HTTPS deployment guidance.
-   A browser-owned thread needs a server-owned host for shared-client use.
-   Distinguish completed-turn recovery from interrupted tool recovery.
-3. **Scaffolding:** generate a working assistant-ui/Harness application only
-   for users without one. Existing apps install the integration without
-   replacing their UI or backend.
-4. **Capability parity:** map structured tool activity, approvals, cancellation,
-   and thread selection as supported by the backend, with browser/CLI checks.
-
-Connecting a terminal does not expose that terminal machine's filesystem or
-shell. Execution stays with the application's configured backend. Remote
-machine execution is a separate feature with explicit authorization.
-
-## Backlog: optional managed terminal authentication
-
-Purpose: simplify terminal authorization for existing applications while
-retaining their login system and thread access rules. Keep a self-hosted
-authentication path available.
-
-- [ ] Application registration and domain verification.
-- [ ] Integration with the app's authenticated user and thread permissions;
-  identity must be established by the app, not supplied by the CLI.
-- [ ] Browser authorization with PKCE for capable desktop clients and a
-  device authorization flow for headless terminals.
-- [ ] Explicit consent, short-lived audience-restricted credentials, scoped
-  permissions, signing-key rotation, and protected CLI credential storage.
-- [ ] Refresh-token lifecycle, connected-terminal management, revocation,
-  and access audit events. Define how revocation terminates existing streams
-  as well as preventing future connections.
-- [ ] Direct terminal-to-application conversation traffic; managed auth does
-  not need to proxy chat content or receive model-provider credentials.
-- [ ] Multi-tenant isolation, rate limits, expiry/revocation tests, and an
-  independent security review before a production release.
-
-The existing Harness authorization hooks are a foundation, not an implemented
-managed terminal sign-in product. Use standard OAuth flows and maintain a
-clear separation between authentication and application authorization.
-
-References: [native-app OAuth](https://www.rfc-editor.org/rfc/rfc8252.html),
-[device authorization](https://www.rfc-editor.org/rfc/rfc8628.html), and
-[OAuth security best practices](https://www.rfc-editor.org/rfc/rfc9700.html).
-
-## Other existing follow-ups
-
-[Issue #12](https://github.com/assistant-ui/tress/issues/12) tracks interrupted
-run recovery, browser ownership of terminal-created threads, presence cleanup,
-and plain-terminal prompt repainting. Those remain separate from the adapter
-milestone. Older release notes in that issue are historical; use the releases
-page for current release status.
+The [existing-app design](consumer-setup.md) records that integration's design
+and proposed login flows. Any future authentication service should issue
+user-scoped, audience-restricted credentials, preserve app authorization, and
+keep model/provider and Harness service keys on the backend.

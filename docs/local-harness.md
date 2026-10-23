@@ -43,10 +43,11 @@ npm --prefix packages/client ci
 npm --prefix packages/client run build
 npm --prefix packages/harness-host ci
 npm --prefix packages/harness-host run build
-TRESS_EMBED_RUNTIME=1 cargo build --release -p tress
+TRESS_EMBED_RUNTIME=1 cargo install --locked --path crates/tress
 ```
 
-Install `target/release/tress` somewhere on your PATH. The build embeds the
+Use the Cargo-installed binary (normally `~/.cargo/bin/tress`) ahead of any
+older website-installed binary on PATH. The build embeds the
 host runtime, browser client, and WASM module, so the binary can leave the
 checkout. Node 22+ is still required on the machine. This is not an embedded
 V8 executable. Release CI uses the same bundling flow; no new release has
@@ -58,6 +59,10 @@ cd your-project
 tress                     # start/rejoin this project's Harness thread
 tress ask "summarize this project"
 ```
+
+For a provider key that requires an Anthropic workspace, export
+`ANTHROPIC_WORKSPACE_ID` before starting the host. This is separate from
+`HARNESS_WORKSPACE`. Stop and restart the host after changing either setting.
 
 An exported `ANTHROPIC_API_KEY` also selects local mode when no host or mode
 is configured. `tress --local` overrides a saved hosted choice. Each canonical

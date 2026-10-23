@@ -1,4 +1,8 @@
-# Consumer setup: existing app to production
+# Existing-app integration design
+
+This document covers the optional existing-app integration. The default
+standalone product is the [machine-backed workspace](local-harness.md);
+users do not need to build an assistant-ui application to use it.
 
 Status: original design contract. The first implementation now has a
 [runnable source preview](../examples/existing-app/README.md) and
@@ -168,7 +172,9 @@ domain. In a laptop browser, `localhost` means that laptop, not the remote VM.
 
 ## 5. Users without an existing app
 
-A future scaffold generates an assistant-ui application, server-owned Harness
+Use the [machine workspace](local-harness.md) to start Tress's agent, saved
+Harness thread, and browser interface in a project folder today from source.
+A future optional application scaffold would generate an assistant-ui application, server-owned Harness
 thread, example agent, storage configuration, and the same Tress integration.
 The owner chooses model credentials, identity integration, and deployment.
 It follows the same production walkthrough as an existing app. Scaffolding is

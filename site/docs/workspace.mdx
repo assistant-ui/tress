@@ -1,0 +1,114 @@
+---
+title: Run on your machine
+description: Start a persistent Tress workspace on your laptop, VM, or server.
+---
+
+# Run on your machine
+
+Start Tress in a project folder. It runs a background Harness host, connects
+the terminal, and prints a private URL for the same workspace in your browser.
+The host uses Tress's agent and existing browser UI; no application scaffold
+is needed.
+
+**Source preview:** the published v0.3.0 installer does not include this host.
+For now, build and install it from source. The host machine needs Node 22+
+even after installation; the executable bundles JavaScript, WASM, and browser
+assets, but does not bundle Node or V8.
+
+## Build and install
+
+Install stable Rust, Node 22+ with npm, and Python 3.11+. Clone this repository
+or update your existing checkout, then run from its root:
+
+```sh
+git clone https://github.com/assistant-ui/tress.git
+cd tress
+rustup target add wasm32-unknown-unknown
+tress_bindgen_version=$(python3 -c 'import tomllib; print(next(p["version"] for p in tomllib.load(open("Cargo.lock", "rb"))["package"] if p["name"] == "wasm-bindgen"))')
+cargo install wasm-bindgen-cli --version "$tress_bindgen_version" --locked
+npm --prefix packages/workspaces ci
+npm --prefix packages/workspaces run build
+npm --prefix site run wasm:node
+npm --prefix packages/client ci
+npm --prefix packages/client run build
+npm --prefix packages/harness-host ci
+npm --prefix packages/harness-host run build
+TRESS_EMBED_RUNTIME=1 cargo install --locked --path crates/tress
+```
+
+Use the Cargo-installed `tress` (normally `~/.cargo/bin/tress`). If you used
+the website installer before, place `~/.cargo/bin` before `~/.local/bin` on
+PATH. Both builds currently report `0.3.0`, so the version alone cannot tell
+them apart. A plain Cargo installation without the host build above is enough
+for existing-app attachment, but does not bundle this machine runtime.
+
+## Start your workspace
+
+```sh
+tress setup --local
+cd /path/to/your-project
+tress
+```
+
+Setup saves your model credential and selects local mode. Running `tress`
+starts or rejoins the project host. Ask a question in the terminal, then open
+the private `Browser:` URL it prints. Both clients show the same thread. The
+browser can list, preview, and download files from that project.
+
+An exported `ANTHROPIC_API_KEY` can supply the model credential instead.
+For an Anthropic key that requires a workspace, also set
+`ANTHROPIC_WORKSPACE_ID` on the host before starting it. This is the Anthropic
+workspace, separate from the Harness workspace used in managed mode.
+Provider and managed service keys stay on the host.
+
+The default local host allows project file reads and edits; native shell
+execution is disabled. Closing the terminal leaves the host running.
+
+## Return later or stop the host
+
+```sh
+cd /path/to/your-project
+tress                       # reconnect to this project's saved thread
+tress ask "summarize the changes"
+tress serve --stop          # stop the host; retain conversation and files
+tress                       # restart the host and restore completed turns
+```
+
+The preview keeps one conversation per canonical project path. Conversation
+snapshots and private connection metadata live under
+`~/.local/state/tress/harness/` by default, outside the project; workspace
+files stay inside the project. `XDG_STATE_HOME` changes the state directory.
+Moving to another machine does not automatically move either store.
+
+## Choose tool permissions
+
+Stop the current host before changing permissions or model settings:
+
+```sh
+tress serve --stop
+tress serve --open                         # read-only project tools
+```
+
+To allow edits and native commands instead:
+
+```sh
+tress serve --stop
+tress serve --allow-write --allow-exec
+```
+
+Native commands run with the host process's permissions. This preview has
+no per-command approval dialog, and the shell is not sandboxed to the project.
+An interrupted tool is reported as interrupted; it is not automatically replayed.
+
+## Use a VM or managed conversation storage
+
+Run the same setup on your VM with a persistent project disk. The listener is
+private to `127.0.0.1`; forward the printed port with SSH, preserving the port,
+then open its private URL. See [deployment options](/docs/production).
+
+Optional managed mode uses HarnessCloud for conversation storage and a tunnel
+to the machine's agent. The machine must remain available to execute tools.
+It does not upload project files or migrate an existing local conversation.
+See the [managed host configuration](https://github.com/assistant-ui/tress/blob/main/docs/local-harness.md#managed-harness).
+Automated tunnel tests pass; live managed deployment validation remains a
+release requirement.

@@ -16,7 +16,7 @@ try {
     "--permission", `--allow-fs-read=${temporary}`,
     "--input-type=module", "-e", `
     const { default: app } = await import("./index.mjs");
-    for (const path of ["/", "/docs", "/docs/local", "/docs/authentication", "/docs/production"]) {
+    for (const path of ["/", "/docs", "/docs/workspace", "/docs/embedding", "/docs/local", "/docs/authentication", "/docs/production"]) {
       const response = await app.fetch(new Request("https://example.test" + path));
       const html = await response.text();
       if (response.status !== 200 || !response.headers.get("content-type")?.startsWith("text/html") || !html.includes("<h1")) {
@@ -24,7 +24,7 @@ try {
       }
       console.log(response.status, path);
     }
-    for (const path of ["/docs.md", "/docs/local.md"]) {
+    for (const path of ["/docs.md", "/docs/workspace.md", "/docs/embedding.md", "/docs/local.md"]) {
       for (const accept of ["text/html", "text/markdown"]) {
         const response = await app.fetch(new Request("https://example.test" + path, {
           headers: { Accept: accept },

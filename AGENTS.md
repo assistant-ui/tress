@@ -2,10 +2,11 @@
 
 ## Product direction
 
-The next milestone is terminal access to an existing assistant-ui application
-with a server-owned Harness thread. Reuse the application's agent, tools,
-identity, and conversation. See [the roadmap](docs/roadmap.md) for scope,
-acceptance checks, and deferred work.
+Tress provides a machine-backed agent workspace controlled by browser and
+terminal clients. Harness owns conversation state; the machine owns files,
+artifacts, and tool execution. Existing assistant-ui integration is an optional
+path that reuses the application's agent, tools, identity, and conversation.
+See [the roadmap](docs/roadmap.md) for scope, acceptance checks, and deferred work.
 
 Keep current Tress clients and hosted sessions working during the integration.
 Proposed commands and capabilities must be labeled as proposals until shipped.

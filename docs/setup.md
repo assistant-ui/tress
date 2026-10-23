@@ -1,9 +1,14 @@
 # Set up tress
 
-Tress connects to a saved host by default. The host supplies the model, runs
-tools, and owns the workspace. Browser and terminal clients share its thread.
-Your terminal does not need an Anthropic key or a Harness key. With no saved
-mode or host, an exported `ANTHROPIC_API_KEY` instead starts native local mode.
+Tress runs an agent workspace on a machine and lets browser and terminal
+clients control it. Choose the [machine workspace guide](local-harness.md) to
+start your own durable host, or follow this guide to install the released CLI
+and connect to an existing host. Existing assistant-ui applications use the
+[terminal integration guide](terminal-integration.md).
+
+A client of an existing host needs its access credential, not its model or
+Harness service keys. Starting your own host requires a model credential.
+With no saved mode or host, an exported `ANTHROPIC_API_KEY` selects local mode.
 
 ## Install
 
@@ -28,6 +33,10 @@ build the current checkout with Rust from the repository root:
 cargo install --locked --path crates/tress
 ```
 
+For the durable local workspace, also build and embed the host runtime using
+the [machine host installation steps](local-harness.md#build-and-start). The
+plain Cargo command above installs a client without bundling that runtime.
+
 ## Upgrade from v0.1.0
 
 Rerun the install command to upgrade to the latest release. The installer
@@ -40,7 +49,7 @@ attaching to a Tress site session connects the machine filesystem by default;
 add `--chat-only` to retain chat-only behavior. Updated hosts connect directly
 using the session command unless they opt into `TRESS_REQUIRE_PAIRING=1`.
 
-For the previous local behavior, use `tress --local` or
+For local execution, use `tress --local` or
 `tress --local ask "your task"` with your existing `ANTHROPIC_API_KEY`. Run
 `tress setup --local` to save local mode as your default. The CLI never switches
 to a personal model key when a host connection fails.
@@ -138,9 +147,11 @@ Harness supplies the shared-thread infrastructure; the host operator configures
 and pays for model access. Neither key is copied to the terminal or browser.
 A host error never falls back to your personal model key.
 Exporting `HARNESS_API_KEY` in a terminal does not make the Rust CLI a managed
-host. The current managed Harness transport runs in the site's Node host and
-also needs an allowed backend URL, a model credential, and durable session
-storage. The binary does not read or forward that project key.
+host. The managed transport runs in a Node host: either the site or the
+source-preview machine host configured with `TRESS_THREAD_MODE=cloud`. See
+[machine managed setup](local-harness.md#managed-harness). It also needs a
+model credential and a configured backend connection; a terminal merely
+attaching to a host does not forward a Harness service key.
 
 Personal settings live in `$XDG_CONFIG_HOME/tress/`, or `~/.config/tress/` when
 `XDG_CONFIG_HOME` is unset. `config.json` records the selected mode.
