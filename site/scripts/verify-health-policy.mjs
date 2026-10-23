@@ -23,6 +23,7 @@ let generations = 0;
 let metadataChecks = 0;
 const model = createServer(async (request, response) => {
   assert.equal(request.headers["x-api-key"], "mock-host-key");
+  assert.equal(request.headers["anthropic-workspace-id"], "wrkspc_host_fixture");
   if (request.method === "GET" && request.url === "/v1/models/test-model") {
     metadataChecks++;
     response.writeHead(200, { "Content-Type": "application/json" });
@@ -73,6 +74,7 @@ try {
       PORT: String(port),
       HOST: "127.0.0.1",
       ANTHROPIC_API_KEY: "mock-host-key",
+      ANTHROPIC_WORKSPACE_ID: "wrkspc_host_fixture",
       TRESS_API_URL: `http://127.0.0.1:${model.address().port}/v1/messages`,
       TRESS_MODEL: "test-model",
       TRESS_THREAD_MODE: "local",

@@ -7,6 +7,7 @@ import {
 import { threadStore, type ThreadStore } from "./thread-store";
 import { managedBackendUrl, managedStreamHeaders } from "./managed-backend";
 import { demoLimits } from "./demo-policy";
+import { anthropicHeaders } from "./anthropic";
 
 type Check = {
   name: string;
@@ -112,7 +113,7 @@ export const checkHost = async (
       return await probe(
         "Model",
         url,
-        { "x-api-key": key, "anthropic-version": "2023-06-01" },
+        anthropicHeaders(key),
         fetcher,
       );
     } catch {

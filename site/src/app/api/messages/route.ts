@@ -10,6 +10,7 @@ import {
   sessionResponse,
 } from "../../../server/demo-session";
 import { admitRun } from "../../../server/demo-policy";
+import { anthropicHeaders } from "../../../server/anthropic";
 
 type Block =
   | { kind: "text"; text: string }
@@ -93,8 +94,7 @@ async function keyState(key: string): Promise<"live" | "rejected"> {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
+        ...anthropicHeaders(key),
       },
       body: JSON.stringify({
         model: "claude-sonnet-5",
@@ -204,8 +204,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
+        ...anthropicHeaders(key),
       },
       body,
     });
