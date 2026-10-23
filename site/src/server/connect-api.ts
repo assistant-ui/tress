@@ -18,7 +18,8 @@ const jsonHeaders = {
 };
 // Session commands already carry a thread capability. Operators can require
 // a second, browser-owner approval before that capability can attach a device.
-const pairingRequired = () => ["1", "true"].includes(process.env.TRESS_REQUIRE_PAIRING?.trim().toLowerCase() ?? "");
+const enabled = (value: string | undefined) => ["1", "true"].includes(value?.trim().toLowerCase() ?? "");
+const pairingRequired = () => enabled(process.env.TRESS_REQUIRE_PAIRING);
 function fail(message: string, status: number): never {
   throw new SessionError(message, status);
 }
@@ -235,6 +236,7 @@ export const connectRequest = async (
           fail("The host returned invalid file content.", 502);
         return Response.json({ deviceId: device.id, path, value }, { headers: jsonHeaders });
       }
+      const required = pairingRequired();
       return Response.json({ device: device ? {
         id: device.id,
         label: device.label,
@@ -242,7 +244,9 @@ export const connectRequest = async (
         writable: device.writable,
         online: deviceOnline(device),
         details: deviceDetails(device.label, device.writable),
-      } : null, manageable, pairingRequired: pairingRequired() }, { headers: jsonHeaders });
+      } : null, manageable, pairingRequired: required,
+        showPairing: required || enabled(process.env.TRESS_SHOW_PAIRING),
+      }, { headers: jsonHeaders });
     }
     if (action === "poll" && request.method === "POST") {
       const hash = bearer(request);

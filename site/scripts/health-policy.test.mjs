@@ -40,6 +40,7 @@ const {
 } = await import(output.href);
 const keys = [
   "ANTHROPIC_API_KEY",
+  "ANTHROPIC_WORKSPACE_ID",
   "TRESS_MODEL",
   "TRESS_API_URL",
   "HARNESS_API_KEY",
@@ -80,6 +81,7 @@ const store = (name) => createFileThreadStore(join(root, name));
 const request = () => new Request("https://host.example/api/health");
 
 test("health uses host credentials, closes streams, and never generates a completion", async () => {
+  process.env.ANTHROPIC_WORKSPACE_ID = "wrkspc_health_fixture";
   const calls = [];
   let closed = 0;
   const result = await checkHost(
@@ -91,13 +93,16 @@ test("health uses host credentials, closes streams, and never generates a comple
       assert.equal(options.method, undefined);
       assert.equal(options.redirect, "error");
       assert(options.signal);
-      if (url.hostname === "provider.example")
+      if (url.hostname === "provider.example") {
         assert.equal(options.headers["x-api-key"], "fake-model-secret");
-      else
+        assert.equal(options.headers["anthropic-workspace-id"], "wrkspc_health_fixture");
+      } else {
+        assert.equal(options.headers["anthropic-workspace-id"], undefined);
         assert.equal(
           options.headers.Authorization,
           "Bearer fake-harness-secret",
         );
+      }
       return new Response(
         new ReadableStream({
           cancel() {
@@ -112,6 +117,45 @@ test("health uses host credentials, closes streams, and never generates a comple
   assert(calls.some((url) => url.endsWith("/v1/models/fixture-model")));
   assert(calls.some((url) => url.includes("/threads/fixture~")));
   assert(!JSON.stringify(result).includes("secret"));
+  assert(!JSON.stringify(result).includes("wrkspc_health_fixture"));
+});
+
+test("browser model requests and probes use only the host's optional Anthropic workspace", async (t) => {
+  const storeCache = globalThis[Symbol.for("tress.demo.thread-store.v4")];
+  const previousStore = storeCache.store;
+  t.after(() => { storeCache.store = previousStore; });
+  const routeOutput = new URL(`../.tress/anthropic-route-${process.pid}.mjs`, import.meta.url);
+  await build({
+    entryPoints: [new URL("../src/app/api/messages/route.ts", import.meta.url).pathname],
+    outfile: routeOutput.pathname, bundle: true, packages: "external", platform: "node", format: "esm",
+  });
+  t.after(() => rm(routeOutput, { force: true }));
+  const { POST } = await import(routeOutput.href);
+  process.env.TRESS_DEMO_SHARED = "1";
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    calls.push({ url, headers: options.headers });
+    return new Response("data: fixture\n\n", { headers: { "content-type": "text/event-stream" } });
+  });
+  for (const workspace of [undefined, "  wrkspc_server_fixture  ", "   "]) {
+    if (workspace === undefined) delete process.env.ANTHROPIC_WORKSPACE_ID;
+    else process.env.ANTHROPIC_WORKSPACE_ID = workspace;
+    for (const probe of [false, true]) {
+      const response = await POST(new Request("https://host.example/api/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json", "anthropic-workspace-id": "wrkspc_client_must_not_override" },
+        body: JSON.stringify({ probe, messages: [{ role: "user", content: "fixture" }] }),
+      }));
+      assert.equal(response.status, 200);
+      const call = calls.at(-1);
+      assert.equal(call.url, "https://api.anthropic.com/v1/messages");
+      assert.equal(call.headers["x-api-key"], "fake-model-secret");
+      assert.equal(call.headers["anthropic-workspace-id"], workspace?.trim() || undefined);
+      assert.equal(response.headers.get("anthropic-workspace-id"), null);
+      assert(!((await response.text()).includes("fake-model-secret")));
+    }
+  }
+  assert.equal(calls.length, 6);
 });
 
 test("health distinguishes database failure, rejected Harness access, and unsupported model metadata", async () => {

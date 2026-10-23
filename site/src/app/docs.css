@@ -115,7 +115,8 @@
 :is(#nd-sidebar, #nd-sidebar-mobile) a[data-active="true"]::before {
   content: "";
   position: absolute;
-  left: 0;
+  /* Center the 2px marker on the theme's 1px group guide at 2.5 spacing units. */
+  inset-inline-start: calc(2.5 * var(--spacing) - 0.5px);
   top: 10px;
   bottom: 10px;
   width: 2px;
