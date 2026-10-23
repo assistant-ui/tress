@@ -9,19 +9,73 @@ const output = new URL(
   import.meta.url,
 );
 await build({
-  entryPoints: [new URL("../src/lib/demo-config.ts", import.meta.url).pathname],
+  stdin: {
+    contents: 'export * from "./src/lib/demo-config"; export * from "./src/lib/demo-page";',
+    resolveDir: new URL("../", import.meta.url).pathname,
+  },
   outfile: output.pathname,
   bundle: true,
   platform: "node",
   format: "esm",
 });
-const { observeDemoConfig } = await import(output.href);
+const { observeDemoConfig, createDemoPage } = await import(output.href);
 after(() => rm(output, { force: true }));
 const config = {
   configured: true,
   model: "test-model",
   workspace: { mode: "local", writes: true },
 };
+
+test("each document gets a fresh session, while opening a session link resumes it", () => {
+  const first = createDemoPage("https://demo.example/", "navigate");
+  const reload = createDemoPage("https://demo.example/?session=previous1234", "reload");
+  const nextReload = createDemoPage("https://demo.example/?session=previous1234", "reload");
+  assert.match(first.url, /^\/api\/mode\?newSession=[A-Za-z0-9_-]{12}$/);
+  assert.match(reload.url, /^\/api\/mode\?newSession=[A-Za-z0-9_-]{12}$/);
+  assert.notEqual(first.url, reload.url);
+  assert.notEqual(reload.url, nextReload.url);
+  assert.equal(createDemoPage("https://demo.example/?session=previous1234", "navigate").url,
+    "/api/mode?session=previous1234");
+  assert.equal(createDemoPage("https://demo.example/?session=previous1234", "back_forward").url,
+    "/api/mode?session=previous1234");
+});
+
+test("effect remounts share one bootstrap and explicit reconnects stay pinned", async () => {
+  const calls = [];
+  let finish;
+  const page = createDemoPage("https://demo.example/", "reload", (url, options) => {
+    calls.push({ url, options });
+    return new Promise((resolve) => { finish = resolve; });
+  });
+  const aborted = new AbortController();
+  const first = page.fetchConfig(page.url, { signal: aborted.signal });
+  aborted.abort();
+  const second = page.fetchConfig(page.url);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.signal.aborted, false);
+  finish(Response.json(config));
+  assert.deepEqual(await (await first).json(), config);
+  assert.deepEqual(await (await second).json(), config);
+  assert.deepEqual(await (await page.fetchConfig(page.url)).json(), config);
+  assert.equal(calls.length, 1);
+  const reconnect = page.fetchConfig("/api/mode?session=current12345");
+  assert.equal(calls[1].url, "/api/mode?session=current12345");
+  finish(Response.json(config));
+  await reconnect;
+});
+
+test("bootstrap errors retry with the same creation token", async () => {
+  const calls = [];
+  const page = createDemoPage("https://demo.example/", "reload", async (url) => {
+    calls.push(url);
+    if (calls.length === 1) throw new Error("offline");
+    return calls.length === 2 ? new Response("restarting", { status: 503 }) : Response.json(config);
+  });
+  await assert.rejects(page.fetchConfig(page.url), /offline/);
+  assert.equal((await page.fetchConfig(page.url)).status, 503);
+  assert.deepEqual(await (await page.fetchConfig(page.url)).json(), config);
+  assert.deepEqual(calls, [page.url, page.url, page.url]);
+});
 
 test("a failed configuration fetch recovers automatically when the host returns", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });

@@ -192,6 +192,25 @@ try {
     "A's browser and terminal presence",
   );
   assert.equal(second.state.clients.length, 1);
+  const reloadUrl = `${url}/api/mode?newSession=reloadPage12`;
+  const reloadResponse = await fetch(reloadUrl, { headers: { cookie: a.cookie } });
+  assert.equal(reloadResponse.status, 200, await reloadResponse.clone().text());
+  const refreshed = await reloadResponse.json();
+  assert.notEqual(refreshed.session.id, a.config.session.id);
+  assert.equal(refreshed.session.attachId, "reloadPage12");
+  const refreshedClient = await attach(refreshed);
+  assert.equal(refreshedClient.state.entries.length, 0);
+  assert(!refreshedClient.state.files["notes.md"].includes("Visitor A"));
+  assert.equal(first.state.runs, 2, "refresh preserves the terminal's original conversation");
+  assert.equal(first.state.clients.length, 2, "refresh does not move attached terminals");
+  const retried = await (await fetch(reloadUrl, { headers: { cookie: a.cookie } })).json();
+  assert.equal(retried.session.id, refreshed.session.id);
+  const listed = await (await fetch(`${url}/api/threads`, { headers: { cookie: a.cookie } })).json();
+  assert.deepEqual(new Set(listed.threads.map((thread) => thread.id)),
+    new Set([a.config.session.id, refreshed.session.id]));
+  await refreshedClient.commands.send("Write a note in the refreshed session");
+  await wait(() => refreshedClient.state.runs === 1 && refreshedClient.state.status === "idle", "refreshed session runs");
+  assert.equal(first.state.runs, 2, "new session activity stays separate");
   terminal.stdin.end("/exit\n");
   await once(terminal, "exit");
   terminal = undefined;

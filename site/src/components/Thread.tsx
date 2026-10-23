@@ -12,6 +12,7 @@ import {
 import { StatewireClient, StatewireHttp } from "statewire";
 import type { ThreadCommands, ThreadState } from "../lib/thread";
 import { observeDemoConfig, type DemoConfig } from "../lib/demo-config";
+import { demoPage } from "../lib/demo-page";
 import { describeWorkspace } from "../lib/workspace-info";
 import { CopyButton } from "./CopyButton";
 import { SourcePane } from "./SourcePane";
@@ -141,9 +142,7 @@ export function Thread({
 
   useEffect(() => {
     setOrigin(window.location.origin);
-    const session =
-      selectedSession ??
-      new URL(window.location.href).searchParams.get("session");
+    const page = demoPage();
     const request = observeDemoConfig(
       (result) => {
         setConfigLoading(result.status === "loading");
@@ -153,17 +152,21 @@ export function Thread({
         }
         if (result.status === "ready") {
           setConfig(result.config);
-          if (result.config.session)
-            pinnedConfigUrl.current = `/api/mode?session=${encodeURIComponent(result.config.session.attachId)}`;
+          pinnedConfigUrl.current = result.config.session
+            ? `/api/mode?session=${encodeURIComponent(result.config.session.attachId)}`
+            : "/api/mode";
           onReady?.(result.config);
           setConfigFailed(false);
           setConfigError(undefined);
         }
       },
-      (url, init) => fetch(pinnedConfigUrl.current ?? url, init),
-      session
-        ? `/api/mode?session=${encodeURIComponent(session)}`
-        : "/api/mode",
+      (url, init) =>
+        pinnedConfigUrl.current
+          ? fetch(pinnedConfigUrl.current, init)
+          : page.fetchConfig(url, init),
+      selectedSession
+        ? `/api/mode?session=${encodeURIComponent(selectedSession)}`
+        : page.url,
     );
     configRequest.current = request;
     window.addEventListener("online", request.retryIfNeeded);

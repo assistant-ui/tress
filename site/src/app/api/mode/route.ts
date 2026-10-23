@@ -14,7 +14,13 @@ import {
 export const GET = async (request: Request) => {
   try {
     const owner = await resolveDemoOwner(request, true);
-    const session = await resolveDemoSession(request, true, undefined, owner);
+    const session = await resolveDemoSession(
+      request,
+      true,
+      undefined,
+      owner,
+      new URL(request.url).searchParams.get("newSession") ?? undefined,
+    );
     const workspace = workspaceConfig(session?.thread.id);
     const mode = threadMode(request.url);
     const configuredHostLabel = process.env.TRESS_HOST_LABEL?.trim();

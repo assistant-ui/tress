@@ -30,18 +30,28 @@ export async function resolveDemoSession(
   create = false,
   store: ThreadStore = threadStore(),
   owner?: DemoOwner,
+  newSession?: string,
 ): Promise<DemoSession | undefined> {
   if (!isolatedDemo()) return undefined;
+  if (
+    newSession !== undefined &&
+    (!create || !/^[A-Za-z0-9_-]{12}$/.test(newSession))
+  )
+    throw new SessionError("Invalid new session ID.", 400);
   const url = new URL(request.url);
   const routeToken = url.pathname.match(/^\/api\/sessions\/([^/]+)\//)?.[1];
   const explicit = routeToken ?? url.searchParams.get("session");
+  if (newSession !== undefined && explicit != null)
+    throw new SessionError("Choose an existing session or start a new one.", 400);
   const cookie = request.headers
     .get("cookie")
     ?.split(";")
     .map((part) => part.trim())
     .find((part) => part.startsWith(`${COOKIE}=`))
     ?.slice(COOKIE.length + 1);
-  const token = explicit ?? cookie;
+  // A document supplies one random capability so a retry reuses its session.
+  // Only /api/mode opts into creation; normal clients still resume cookies.
+  const token = newSession ?? explicit ?? cookie;
   if (token && validToken(token)) {
     const thread = await store.get(accessHash(token));
     if (thread) {
@@ -49,7 +59,12 @@ export async function resolveDemoSession(
         assertSessionActive(thread);
       } catch (error) {
         // An expired ambient cookie may start fresh; explicit links never silently switch threads.
-        if (create && explicit == null && error instanceof DemoPolicyError) {
+        if (
+          create &&
+          !newSession &&
+          explicit == null &&
+          error instanceof DemoPolicyError
+        ) {
           const headers = new Headers(request.headers);
           headers.delete("cookie");
           return resolveDemoSession(
@@ -61,7 +76,12 @@ export async function resolveDemoSession(
         }
         throw error;
       }
-      if (create && owner?.id === thread.ownerId) {
+      if (
+        create &&
+        !newSession &&
+        explicit == null &&
+        owner?.id === thread.ownerId
+      ) {
         const selected = await ownedSession(thread, owner, store);
         return {
           ...selected,
@@ -77,7 +97,7 @@ export async function resolveDemoSession(
         await store.addAccess(thread.accessHash, accessHash(short));
         return { token: short, thread, fresh: explicit == null };
       }
-      return { token, thread, fresh: false };
+      return { token, thread, fresh: newSession !== undefined };
     }
   }
   if (explicit !== null && explicit !== undefined)
@@ -91,9 +111,9 @@ export async function resolveDemoSession(
       401,
     );
   const id = randomUUID();
-  const next = owner
-    ? ownerThreadToken(owner, id)
-    : randomBytes(9).toString("base64url");
+  const next =
+    newSession ??
+    (owner ? ownerThreadToken(owner, id) : randomBytes(9).toString("base64url"));
   const now = new Date().toISOString();
   const thread: DemoThread = {
     id,

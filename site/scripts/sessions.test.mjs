@@ -44,6 +44,35 @@ process.env.TRESS_DEMO_SHARED = "0";
 const request = (url = "https://demo.example/api/mode", headers) =>
   new Request(url, { headers });
 
+test("page reload creates a new owned session; retries and old attach links stay isolated", async () => {
+  const store = createFileThreadStore(join(directory, "page-reload"));
+  const owner = await resolveDemoOwner(request(), true, store);
+  const first = await resolveDemoSession(request(), true, store, owner, "firstPage123");
+  const nextRequest = request(undefined, { cookie: sessionCookie(first, request()) });
+  const second = await resolveDemoSession(nextRequest, true, store, owner, "secondPage12");
+  assert.notEqual(second.thread.id, first.thread.id);
+  assert.notEqual(second.thread.harnessThreadId, first.thread.harnessThreadId);
+  assert.equal(second.thread.ownerId, owner.id);
+  assert.equal(second.token, "secondPage12");
+  const retry = await resolveDemoSession(nextRequest, true, store, owner, "secondPage12");
+  assert.equal(retry.thread.id, second.thread.id);
+  assert.equal(retry.token, second.token);
+  assert(retry.fresh);
+  assert.equal((await store.list(owner.id)).length, 2);
+  const usage = JSON.parse(await readFile(join(directory, "page-reload", "usage.json"), "utf8"));
+  assert(Object.values(usage.counts).every((count) => count === 2), "retry does not spend another creation allowance");
+  for (const session of [first, second]) {
+    const resumed = await resolveDemoSession(
+      request(`https://demo.example/api/mode?session=${session.token}`, { cookie: sessionCookie(second, request()) }),
+      true, store, owner,
+    );
+    assert.equal(resumed.thread.id, session.thread.id);
+    assert.equal(resumed.token, session.token);
+  }
+  await assert.rejects(resolveDemoSession(request(), true, store, owner, "invalid"), { status: 400 });
+  await assert.rejects(resolveDemoSession(request(`https://demo.example/api/mode?session=${first.token}`), true, store, owner, "thirdPage123"), { status: 400 });
+});
+
 test("visitors get separate identities; cookies and explicit attach links resume exactly one", async () => {
   const store = createFileThreadStore(join(directory, "registry"));
   const first = await resolveDemoSession(request(), true, store);

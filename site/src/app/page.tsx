@@ -40,8 +40,8 @@ export default function HomePage() {
         <section id="demo" aria-label="Live terminal demo">
           <Threads />
           <p className="demo-note">
-            The agent runs on the host. Close this tab, attach a terminal, or
-            open another window — the same thread is waiting.
+            Refresh for a new demo session. Reopen an earlier thread from the
+            sidebar or its session link. The agent runs on the host.
           </p>
         </section>
 
