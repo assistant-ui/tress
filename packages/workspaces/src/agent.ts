@@ -10,6 +10,7 @@ export interface AgentOptions {
   model: string;
   headers?: Record<string, string>;
   system?: string;
+  maxSteps?: number;
   tools?: WorkspaceToolsOptions;
   /** A trusted checkpoint previously returned by checkpoint(). */
   messages?: unknown[];
@@ -35,6 +36,12 @@ export function createAgent(options: AgentOptions) {
     },
   );
   try {
+    if (options.maxSteps !== undefined) {
+      if (!Number.isInteger(options.maxSteps) || options.maxSteps < 1 || options.maxSteps > 1024)
+        throw new Error("maxSteps must be between 1 and 1024");
+      if (!session.setMaxSteps) throw new Error("Rebuild the WASM module to configure maxSteps");
+      session.setMaxSteps(options.maxSteps);
+    }
     if (options.system !== undefined) session.setSystem(options.system);
     if (options.messages)
       session.restoreMessages(JSON.stringify(options.messages));

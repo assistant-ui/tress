@@ -12,6 +12,8 @@ export default withDocs(defineConfig({
   // Browsers download text/markdown; source links should display as text.
   headers: () => [
     "/docs.md",
+    "/docs/workspace.md",
+    "/docs/embedding.md",
     "/docs/try.md",
     "/docs/existing-app.md",
     "/docs/authentication.md",

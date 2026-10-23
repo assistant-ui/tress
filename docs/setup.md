@@ -1,9 +1,14 @@
 # Set up tress
 
-Tress connects to a saved host by default. The host supplies the model, runs
-tools, and owns the workspace. Browser and terminal clients share its thread.
-Your terminal does not need an Anthropic key or a Harness key. With no saved
-mode or host, an exported `ANTHROPIC_API_KEY` instead starts native local mode.
+Tress runs an agent workspace on a machine and lets browser and terminal
+clients control it. Choose the [machine workspace guide](local-harness.md) to
+start your own durable host, or follow this guide to install the released CLI
+and connect to an existing host. Existing assistant-ui applications use the
+[terminal integration guide](terminal-integration.md).
+
+A client of an existing host needs its access credential, not its model or
+Harness service keys. Starting your own host requires a model credential.
+With no saved mode or host, an exported `ANTHROPIC_API_KEY` selects local mode.
 
 ## Install
 
@@ -28,6 +33,10 @@ build the current checkout with Rust from the repository root:
 cargo install --locked --path crates/tress
 ```
 
+For the durable local workspace, also build and embed the host runtime using
+the [machine host installation steps](local-harness.md#build-and-start). The
+plain Cargo command above installs a client without bundling that runtime.
+
 ## Upgrade from v0.1.0
 
 Rerun the install command to upgrade to the latest release. The installer
@@ -40,7 +49,7 @@ attaching to a Tress site session connects the machine filesystem by default;
 add `--chat-only` to retain chat-only behavior. Updated hosts connect directly
 using the session command unless they opt into `TRESS_REQUIRE_PAIRING=1`.
 
-For the previous local behavior, use `tress --local` or
+For local execution, use `tress --local` or
 `tress --local ask "your task"` with your existing `ANTHROPIC_API_KEY`. Run
 `tress setup --local` to save local mode as your default. The CLI never switches
 to a personal model key when a host connection fails.
@@ -138,9 +147,11 @@ Harness supplies the shared-thread infrastructure; the host operator configures
 and pays for model access. Neither key is copied to the terminal or browser.
 A host error never falls back to your personal model key.
 Exporting `HARNESS_API_KEY` in a terminal does not make the Rust CLI a managed
-host. The current managed Harness transport runs in the site's Node host and
-also needs an allowed backend URL, a model credential, and durable session
-storage. The binary does not read or forward that project key.
+host. The managed transport runs in a Node host: either the site or the
+source-preview machine host configured with `TRESS_THREAD_MODE=cloud`. See
+[machine managed setup](local-harness.md#managed-harness). It also needs a
+model credential and a configured backend connection; a terminal merely
+attaching to a host does not forward a Harness service key.
 
 Personal settings live in `$XDG_CONFIG_HOME/tress/`, or `~/.config/tress/` when
 `XDG_CONFIG_HOME` is unset. `config.json` records the selected mode.
@@ -173,8 +184,11 @@ credential, including after an error.
 
 ## Explicit local execution
 
-Use local mode when you want the native agent to work in the terminal's current
-directory with your own Anthropic key:
+Use local mode when you want the agent to work in the terminal's current
+directory with your own Anthropic key. **Source preview:** the machine runs a
+Harness SDK host, saves its conversation, and prints a browser URL. Build the
+embedded runtime and install Node 22+ using the [machine host guide](local-harness.md).
+The published v0.3.0 local mode still uses the older unsaved native loop.
 
 ```sh
 tress setup --local
@@ -190,17 +204,22 @@ tress --local ask "fix the failing test"
 ```
 
 With no saved mode or `TRESS_HOST`, an exported `ANTHROPIC_API_KEY` now selects
-native local mode automatically, so `cd your-project && tress` works without
+local mode automatically, so `cd your-project && tress` works without
 running setup. An explicitly saved host or local mode still wins over this
 automatic choice; use `--local` to override a saved host for one run. Local
 mode uses that process's current directory, whether the binary is running on
-your laptop or inside a sandbox. It does **not** sync the conversation to
-Harness or keep it after exit. If `HARNESS_API_KEY` is also exported, the CLI
-warns that this key is unused in native local mode.
+your laptop or inside a VM. In this source preview, reopening the CLI resumes
+the same project's Harness thread. Local snapshots stay on the machine;
+managed storage requires explicit `TRESS_THREAD_MODE=cloud` and the Harness
+configuration in the [machine host guide](local-harness.md#managed-harness).
+Exporting `HARNESS_API_KEY` alone does not select managed mode.
 
 Run `tress setup` again to select hosted mode. `tress attach` always connects to
-a host, regardless of the saved mode. Local mode does not start a shareable
-server or persist its conversation through a process restart.
+a host, regardless of the saved mode. The source-preview local host stays
+running after you leave; `tress serve --stop` stops it without deleting the
+thread or files. It binds to loopback and prints a private browser URL and
+terminal attach command. To retain the old unsaved standalone behavior, use
+`tress --ephemeral`.
 
 Local setup hides key input and saves it separately in `credentials.json`
 (mode `0600`). Enter preserves an existing saved or environment key; an
@@ -232,6 +251,11 @@ Local settings resolve as flags > environment > current directory's
 Put flags before the prompt; use `--` for a prompt beginning with a dash.
 Reaching the step limit reports an error and preserves tool results in the
 current conversation. Send another prompt to continue.
+
+A running machine host retains its original model, permissions, and key.
+Stop and restart it to apply configuration changes. The default local host
+permits file edits and disables shell execution; `tress serve --allow-write
+--allow-exec` opts into native shell execution with the host's permissions.
 
 `tress config --local` shows local values and sources. `tress doctor --local
 --check-api` checks the Anthropic Models API without generating a completion.

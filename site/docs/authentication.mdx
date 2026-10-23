@@ -10,6 +10,29 @@ service to connect a terminal. Keep the host's existing access flow, whether
 that is the Tress demo's shared session or your application's login and thread
 permissions.
 
+## Choose the app's access method
+
+The source-preview CLI supports three app-selected policies:
+
+| App policy | User connection |
+| --- | --- |
+| API key or bearer token | `tress attach https://app.example --api-key-env MY_APP_API_KEY` |
+| Explicit anonymous access | `tress attach https://app.example` |
+| Custom request headers | `tress attach https://app.example --headers-file app-headers.json` |
+
+The environment variable holds an **app-issued user credential**, not a model
+key or project-wide Harness key. The app validates it and decides which
+conversations are visible. Anonymous access exposes exactly the conversations
+the app intentionally makes available without a credential.
+
+With the [discovery endpoint](/docs/existing-app#4-make-the-app-discoverable-and-connect),
+normal attachment automatically lists all permitted conversations. The same
+credentials accompany discovery, list, and thread requests. Thread endpoints
+remain on the app's origin; credentials are not forwarded through redirects.
+No new login provider or header file is required for the first two policies.
+API-key environment flags currently apply to app-origin attachment and
+`tress threads`; direct thread attachment and `tress ask` use header files.
+
 ## Session access and shared commands
 
 The Tress demo creates a secret session token and includes it in the copied

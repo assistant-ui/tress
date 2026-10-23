@@ -110,6 +110,10 @@ impl<P: Provider, T: Tools> Engine<P, T> {
         self.system = system.into();
     }
 
+    pub fn set_max_steps(&mut self, max_steps: std::num::NonZeroUsize) {
+        self.max_steps = max_steps;
+    }
+
     pub fn tools_mut(&mut self) -> &mut T {
         &mut self.tools
     }

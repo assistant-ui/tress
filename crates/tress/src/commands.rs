@@ -44,7 +44,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     },
     CommandInfo {
         name: "/threads",
-        description: "switch recent terminal threads (ctrl-t)",
+        description: "browse app threads or terminal recents (ctrl-t)",
         attached_only: true,
     },
     CommandInfo {
@@ -110,6 +110,7 @@ pub fn help(attached: bool) {
         println!("  {:<13} {}", item.name, item.description);
     }
     if attached {
+        println!("  /thread <id>  switch to an accessible application thread");
         println!("  Memory workspaces restore their example files on /clear.");
     }
 }

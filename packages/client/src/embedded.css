@@ -1,0 +1,86 @@
+.tress-ui {
+  min-width: 0;
+  text-align: left;
+}
+.tress-ui .playground {
+  width: 100%;
+}
+.tress-ui .terminal-window {
+  min-width: 0;
+}
+.tress-ui .conversation-log {
+  height: clamp(220px, 45vh, 480px);
+}
+.tress-ui .terminal-session {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tress-ui .host-file-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.tress-ui .host-file-navigation code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tress-ui .host-file-list {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px;
+}
+.tress-ui .host-file-list button,
+.tress-ui .host-file-navigation button {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.tress-ui .host-file-list button:hover,
+.tress-ui .host-file-navigation button:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+.tress-ui .host-file-list button[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.tress-ui .host-file-error {
+  margin: 0;
+  padding: 12px 18px;
+  color: #cf9a8b;
+}
+.tress-ui .host-file-preview {
+  margin: 0;
+}
+.tress-ui .host-file-preview .source-pane {
+  border: 0;
+}
+.tress-ui .host-file-preview .file-tabs {
+  display: none;
+}
+.tress-ui .terminal-titlebar {
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .tress-ui .terminal-session {
+    max-width: 100px;
+  }
+  .tress-ui .host-file-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tress-ui .terminal-titlebar {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+}

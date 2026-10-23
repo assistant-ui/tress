@@ -16,6 +16,7 @@ thiserror = "2"
 # The HTTP transport and the terminal binary are native-only; the core
 # (engine, tools, message assembly) compiles for wasm32 without them.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+sha2 = "0.10"
 cap-std = "4"
 statewire = { git = "https://github.com/assistant-ui/statewire-rs", rev = "684168fd5ed6eb87e1ff90b166446311d9837aeb", features = ["http"] }
 harness-threads = { git = "https://github.com/assistant-ui/statewire-rs", rev = "684168fd5ed6eb87e1ff90b166446311d9837aeb" }

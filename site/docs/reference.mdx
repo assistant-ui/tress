@@ -10,7 +10,7 @@ description: What this preview supports, and what still needs upstream release w
 | --- | --- |
 | Tress | Build the native client from this checkout. Published v0.3.0 supports Tress-specific hosts. |
 | Rust Statewire client | Git revision `684168fd5ed6eb87e1ff90b166446311d9837aeb`, adding `http::connect_with_headers`; no new crates.io release is implied. |
-| Harness protocol | `2026-09-13` |
+| Harness thread and thread-list protocols | `2026-09-13` |
 | JavaScript Statewire | `0.19.4` |
 | assistant-ui | `@assistant-ui/react` `0.15.28`, `@assistant-ui/tap` `0.9.23` in the reference app |
 | AI SDK | `7.0.114` in the reference app |
@@ -24,16 +24,47 @@ and the Harness commands below require a source build. See the
 
 The CLI can negotiate the existing Tress host or a Harness host, display the
 active branch's text and tool activity, and submit text to a known thread.
-Harness preloads its recent message window. Full history pagination, generic
-thread discovery/creation, and OAuth credential refresh are follow-up work.
+App-origin attachment discovers all permitted threads through the app's
+manifest and authorized list endpoint. It refreshes the list when connecting
+and opening the picker. Harness preloads its recent message window; full
+message-history pagination, thread creation, and OAuth credential refresh
+remain follow-up work.
 
-Use the browser for Harness tool approvals and history management in this
-preview. Adding the client does not add cancellation, branching, or approval
+For an existing app, use its browser interface for approvals and history
+management when that app supports them. The standalone machine host does not
+provide per-command approval dialogs. Adding the client does not add cancellation, branching, or approval
 capabilities to your existing agent.
+
+## Machine host and embedding
+
+The [machine workspace](/docs/workspace) source preview starts or resumes one
+Harness conversation per project. Local snapshots survive completed-turn
+restarts; managed mode uses HarnessCloud while files and execution stay on the
+machine. Live managed deployment and the native release matrix remain to be
+validated. No new CLI release has been published.
+
+The host requires Node 22+, binds to loopback, and grants tool permissions at
+startup. It has no per-command approval dialog or automatic interrupted-tool
+recovery. Conversation persistence does not back up or version project files.
+
+The Rust engine runs natively or as WASM. The terminal remains a native client,
+and the browser uses the JavaScript Harness client. Public embedding packages
+and a self-contained V8 runtime remain future work; see
+[embedding and runtimes](/docs/embedding).
 
 ## Commands
 
 ```sh
+# Automatically browse all permitted threads (app publishes discovery).
+tress attach https://chat.example.com --api-key-env MY_APP_API_KEY
+
+# Explicitly anonymous app; no credential file.
+tress attach https://public-app.example.com
+
+# Script the same list, or directly select a listed ID.
+tress threads https://chat.example.com --api-key-env MY_APP_API_KEY --json
+tress threads https://chat.example.com --api-key-env MY_APP_API_KEY --open main
+
 # Known Harness thread endpoint; preserve your app's routing.
 tress attach https://chat.example.com/api/threads/main --headers-file app-headers.json
 
@@ -47,16 +78,19 @@ tress ask --host https://chat.example.com/api/threads/main --headers-file app-he
 tress attach https://your-demo.example -s YOUR_SESSION_ID
 ```
 
-`--headers-file` is optional and requires an explicit endpoint when used. The JSON file holds string
-header names and values. Statewire and HTTP framing headers are reserved.
-Header credentials are never included in recent-thread commands. The demo's
+`--api-key-env` reads a bearer credential from the named variable for app-origin
+attachment or `tress threads`. `--headers-file` accepts a private JSON object of
+header names and values for custom auth, direct attachment, and one-shot use.
+Choose one method. Statewire and HTTP framing headers are reserved.
+`/attach` includes the variable name or file path, never the credential value. The demo's
 `-s` value is a secret session token; its copied command grants session access.
 
 ## Common connection failures
 
 | Symptom | Check |
 | --- | --- |
-| Cannot connect | Is the complete thread endpoint reachable from this machine? |
+| Cannot connect | Is the app origin or complete thread endpoint reachable from this machine? |
+| No discovery | Serve `/.well-known/tress.json` as JSON and expose the authorized Harness list. Direct thread URLs still work. |
 | Access ended | Reauthenticate through the app and obtain a new grant. Do not blindly resend an in-flight prompt. |
 | Empty history | Are both clients using one server-owned Harness host and the same thread? |
 | Works directly, fails behind proxy | Check buffering, idle timeout, routing to the correct owner, and the canonical origin. |

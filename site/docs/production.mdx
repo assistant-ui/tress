@@ -1,10 +1,31 @@
 ---
 title: Production
-description: Deploy the app and durable thread host, then point clients at its public address.
+description: Run a private machine workspace or deploy an existing application with a durable thread owner.
 ---
 
 # Production
 
+## Private machine workspace
+
+For a personal laptop or VM workspace, follow [Run on your machine](/docs/workspace).
+The standalone host binds to `127.0.0.1`. On a VM, keep its project disk and
+state directory persistent, then forward the actual port printed by Tress:
+
+```sh
+# Replace 5311 with the printed port on both sides.
+ssh -L 5311:127.0.0.1:5311 user@your-server
+```
+
+Open the printed private browser URL on your laptop with the forwarded port.
+Preserve `127.0.0.1` and the port because this host validates Host and Origin.
+The host remains on the VM; closing a browser does not move its files or agent.
+The preview is single-owner and has no public multi-user deployment flow.
+Managed Harness stores conversations, not a backup of the VM disk.
+
+## Existing application deployment
+
+The rest of this guide applies to your application's authorized Harness host,
+not to exposing the standalone loopback listener directly on the internet.
 
 The initial self-hosting topology is one long-running thread owner behind an
 HTTPS reverse proxy. Reuse an existing durable Harness deployment when your
@@ -63,14 +84,16 @@ Keep the host's heartbeat shorter than the proxy's idle timeout.
 
 ## Connect from any terminal
 
-Install the compatible native client and use the app's connection command.
-For an app that issues header credentials:
+Build the compatible source-preview client and expose the app's discovery
+manifest, authorized thread list, and per-thread endpoints. For bearer access:
 
 ```sh
-chmod 600 app-headers.json
-tress attach https://chat.example.com/api/threads/main \
-  --headers-file app-headers.json
+tress attach https://chat.example.com --api-key-env MY_APP_API_KEY
 ```
+
+Tress lists all conversations that credential may access. An explicitly
+anonymous app can omit the flag. Custom authentication can use a private
+`--headers-file`; see [access options](/docs/authentication).
 
 There is no software to install on every user's browser. The app serves its
 existing assistant-ui interface. The integration runs on the thread host.

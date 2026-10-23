@@ -16,6 +16,7 @@ mod config;
 mod connect;
 mod host;
 mod onboarding;
+mod runtime;
 
 pub mod ansi {
     pub const DIM: &str = "\x1b[2m";
@@ -48,14 +49,19 @@ fn usage() -> String {
          tress doctor          check setup (--check-api to verify access)\n  \
          tress                 join your saved host and session\n  \
          tress ask <prompt>    send a prompt to the host and exit\n  \
-         tress --local        run the standalone agent in this directory\n  \
+         tress --local        resume this project's persistent Harness thread\n  \
+         tress serve --open   start the machine's Harness host and open its browser\n  \
+         tress serve --stop   stop this project's host; keep thread and files\n  \
+         tress --ephemeral    run an unsaved standalone session\n  \
          tress setup --local  configure your own Anthropic key\n  \
+         tress threads <app>   browse and continue the app's accessible threads\n  \
          tress attach -s <id>  join a thread on the saved host\n  \
-         tress attach <url>    join a thread with plain terminal output\n  \
+         tress attach <url>    browse an app or join a thread with plain terminal output\n  \
          tress attach <url> --ui  opt into the full terminal interface\n  \
          tress attach <site> -s <id>  connect this machine's filesystem and chat (--session also works)\n  \
          tress attach <site> -s <id> --chat-only  join without sharing files\n  \
          tress attach <site> -s <id> --root . --allow-write --ui  share a folder and chat\n  \
+         tress attach <app> --api-key-env <NAME>  connect with an app API key\n  \
          tress attach <url> --headers-file <path>  use app credentials from a private JSON file\n  \
          tress connect --site <url> [--root <path>] [--allow-write]\n  \
          tress --help          this text\n\n\
@@ -75,7 +81,11 @@ fn usage() -> String {
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let ephemeral = args.first().is_some_and(|arg| arg == "--ephemeral");
+    if ephemeral {
+        args.remove(0);
+    }
     if args
         .first()
         .is_some_and(|arg| arg == "--help" || arg == "-h")
@@ -110,6 +120,24 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if args.first().is_some_and(|arg| arg == "threads") {
+        return match attach::catalog::run(&args[1..], &style).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress threads: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
+    if args.first().is_some_and(|arg| arg == "serve") {
+        return match runtime::serve(&args[1..]).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     if args.first().is_some_and(|arg| arg == "connect") {
         return match connect::run(&args[1..]).await {
             Ok(()) => std::process::ExitCode::SUCCESS,
@@ -120,7 +148,14 @@ async fn main() -> std::process::ExitCode {
         };
     }
     if args.first().is_some_and(|arg| arg == "attach") {
-        let (chat_args, folder_root, writable, chat_only) = match workspace_options(&args[1..]) {
+        let (attach_args, api_key_env) = match attach::catalog::extract_key_env(&args[1..]) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("tress attach: {error}");
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+        let (chat_args, folder_root, writable, chat_only) = match workspace_options(&attach_args) {
             Ok(options) => options,
             Err(error) => {
                 eprintln!("tress attach: {error}");
@@ -141,6 +176,27 @@ async fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::FAILURE;
             }
         };
+        if target.session.is_none() && folder_root.is_none() && !writable {
+            match attach::catalog::attach(
+                &target.host,
+                &style,
+                ui,
+                headers_file,
+                api_key_env.as_deref(),
+            )
+            .await
+            {
+                Ok(true) => return std::process::ExitCode::SUCCESS,
+                Ok(false) => {}
+                Err(error) => {
+                    eprintln!("tress attach: {error}");
+                    return std::process::ExitCode::FAILURE;
+                }
+            }
+        } else if api_key_env.is_some() {
+            eprintln!("tress attach: --api-key-env connects to an application origin, without a demo session or folder sharing.");
+            return std::process::ExitCode::FAILURE;
+        }
         let share_root = shared_root(
             &root,
             folder_root,
@@ -212,7 +268,10 @@ async fn main() -> std::process::ExitCode {
             }
             return Ok(false);
         }
-        config::local_mode(&paths, selected.mode == Some(config::Mode::Local))
+        config::local_mode(
+            &paths,
+            ephemeral || selected.mode == Some(config::Mode::Local),
+        )
     })();
     match selection {
         Ok(false) => {
@@ -247,6 +306,15 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if !ephemeral {
+        return match runtime::local(&root, &settings, one_shot.as_deref(), &style).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     if std::env::var_os("HARNESS_API_KEY").is_some() {
         eprintln!("tress: native local mode does not use HARNESS_API_KEY; this conversation is not synced to Harness. Use a configured host for a durable shared thread.");
     }

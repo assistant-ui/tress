@@ -20,6 +20,7 @@ use statewire::{ProtocolOffer, VersionRange, WIRE_VERSION};
 
 use crate::commands::{self, Command};
 
+pub mod catalog;
 mod connection;
 mod recent;
 mod ui;
@@ -201,6 +202,7 @@ pub async fn run(
         None,
         headers_file,
         workspace,
+        None,
     )
     .await
 }
@@ -223,10 +225,32 @@ pub async fn ask(
         Some(prompt),
         headers_file,
         None,
+        None,
     )
     .await
 }
 
+async fn run_catalog(
+    input: &str,
+    style: &crate::Style,
+    ui: bool,
+    connector: Connector,
+    catalog: catalog::Catalog,
+) -> Result<(), String> {
+    run_inner(
+        input,
+        style,
+        ui,
+        None,
+        None,
+        None,
+        None,
+        Some((connector, catalog)),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn run_inner(
     input: &str,
     style: &crate::Style,
@@ -235,6 +259,7 @@ async fn run_inner(
     initial_prompt: Option<&str>,
     headers_file: Option<&str>,
     workspace: Option<crate::connect::Connection>,
+    application: Option<(Connector, catalog::Catalog)>,
 ) -> Result<(), String> {
     let sharing = workspace.is_some();
     let workspace_description = workspace
@@ -263,11 +288,14 @@ async fn run_inner(
             )
         },
     );
-    let mut attach_command = session.map_or_else(
-        || format!("tress attach {input}"),
-        |id| format!("tress attach {input} -s {id}"),
+    let (connector, mut catalog) = match application {
+        Some((connector, catalog)) => (connector, Some(catalog)),
+        None => (Connector::new(&url, headers_file)?, None),
+    };
+    let mut attach_command = catalog.as_ref().map_or_else(
+        || connector.attach_command(&url),
+        |catalog| catalog.attach_command(&connector),
     );
-    let connector = Connector::new(&url, headers_file)?;
     let (initial, mut events) = connector
         .connect(&url, connection_config())
         .await
@@ -287,7 +315,11 @@ async fn run_inner(
     }
     let mut keyboard = interactive.then(crossterm::event::EventStream::new);
     let mut recent = recent::RecentThreads::load();
-    recent.remember(&url, None);
+    if let Some(catalog) = &catalog {
+        recent.items = catalog.items();
+    } else {
+        recent.remember(&url, None);
+    }
     let mut remembered = false;
     if let Some(screen) = &mut screen {
         screen.set_threads(&recent.items, &url);
@@ -420,8 +452,13 @@ async fn run_inner(
                     Some(ui::Action::Exit) => break,
                     Some(ui::Action::Submit(line)) => Some(line),
                     Some(ui::Action::Threads) => {
-                        recent = recent::RecentThreads::load();
-                        recent.remember(&url, None);
+                        if let Some(catalog) = &mut catalog {
+                            if let Err(error) = catalog.refresh(&connector).await { notice(&mut screen, &error); }
+                            recent.items = catalog.items();
+                        } else {
+                            recent = recent::RecentThreads::load();
+                            recent.remember(&url, None);
+                        }
                         let screen = screen.as_mut().unwrap();
                         screen.set_threads(&recent.items, &url);
                         screen.threads();
@@ -440,12 +477,15 @@ async fn run_inner(
                                     events = next_events;
                                     url = next_url;
                                     display_url = recent::location(&url);
-                                    attach_command = recent::attach_command(&url);
+                                    attach_command = catalog.as_ref().map_or_else(
+                                        || connector.attach_command(&url),
+                                        |catalog| catalog.attach_command(&connector),
+                                    );
                                     snapshot = None;
                                     pending = None;
                                     cloud_error = None;
                                     remembered = false;
-                                    recent.remember(&url, None);
+                                    if catalog.is_none() { recent.remember(&url, None); }
                                     screen.as_mut().unwrap().set_threads(&recent.items, &url);
                                 }
                                 Err(error) => notice(&mut screen, &format!("Couldn’t switch threads: {error}")),
@@ -469,7 +509,7 @@ async fn run_inner(
                         let value = client.as_ref().unwrap().main_value(PROTOCOL).await;
                         if let Some(value) = value {
                             snapshot = serde_json::from_value(value.clone()).ok();
-                            if interactive {
+                            if interactive && catalog.is_none() {
                                 let title = snapshot.as_ref().and_then(|state| state.entries.iter().find(|entry| entry.role == "user")).map(|entry| entry.text.as_str());
                                 let changed = recent.remember(&url, title);
                                 if changed || !remembered {
@@ -531,6 +571,46 @@ async fn run_inner(
         if prompt.is_empty() {
             continue;
         }
+        if let Some(id) = prompt.strip_prefix("/thread ") {
+            if let Some(catalog) = &mut catalog {
+                let result = async {
+                    catalog.refresh(&connector).await?;
+                    let next_url = catalog.select(id.trim())?;
+                    let (next, next_events) =
+                        connector.connect(&next_url, connection_config()).await?;
+                    Ok::<_, String>((next_url, next, next_events))
+                }
+                .await;
+                recent.items = catalog.items();
+                match result {
+                    Ok((next_url, next, next_events)) => {
+                        if let Some(screen) = &mut screen {
+                            screen.switch(&url, &next_url);
+                        }
+                        client = Some(next);
+                        events = next_events;
+                        url = next_url;
+                        display_url = recent::location(&url);
+                        attach_command = catalog.attach_command(&connector);
+                        snapshot = None;
+                        pending = None;
+                        cloud_error = None;
+                        printed = Printed::default();
+                    }
+                    Err(error) => notice(&mut screen, &format!("Couldn't switch threads: {error}")),
+                }
+                if let Some(screen) = &mut screen {
+                    screen.set_threads(&recent.items, &url);
+                    screen.accept();
+                }
+            } else {
+                notice(
+                    &mut screen,
+                    "Use tress threads <app-origin> to browse application threads.",
+                );
+            }
+            continue;
+        }
         let command = commands::parse(prompt);
         let mut accepted = true;
         match command {
@@ -553,12 +633,24 @@ async fn run_inner(
                 }
             }
             Some(Command::Threads) => {
-                recent = recent::RecentThreads::load();
-                recent.remember(&url, None);
+                if let Some(catalog) = &mut catalog {
+                    if let Err(error) = catalog.refresh(&connector).await {
+                        notice(&mut screen, &error);
+                    }
+                    recent.items = catalog.items();
+                } else {
+                    recent = recent::RecentThreads::load();
+                    recent.remember(&url, None);
+                }
                 if let Some(screen) = &mut screen {
                     screen.set_threads(&recent.items, &url);
                 }
                 if screen.is_none() {
+                    if let Some(catalog) = &catalog {
+                        catalog.print();
+                        println!("Use /thread <id> to switch conversations.");
+                        continue;
+                    }
                     for thread in &recent.items {
                         println!(
                             "  {}\n    {}",

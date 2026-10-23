@@ -1,10 +1,12 @@
 ---
-title: Local development
-description: Start in a browser or a terminal and reach the same local host.
+title: App development
+description: Develop terminal access for an existing assistant-ui application.
 ---
 
-# Local development
+# App development
 
+This guide is for developers integrating an existing application. To work on
+your own project with Tress's agent, start with [Run on your machine](/docs/workspace).
 
 ## Run the complete reference app
 
@@ -63,8 +65,16 @@ chmod 600 app-headers.json
 ## Terminal first
 
 Obtain the endpoint and any required credential through your app's access flow, then
-run the same command. The preview joins an existing thread; thread creation,
-listing, and a generic browser login flow are separate work.
+run the same command. The preview discovers existing threads when the app publishes its manifest:
+
+```sh
+tress attach http://localhost:3000 --api-key-env MY_APP_API_KEY
+```
+
+The variable holds an app-issued bearer credential. Omit the flag only when
+the app allows anonymous access; use `--headers-file` for its custom headers.
+The reference app above uses a downloaded grant file. Thread creation and a
+generic browser login flow remain separate work.
 
 Have the app provide the browser URL for that thread alongside its endpoint:
 

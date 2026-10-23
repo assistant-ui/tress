@@ -126,6 +126,7 @@ impl Drop for Scratch {
 fn isolated_command(dir: &Path) -> Command {
     let mut command = Command::new(binary());
     command
+        .arg("--ephemeral")
         .current_dir(dir)
         .env("XDG_CONFIG_HOME", dir.join("config"))
         .env_remove("TRESS_HOST")

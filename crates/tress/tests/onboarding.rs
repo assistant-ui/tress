@@ -148,7 +148,7 @@ fn config_precedence_and_sources_are_visible_without_a_key() {
 }
 
 #[test]
-fn exported_model_key_starts_native_local_without_setup() {
+fn exported_model_key_selects_local_and_ephemeral_remains_explicit() {
     let home = Home::new();
     let output = home
         .command()
@@ -161,6 +161,7 @@ fn exported_model_key_starts_native_local_without_setup() {
     let output = home
         .command()
         .env("ANTHROPIC_API_KEY", "fake-key")
+        .arg("--ephemeral")
         .stdin(Stdio::null())
         .output()
         .unwrap();
@@ -174,6 +175,7 @@ fn exported_model_key_starts_native_local_without_setup() {
         .command()
         .env("ANTHROPIC_API_KEY", "fake-key")
         .env("HARNESS_API_KEY", "must-not-print-this-key")
+        .arg("--ephemeral")
         .stdin(Stdio::null())
         .output()
         .unwrap();

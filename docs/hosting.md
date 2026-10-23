@@ -4,40 +4,41 @@ In tress, the **host** is the process that owns the agent. A **client** is a
 view or controller connected to that process. The device where someone types
 is not necessarily the host.
 
-## Supported modes
+## Choose the host
 
-| Command or app | Host | Clients | Shareable? |
-| --- | --- | --- | --- |
-| `tress` after `tress setup` | The saved site host | Terminal and other attached clients | Yes |
-| `tress ask <prompt>` in hosted mode | The saved site host | Sends one prompt, then exits; other clients stay attached | Yes |
-| `tress --local` | The native terminal process | That terminal only | No |
-| `tress --local ask <prompt>` | The native process for one run | None | No |
-| tress site | The Node/Farm server | Browser tabs, `tress attach`, and API connections | Yes |
-| Embedded engine | The integrating application | Defined by that application | Application-specific |
+The machine host and app discovery below are **source previews**, not in the
+published v0.3.0 binary. Build the appropriate runtime before using them.
 
-By default, `tress` connects to the saved host and session. Run `tress setup`
-once to choose them; the terminal does not need a personal model or Harness
-key. See the [setup guide](setup.md) for installation and release availability.
+| Workflow | Host | What clients control |
+| --- | --- | --- |
+| `tress` after `tress setup --local` | Background Node/Harness process on this machine | One saved project thread and its files, from browser or terminal |
+| `tress serve` | The same machine host with explicit startup permissions | Browser and terminal clients can attach |
+| `tress attach <app-origin>` | Existing application's authorized Harness backend | All permitted threads through app discovery; the app retains its agent/tools |
+| `tress` after hosted `tress setup` | The saved site host | Its shared conversation and workspace |
+| `tress connect --site <url>` | The site still hosts the agent | A native connector supplies files; it does not become the agent host |
+| `tress --ephemeral` | Unsaved native process | That terminal only; no browser endpoint |
+| Embedded engine | Integrating application | Application-defined tools, persistence, and interfaces |
 
-Explicit `tress --local` makes the terminal process responsible for the model
-credential, agent loop, and current directory. It does not start a network
-endpoint. A browser or another terminal cannot attach to it. You can save
-local mode as your default with `tress setup --local`.
+Start with the [machine workspace guide](local-harness.md) for your own project,
+[terminal integration](terminal-integration.md) for an existing app, or
+[released CLI setup](setup.md) for a hosted connection. The published v0.3.0
+local mode retains the unsaved native behavior.
 
-Running `tress attach <url>` always makes that terminal a client. The current
-CLI does not have a `tress serve` command for turning a terminal session into a
-shareable host.
+In the machine preview, `tress setup --local` selects the mode and saves the
+model credential; running `tress` starts or rejoins the host. The host survives
+terminal exit and restores completed conversations after restart. Files stay
+on disk. Managed Harness can own conversation storage, while execution and
+files remain on the machine. See [embedding](../site/docs/embedding.mdx) for
+the distinction between the Rust/WASM engine and its interface clients.
 
-`tress connect --site <url>` is different from `attach`: it offers the current
-directory as a workspace to a browser-owned thread. Optionally add
-`--root <path>` to choose another folder. The site still owns the agent and
-managed Harness credential. See
-[connected folders](connected-folder.md).
+Running `tress attach <url>` makes that terminal a client. It does not move the
+agent to the terminal's machine. A demo session can separately offer native
+files through [connected-folder access](connected-folder.md); this is distinct
+from starting a machine host.
 
-The included site is the supported shareable host. Its server runs the Rust
-agent through WebAssembly, stores the model credential, selects the workspace,
-and owns the shared thread. Opening the site does not make the browser the
-host; the browser connects to the already-running server.
+The sections below describe the **site/demo host**, which serves browser tabs
+and terminal attachments. The standalone host instead uses a private loopback
+listener; remote use needs an authenticated tunnel.
 
 ## Start a site host
 

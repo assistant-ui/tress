@@ -1,0 +1,54 @@
+---
+title: Embedding and runtimes
+description: The engine is portable; the host supplies storage and tools, and clients control its thread.
+---
+
+# Embedding and runtimes
+
+Embedding Tress means using its engine or connection layer in your own
+application. A browser can load the Rust/WASM engine with browser-compatible
+tools, or act as a client of a machine host. Loading WASM alone does not give
+a browser native filesystem access or durable background execution.
+
+## Choose the boundary
+
+| Component | Use it for | Current runtime |
+| --- | --- | --- |
+| Rust engine and `tress-wasm` | Run the agent with tools supplied by your application | Native Rust, or WASM with JavaScript bindings |
+| `@tress/workspaces` | Supply filesystem/tool adapters and checkpointable engine context | JavaScript host; Node for native disk adapters |
+| `@tress/harness-host` | Give the engine a shared Harness thread and persistence | Node 22+; standalone host wraps it with disk storage and HTTP access |
+| `@tress/client` | Connect an interface to a Harness thread; optionally reuse Tress UI | JavaScript; the standalone browser uses this internal package |
+| Native Tress CLI | Control a machine host or an application's Harness threads | Native Rust executable |
+
+These JavaScript packages are repository-local source previews, not published
+public npm packages. Existing assistant-ui applications do not need to add the
+Tress UI package to [enable terminal access](/docs/existing-app).
+
+## What runs in WASM?
+
+The standalone host loads the **Rust agent engine** as WASM in Node's V8
+runtime. Its browser uses the JavaScript Harness client; its terminal uses a
+native Rust protocol client. They share the host's thread, rather than running
+independent copies of the agent.
+
+The complete terminal UI is not compiled to browser WASM. The native executable
+embeds the host's assets but still launches an installed Node runtime. A
+self-contained V8 executable and a stable public embedding API remain future
+work.
+
+## Keep storage on the host
+
+Supply a workspace adapter for files and tools, and Harness storage for the
+conversation. Saving an engine checkpoint alone does not start a shared host.
+Clients send commands to the host and observe its state; closing a client
+should not own the lifetime of the agent.
+
+For machine-backed artifacts, the host writes ordinary project files and
+serves authorized reads to interfaces. Managed conversation storage does not
+automatically sync those files. File versioning, artifact metadata, and remote
+backup policy remain application responsibilities.
+
+The [workspace adapter examples](https://github.com/assistant-ui/tress/blob/main/packages/workspaces/README.md)
+show engine embedding. The [machine host source](https://github.com/assistant-ui/tress/tree/main/packages/harness-host)
+shows the Harness and storage composition. Start with
+[Run on your machine](/docs/workspace) to use the assembled product.

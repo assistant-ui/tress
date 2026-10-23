@@ -44,7 +44,7 @@ function App() {
     try { await callback(); } catch (error) { setError(error.message); }
     finally { setPending(false); }
   }
-  const command = session?.endpoint ? `tress attach ${session.endpoint} --headers-file app-headers.json` : "";
+  const command = session?.application ? `tress attach ${session.application} --headers-file app-headers.json` : "";
   return <main>
     <header><a href="/">tress / existing app</a><span>source preview</span></header>
     <h1>One conversation. Two clients.</h1>

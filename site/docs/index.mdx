@@ -1,49 +1,58 @@
 ---
-title: Keep the thread.
-description: Your application in the browser. The same conversation in your terminal.
+title: One workspace, any interface.
+description: Keep the agent and files on a machine. Use the same workspace from a browser or terminal.
 ---
 
-# Keep the thread.
+# One workspace, any interface.
 
-
-Tress is a terminal client and a small Rust coding agent. Connect it to a shared
-thread and continue a conversation from either surface. The host owns the run;
-closing a client leaves that run on the host.
+Tress is a coding agent with a workspace that lives on your laptop, VM, or
+server. Use the terminal or open its browser interface to work with the same
+conversation and files. You do not need an existing assistant-ui application
+to start a Tress workspace.
 
 ```text
-assistant-ui browser ──┐
-                      ├── your thread host ── your agent + tools
-tress terminal ───────┘
+Browser interface ──┐
+                    ├── Machine host: agent + tools + workspace files
+Terminal client ────┘          └── Harness conversation persistence
 ```
 
-**Trying the website?** Start with [the browser demo](/docs/try). You need a
-terminal client; the demo provides its own agent and host.
+The host performs the work. Clients send requests and display the results.
+For example, ask the terminal to create a file, preview that file in the
+browser, and continue the conversation there. The file stays on the host's
+disk; the browser does not need native filesystem or process access.
 
-**Connecting your application?** Follow [existing apps](/docs/existing-app).
-Keep your assistant-ui components, agent, tools, authentication, and deployment.
-Add terminal access to the thread your app already owns.
+## Choose where to start
 
-The existing-app integration is a **development preview**. It includes a source
-package and a native client built from this checkout. It is not in the published
-Tress v0.3.0 binary. [Versions and current limits](/docs/reference) are explicit.
-
-## Two ways in
-
-| Start here | What happens |
+| You want to… | Start here |
 | --- | --- |
-| Browser | Open a conversation and copy its connection command, using the host's session-sharing or credential flow. |
-| Terminal | Obtain the thread endpoint and its required access credential, attach, then open that conversation's browser URL. |
+| Work on your own project | [Run on your machine](/docs/workspace). Start the host in a folder, then use its terminal or browser interface. |
+| Try Tress before running a host | [Try the hosted demo](/docs/try). The website supplies the agent and conversation host. |
+| Continue conversations from an existing assistant-ui app | [Connect an existing app](/docs/existing-app). Keep its UI, agent, and identity; Tress becomes another client. |
+| Embed the engine or connect your own interface | [Embedding and runtimes](/docs/embedding). Choose the engine, host, or client boundary you need. |
 
-Both paths reach one server-owned thread. Connecting a terminal does not upload
-its working directory or grant the agent access to its local shell.
+**Release status:** the durable machine host and existing-app discovery are
+source previews. Build this checkout to use them. The installer currently
+provides v0.3.0, whose local conversation is not saved after exit. See
+[versions and limits](/docs/reference) before choosing an installation path.
 
-Reuse the host's session/access checks. `createTressAccess` and external auth
-services are optional; see [access options](/docs/authentication).
+## What survives closing a client?
 
-## Local to production
+Closing the browser or terminal disconnects that interface. The machine host
+keeps running. Reconnect to continue the same conversation; restart the host
+to restore saved completed turns. The standalone preview has one saved thread
+per project. Recovery of a tool interrupted by a host crash is still unfinished.
 
-Develop against a [local host](/docs/local). In [production](/docs/production),
-use the app's HTTPS address and durable thread owner. The application decides
-who can connect, which thread they can access, and when access ends.
+Local mode saves Harness conversation snapshots on the machine. Optional
+managed Harness stores the conversation remotely while execution and files
+stay on the machine. Conversation persistence does not back up project files.
+Use persistent disks and backups for those files.
+
+## Connect an existing application
+
+An existing assistant-ui app is another way to use Tress. Its backend already
+supplies the agent and tools. Expose its authorized Harness threads and let
+users attach from a terminal. They see the conversations their credential may
+access without installing Tress browser components or moving execution to
+their terminal machine. The app chooses API-key, anonymous, or custom access.
 
 Built with [Farming Labs Docs](https://docs.farming-labs.dev).
