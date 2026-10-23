@@ -86,8 +86,8 @@ limits.
 
 ## Visitor: use one thread from anywhere
 
-1. Open the deployed Tress site without a shared session link. The first visit
-   creates a new private thread and shows its 12-character **session ID** in
+1. Open the deployed Tress site. Each visit without a session link, and every
+   page refresh, creates a new private thread and shows its 12-character **session ID** in
    the demo header. The browser
    keeps an HTTP-only owner cookie so it can select threads and manage connected
    devices. A new visitor gets a different thread and workspace.
@@ -124,6 +124,14 @@ limits.
 
    The installer currently supplies v0.3.0, which joins chat but does not
    support this combined connection. Use the source build for file sharing.
+
+Refreshing changes the demo's session ID and copied terminal command, including
+when the current URL contains `?session=...`. Earlier threads remain in the
+sidebar. Terminals and connected folders stay with their original session;
+copy the new command to join the refreshed one. Opening a session link joins
+that thread; reconnecting within the page keeps it. Each refresh uses one
+session-creation allowance. The optional `TRESS_DEMO_SHARED=1` mode keeps one
+shared thread instead.
 
 The session ID is an **access capability**, not a login or a database
 password. Anyone with the complete ID or browser link can join and steer that

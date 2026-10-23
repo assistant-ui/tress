@@ -113,9 +113,10 @@ the default memory demo instead.
 4. During a run, click **disconnect** in the browser and press **Ctrl-D** in the
    terminal. Disconnect really disposes the browser's transport; its visible
    transcript is now a frozen snapshot.
-5. Click **reconnect**, refresh, or attach another terminal. The latest
+5. Click **reconnect** or attach another terminal. The latest
    transcript and files are restored from the host. **new tab** is
-   another way to watch the same thread.
+   another way to watch the same thread. Refreshing the page starts a new
+   session; select the previous thread in the sidebar to resume it.
 6. Use **reset** when idle to clear the shared conversation, restore the
    example files, and reset the run count. Reset is blocked while a run is active. In local, overlay, and remote modes,
 reset clears the conversation and keeps workspace files.
@@ -254,9 +255,22 @@ supports file/text commands, not native node, npm, or git.
 
 ## Visitor sessions and PostgreSQL
 
-On the first visit, `/api/mode` creates a random 12-character session ID and saves it in an
-HTTP-only browser cookie. Refreshing the page resumes it. A new visitor gets a
-fresh conversation and workspace. **new tab** opens the current session.
+Opening the demo without a session link or refreshing the page starts a new
+conversation and workspace with a fresh 12-character session ID. This includes
+refreshing a page whose URL already contains `?session=...`. The displayed ID,
+URL, and terminal command all change together. The owner cookie keeps previous
+threads accessible in the sidebar; refreshing does not delete them or move
+terminals and connected folders away from their existing session.
+
+Opening a session link (including **new tab**) joins that existing session.
+Selecting a sidebar thread, reconnecting, and focusing the tab also retain the
+selected session. Copy the new attach command to join a session created by a
+refresh. Each fresh session counts toward the host's session-creation limits.
+`TRESS_DEMO_SHARED=1` retains the explicitly configured single shared thread.
+
+The browser sends one random `newSession` capability to `/api/mode` per document;
+retries reuse it. Ordinary `/api/mode` requests still resume their HTTP-only
+session cookie, and explicit `?session=...` API requests resume that session.
 
 ```sh
 tress attach http://localhost:5311 -s <id>

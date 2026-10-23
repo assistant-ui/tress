@@ -25,6 +25,19 @@ address selects its default thread; `-s` selects a Tress demo session.
 Send a prompt from the terminal. Its response appears in both clients.
 Add `--ui` to use the full terminal interface.
 
+## A fresh session on refresh
+
+Every page refresh starts a new demo session, even when the URL contains the
+previous session ID. The header, browser URL, and copied terminal command all
+use the new ID. Earlier threads remain available in the sidebar.
+
+Opening a session link or selecting a sidebar thread resumes that conversation.
+Reconnecting within the page keeps the current session. Terminals and connected
+folders stay attached to their original session; copy the new command if you
+want them to join the refreshed session. Refreshes count toward the demo's
+session-creation limits. Hosts using `TRESS_DEMO_SHARED=1` keep a single shared
+thread instead.
+
 ## Connect your computer or VM
 
 The installer currently provides **v0.3.0**. Its `attach` command joins the
