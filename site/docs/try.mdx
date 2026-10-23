@@ -25,21 +25,24 @@ address selects its default thread; `-s` selects a Tress demo session.
 Send a prompt from the terminal. Its response appears in both clients.
 Add `--ui` to use the full terminal interface.
 
-## Share files with the released CLI
+## Connect your computer or VM
 
 The installer currently provides **v0.3.0**. Its `attach` command joins the
-conversation; it does not share your machine's files. In a separate terminal,
-run this from the folder you want to share:
+conversation; it does not share your machine's files. To connect files and chat
+in one terminal, [build the source preview](#build-the-source-preview), open
+**connect folder**, and run the command shown there on your computer or VM:
 
 ```sh
-tress connect --site https://your-demo.example --root .
+tress attach https://your-demo.example -s YOUR_SESSION_ID --ui
 ```
 
-Under **connect folder** in the same browser chat, choose **Have a pairing code?**
-if needed and enter the code.
-Keep that terminal open while using the files. Access is read-only by default;
-add `--allow-write` for edits. Use `--root /path/to/project` for another folder.
-Closing the connector stops file access while the conversation remains available.
+The default demo connects automatically. It has no pairing form or code-entry
+step. The browser shows the connected machine, its permissions, and its files.
+The same terminal opens the chat. Keep it running while using the files.
+Access is read-only by default; add `--allow-write` for edits. Add
+`--root /path/to/project` to restrict sharing to a folder, or `--chat-only` to
+join without sharing files. Closing the connector stops file access while the
+conversation remains available. Run the same command to reconnect.
 
 ## Build the source preview
 
@@ -60,16 +63,13 @@ version string alone does not identify the source preview.
 
 With that source build, run the copied `attach` command again. By default,
 it offers the terminal machine's whole filesystem, read-only.
-The session command connects directly unless the host opts into
-`TRESS_REQUIRE_PAIRING=1`. If a code is printed, enter it under **connect folder**
-in this browser chat. Older hosts still require that code.
+The session command connects directly in the default demo.
 Use `--root /path/to/project` to restrict the
 scope, or `--chat-only` to join without offering files. Whole-filesystem access
 includes personal files your terminal can read, subject to OS permissions;
 symlinks and special files remain unavailable.
 
-Close the terminal to stop sharing. Run the command again to resume access;
-pairing is repeated only when required.
+Close the terminal to stop sharing. Run the command again to resume access.
 
 ```text
 /status      show connection and host details
@@ -89,12 +89,23 @@ To restrict sharing to a real project folder from your computer or VM, use:
 tress attach https://your-demo.example -s YOUR_SESSION_ID --root . --allow-write --ui
 ```
 
-Run it in the project folder. Complete pairing only if the terminal asks for
-it. Once the terminal UI opens, both clients
+Run it in the project folder. Once the terminal UI opens, both clients
 can then ask the agent to read and edit that folder. Omit `--allow-write` for
 read-only access. `/exit` or `/disconnect` stops sharing. No shell execution is
 exposed, and switching chats requires exiting first. The site must be reachable
 from the machine running the command; `localhost` always means that machine.
+
+## Hosts that require browser approval
+
+An operator can set `TRESS_REQUIRE_PAIRING=1` to require a short-lived code.
+Only hosts opting into that policy show the pairing form under **connect
+folder**. Enter the code printed by the terminal there before it connects.
+Older hosts may also require this step.
+
+On those hosts, the released v0.3.0 CLI can share a folder from a separate
+terminal with `tress connect --site <host-url> --root .`. That legacy code-based
+flow is not shown in the default demo; use the source-preview `attach` command
+for its direct connection.
 
 The public demo has its own access model. To connect an application you own,
 follow [existing apps](/docs/existing-app); adding a URL alone does not make

@@ -30,13 +30,11 @@ export function LocalConnection({
   const [visible, setVisible] = useState(false);
   const [manageable, setManageable] = useState(false);
   const [pairingRequired, setPairingRequired] = useState(true);
-  const [manualPairing, setManualPairing] = useState(false);
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
   const command = `tress attach ${origin || "https://your-tress-site"} -s ${attachId} --ui`;
-  const releasedCommand = `tress connect --site ${origin || "https://your-tress-site"} --root .`;
 
   useEffect(() => {
     let alive = true;
@@ -147,33 +145,15 @@ export function LocalConnection({
       {!device && expanded ? (
         <div className="local-connect-steps">
           <p><strong>Source preview.</strong> This combined file-sharing command requires a <a href="/docs/try#build-the-source-preview">CLI built from source</a>; the installer currently provides v0.3.0.</p>
-          <p>Run this on your computer, VM, or remote host. It connects the whole filesystem accessible to that terminal and opens this chat. {pairingRequired ? "This host requires the pairing code below before connecting. " : "The session command connects directly; no pairing code is needed with the source-preview CLI. "}Add <code>--root /path/to/project</code> to restrict access to a folder, or <code>--allow-write</code> to allow edits. Shell execution is not included.</p>
+          <p>Run this on your computer, VM, or remote host. It connects the whole filesystem accessible to that terminal and opens this chat. Add <code>--root /path/to/project</code> to restrict access to a folder, or <code>--allow-write</code> to allow edits. Shell execution is not included.</p>
           <div className="attach-command">
             <span aria-hidden="true">$</span>
             <code>{command}</code>
             <CopyButton text={command} label="Copy workspace connection command" compact disabled={!origin} />
           </div>
-          <details>
-            <summary>Using the released v0.3.0 CLI?</summary>
-            <p>Run this in the folder you want to share, in a separate terminal. Choose “Have a pairing code?” if the form is hidden, then enter its code below. Add <code>--allow-write</code> to permit edits.</p>
-            <div className="attach-command">
-              <span aria-hidden="true">$</span>
-              <code>{releasedCommand}</code>
-              <CopyButton text={releasedCommand} label="Copy v0.3.0 folder connection command" compact disabled={!origin} />
-            </div>
-          </details>
-          {!pairingRequired ? (
-            <button
-              type="button"
-              aria-expanded={manualPairing}
-              aria-controls="local-pair-form"
-              onClick={() => setManualPairing((shown) => !shown)}
-            >
-              {manualPairing ? "Hide pairing form" : "Have a pairing code?"}
-            </button>
-          ) : null}
-          {pairingRequired || manualPairing ? (
+          {pairingRequired ? (
             <form id="local-pair-form" onSubmit={(event) => void claim(event)}>
+              <p>This host requires browser approval. Enter the code printed by the terminal to connect.</p>
               <label htmlFor="local-pair-code">Pairing code printed by Tress</label>
               <input
                 id="local-pair-code"

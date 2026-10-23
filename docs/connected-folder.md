@@ -35,9 +35,10 @@ and host. Older clients and hosts retain their pairing-code flow.
    The CLI prints the exact scope when connecting, and the browser labels it
    **Whole filesystem**. No file content is sent until a file is requested.
 3. The session command connects the folder directly to that chat and opens the
-   terminal UI. If the host requires pairing, or either side uses an older
-   version, enter the printed code in that chat's **connect folder** form first.
-   Codes expire after five minutes. The same process serves file requests.
+   terminal UI. The default demo has one connection command and no pairing
+   form, code to copy back, or browser approval step. The same process serves
+   file requests. If your own host explicitly requires pairing, its connection
+   panel instead shows a code form; those codes expire after five minutes.
    Omit `--ui` for plain terminal output. The browser shows the folder label,
    permissions, and actual online/offline state. The file browser opens with
    the real directory listing. Open subfolders and files, or use **Refresh**
@@ -114,8 +115,11 @@ filesystem sharing applies to the explicit `attach` command.
 The older `tress connect --site <url> [--root <folder>] [--allow-write]` command
 remains available for a folder-only process without terminal chat. It uses the
 current directory by default. Because it has no session, it always uses a code
-to select and authorize the destination browser thread. On a host that connects
-sessions directly, choose **Have a pairing code?** to reveal that form.
+to select and authorize the destination browser thread. Its browser form is
+available on hosts configured with `TRESS_REQUIRE_PAIRING=1`. The default demo
+does not show this legacy flow. Use the updated session-scoped `attach` command
+for its one-command connection. Published v0.3.0 still joins chat, but needs an
+upgrade to the source-preview CLI for combined chat and file sharing.
 
 For local development without PostgreSQL, the connector store is in memory.
 It resets when the dev server restarts, so reconnect after a

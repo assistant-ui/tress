@@ -84,8 +84,8 @@ tress attach https://your-tress-host.example -s <session-id>
 
 In the source preview, with a Tress site session, attach shares the machine filesystem by default
 (`/` on macOS/Linux, the current drive root on Windows). The updated CLI connects
-directly when the host allows it; if it prints a pairing code, enter that code
-in the browser chat. To restrict it to a project folder:
+directly in the default demo: run one command and the browser shows the
+connection automatically, with no code entry. To restrict it to a project folder:
 
 ```sh
 tress attach https://your-tress-host.example -s <session-id> --root . --ui
@@ -94,14 +94,17 @@ tress attach https://your-tress-host.example -s <session-id> --root . --ui
 Add `--chat-only` to join without sharing files, or `--allow-write` for edits. Exit to stop sharing. See the
 [connected folder guide](connected-folder.md) for access rules and remote VMs.
 This requires the updated Tress site's connection API; the older `connect`
-command remains supported for a folder-only process. With published v0.3.0,
-run this in a separate terminal and enter its pairing code in the browser:
+command remains supported for a folder-only process on hosts that explicitly
+enable the pairing form with `TRESS_REQUIRE_PAIRING=1`. With published v0.3.0
+on such a host, run this separately and enter its code in the browser:
 
 ```sh
 tress connect --site https://your-tress-host.example --root .
 ```
 
 This shares the current folder read-only. Add `--allow-write` to permit edits.
+For the default demo, build the source-preview CLI and use the direct session
+command above; the v0.3.0 installer alone does not enable combined file sharing.
 
 With `--chat-only`, plain `tress`, or `tress ask`, files belong to the host's workspace, which may be a local directory on that
 host, virtual files, or a sandbox. Connecting from a project directory does not
