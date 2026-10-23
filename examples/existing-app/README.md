@@ -43,18 +43,19 @@ and download directory):
 
 ```sh
 chmod 600 ~/Downloads/app-headers.json
-/path/to/tress/target/debug/tress attach http://localhost:3000/api/threads/main \
+/path/to/tress/target/debug/tress attach http://localhost:3000 \
   --headers-file ~/Downloads/app-headers.json
 ```
 
-Both clients show the same replies. `/exit` detaches the terminal while a run
+Connecting lists the app's accessible conversations automatically. Choose `1`
+to open `main`; this sample owns one thread. Both clients show the same replies. `/exit` detaches the terminal while a run
 continues. The app's **Revoke** button ends that terminal grant immediately;
 the browser remains connected. Grants last one hour. Reattach with a new file
 after expiry or revocation.
 
 For frontend development, use `npm run dev` instead of `npm start` with the
 same environment. For a terminal-first session, obtain a grant through the
-app's supported flow, attach to the known endpoint, and open the browser later.
+app's supported flow, attach to the app origin, and open the browser later.
 This preview does not create threads or launch a generic browser login from
 the CLI. It provides one existing thread, `main`.
 
@@ -80,8 +81,8 @@ give the agent access to the terminal machine's files or shell.
 
 ## Adapt to your application
 
-- `server.mjs` composes the Harness host, persistent snapshots, and access
-  adapter. Reuse an existing server-owned host when you have one.
+- `server.mjs` composes the Harness host, persistent snapshots, discovery
+  document, authorized thread list, and access adapter. Reuse an existing server-owned host when you have one.
 - `src/main.jsx` uses assistant-ui components with `HarnessThread` and
   `StatewireHttp`, then adds credential download and revocation controls.
 - `../../packages/access` authorizes streams and commands with your callback.
@@ -108,8 +109,7 @@ your HTTPS domain to it with stream buffering disabled. Configure:
 | `APP_PASSWORD` | Required only by the demonstration login; replace that login for real users. |
 
 Use HTTPS externally and mount persistent storage. `PUBLIC_ORIGIN` does not
-register DNS or expose a server automatically. The terminal connects to the
-explicit endpoint copied from the app. See the [production guide](../../site/docs/production.mdx).
+register DNS or expose a server automatically. The terminal discovers the authorized threads from the app origin. See the [production guide](../../site/docs/production.mdx).
 
 ## Verify
 
@@ -128,6 +128,11 @@ checks with your own agent and real HTTPS deployment before rollout.
 A separate test attaches directly to an application-authorized Harness host
 without `@tress/access` or a Tress browser package. It verifies existing history,
 messages in both directions, and rejected terminal credentials.
+
+The catalog test connects to an app origin with an API key, custom headers,
+and anonymous access. It verifies all 26 threads (including archived threads),
+refresh and switching in plain and full terminal UI, browser-created history,
+and isolation from another user. No local recents are needed.
 
 The preview dependencies are pinned in the lockfile and vendored archives;
 no sibling Harness checkout is required. See [provenance](../../site/vendor/README.md).

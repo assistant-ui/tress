@@ -104,6 +104,9 @@ test("existing Harness app: browser, native CLI, revocation, restart, streaming 
     const grant = await (await api("/api/connections", "POST")).json();
     const file = join(data, "headers.json");
     await writeFile(file, JSON.stringify(grant.headers), { mode: 0o600 });
+    const catalog = terminal(["threads", origin, "--headers-file", file, "--json"]);
+    assert.equal((await bounded(catalog.exited))[0], 0, catalog.output());
+    assert.deepEqual(JSON.parse(catalog.output()).threads.map((thread) => thread.id), ["main"]);
     const args = ["attach", endpoint, "--headers-file", file];
     const first = terminal(args);
     await until(() => first.output().includes("Echo: browser-first"), `terminal history\n${first.output()}`);
@@ -123,6 +126,9 @@ test("existing Harness app: browser, native CLI, revocation, restart, streaming 
     const live = terminal(args);
     await until(() => live.output().includes("Echo: terminal-one-shot"), "reattach history");
     await api(`/api/connections/${grant.id}`, "DELETE");
+    const deniedCatalog = terminal(["threads", origin, "--headers-file", file, "--json"]);
+    assert.equal((await bounded(deniedCatalog.exited))[0], 1);
+    assert.doesNotMatch(deniedCatalog.output(), /Existing app conversation/);
     await until(() => live.output().includes("Detached") || live.output().includes("Connection closed"), "live revocation");
     live.child.stdin.write("should-not-run\n");
     await until(() => live.output().includes("Not connected"), "revoked command denied");

@@ -4,7 +4,9 @@ Status: the native Harness adapter and existing-app example are now available
 as a source preview; they are not part of the v0.3.0 release. Start with the
 [current terminal integration guide](terminal-integration.md). No Tress browser
 UI package is needed. The implementation sequence below records the original
-plan; discovery, managed sign-in, and other follow-ups remain proposals.
+plan. Application discovery and authorized thread browsing are now implemented
+in this preview: ordinary attachment lists all permitted threads by default.
+Managed sign-in, scaffolding, and the remaining follow-ups are still proposals.
 
 Tress should let a user open an existing assistant-ui/Harness conversation in
 a terminal and continue it from either client. Applications keep their agent,

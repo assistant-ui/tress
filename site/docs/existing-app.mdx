@@ -14,7 +14,7 @@ The browser and terminal must connect to that **same thread host**. An ordinary
 AI SDK `/api/chat` route does not, by itself, own a shared conversation.
 
 If you already have an authorized server-owned Harness endpoint and an
-app-issued terminal credential, skip to [connect the terminal](#4-connect-the-terminal).
+app-issued terminal credential, add discovery and [connect the terminal](#4-make-the-app-discoverable-and-connect).
 No new Tress server or browser dependency is required. Otherwise, the
 [runnable example](/docs/local) demonstrates the host and credential boundary.
 
@@ -105,23 +105,63 @@ export function Assistant() {
 For dynamic conversations, scope the provider and endpoint to the selected
 thread. Browser requests use the application's existing same-origin session.
 
-## 4. Connect the terminal
+## 4. Make the app discoverable and connect
 
-Give the user the complete thread endpoint and the access method your app
-supports. For app-issued header credentials, use a private file so the copied
-command contains only its path:
+Publish `GET /.well-known/tress.json` as `application/json`:
+
+```json
+{
+  "version": 1,
+  "threads": "/api/thread-list",
+  "thread": "/api/threads/{id}"
+}
+```
+
+Point `threads` at the app's authorized Harness thread-list transport
+(`harness-sdk-threads`, version `2026-09-13`). Return all conversations this
+credential permits, including archived ones. Reuse your existing index and
+storage. Point `thread` at the corresponding server-owned Harness hosts.
+Both endpoints serve Statewire `/stream` and `/frames` on the same app origin.
+Filter the list by the authenticated user and check each thread independently.
+The [source integration guide](https://github.com/assistant-ui/tress/blob/feat/harness-runtime/docs/terminal-integration.md)
+specifies the manifest and ID constraints; the example server demonstrates it.
+
+The user connects once, then chooses from the app's accessible threads:
+
+```sh
+# MY_APP_API_KEY contains the user's app-issued API key / bearer token.
+tress attach https://chat.example.com --api-key-env MY_APP_API_KEY
+
+# If the application explicitly permits anonymous access:
+tress attach https://chat.example.com
+```
+
+No header file is required for either flow. For custom header authentication,
+use `--headers-file app-headers.json` with a private JSON object of headers;
+see the [access guide](/docs/authentication). The app chooses its auth policy.
+Managed Harness keys remain on the application's backend, which can proxy
+both the list and threads using the same authorization.
+
+Attachment automatically lists every accessible thread, including those never
+visited in this terminal. Choose a number to load existing history. Add `--ui`
+for the terminal interface. `/threads` or Ctrl-T refreshes the list; plain mode
+also supports `/thread ID`. The CLI refreshes on connection and picker opening,
+not continuously in the background.
+
+Direct thread URLs still work when a specific conversation is known:
 
 ```sh
 chmod 600 app-headers.json
-tress attach http://localhost:3000/api/threads/main \
+tress attach https://chat.example.com/api/threads/main \
   --headers-file app-headers.json
 ```
 
-`--headers-file` is optional; use it when the endpoint requires application
-headers. The [Tress demo](/docs/try) instead includes a secret session token in
-its copied command. That built-in demo flow does not require this adapter or a
-separate login provider.
+The [Tress demo](/docs/try) uses its separate secret-session command. It grants
+access to that one session, not the visitor's entire account history. Discovery
+does not change the existing demo's access policy.
 
-The terminal negotiates Harness and loads the active conversation. Send from
-each client and reconnect. Verify your app's access-expiration policy before
-following the [production walkthrough](/docs/production).
+Verify messages from each client, reconnect, and your app's expiry policy before
+following the [production walkthrough](/docs/production). These commands are a
+source preview; build this checkout. Published v0.3.0 does not include app
+discovery. Generic CLI browser login, automatic token refresh, and thread
+creation remain future work.

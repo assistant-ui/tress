@@ -19,7 +19,10 @@ options below. The installer currently downloads v0.3.0.
 **Existing assistant-ui applications:** add the native Tress terminal as another
 client of your app's existing server-owned Harness thread. Keep your browser UI,
 agent, tools, identity, and deployment. No Tress browser package or stylesheet is
-needed. Follow the [terminal integration guide](docs/terminal-integration.md) and
+needed. In this source preview, `tress attach <app-origin>` automatically
+lists all threads the app grants your credential when it exposes discovery;
+use `--api-key-env MY_APP_API_KEY` for bearer auth or omit auth when the app
+allows it. Follow the [terminal integration guide](docs/terminal-integration.md) and
 [runnable example](examples/existing-app/README.md). Build the CLI from this
 checkout; this integration is not in the published v0.3.0 binary.
 

@@ -54,12 +54,14 @@ fn usage() -> String {
          tress serve --stop   stop this project's host; keep thread and files\n  \
          tress --ephemeral    run an unsaved standalone session\n  \
          tress setup --local  configure your own Anthropic key\n  \
+         tress threads <app>   browse and continue the app's accessible threads\n  \
          tress attach -s <id>  join a thread on the saved host\n  \
-         tress attach <url>    join a thread with plain terminal output\n  \
+         tress attach <url>    browse an app or join a thread with plain terminal output\n  \
          tress attach <url> --ui  opt into the full terminal interface\n  \
          tress attach <site> -s <id>  connect this machine's filesystem and chat (--session also works)\n  \
          tress attach <site> -s <id> --chat-only  join without sharing files\n  \
          tress attach <site> -s <id> --root . --allow-write --ui  share a folder and chat\n  \
+         tress attach <app> --api-key-env <NAME>  connect with an app API key\n  \
          tress attach <url> --headers-file <path>  use app credentials from a private JSON file\n  \
          tress connect --site <url> [--root <path>] [--allow-write]\n  \
          tress --help          this text\n\n\
@@ -118,6 +120,15 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if args.first().is_some_and(|arg| arg == "threads") {
+        return match attach::catalog::run(&args[1..], &style).await {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tress threads: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     if args.first().is_some_and(|arg| arg == "serve") {
         return match runtime::serve(&args[1..]).await {
             Ok(()) => std::process::ExitCode::SUCCESS,
@@ -137,7 +148,14 @@ async fn main() -> std::process::ExitCode {
         };
     }
     if args.first().is_some_and(|arg| arg == "attach") {
-        let (chat_args, folder_root, writable, chat_only) = match workspace_options(&args[1..]) {
+        let (attach_args, api_key_env) = match attach::catalog::extract_key_env(&args[1..]) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("tress attach: {error}");
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+        let (chat_args, folder_root, writable, chat_only) = match workspace_options(&attach_args) {
             Ok(options) => options,
             Err(error) => {
                 eprintln!("tress attach: {error}");
@@ -158,6 +176,27 @@ async fn main() -> std::process::ExitCode {
                 return std::process::ExitCode::FAILURE;
             }
         };
+        if target.session.is_none() && folder_root.is_none() && !writable {
+            match attach::catalog::attach(
+                &target.host,
+                &style,
+                ui,
+                headers_file,
+                api_key_env.as_deref(),
+            )
+            .await
+            {
+                Ok(true) => return std::process::ExitCode::SUCCESS,
+                Ok(false) => {}
+                Err(error) => {
+                    eprintln!("tress attach: {error}");
+                    return std::process::ExitCode::FAILURE;
+                }
+            }
+        } else if api_key_env.is_some() {
+            eprintln!("tress attach: --api-key-env connects to an application origin, without a demo session or folder sharing.");
+            return std::process::ExitCode::FAILURE;
+        }
         let share_root = shared_root(
             &root,
             folder_root,

@@ -3,8 +3,10 @@
 Status: original design contract. The first implementation now has a
 [runnable source preview](../examples/existing-app/README.md) and
 [local-to-production docs](../site/docs/index.mdx). It supports known Harness
-thread endpoints, application credentials, and revocation. Discovery, generic
-login, terminal-created threads, and scaffolding below remain proposals.
+thread endpoints, application credentials, revocation, and automatic discovery
+of authorized threads on app-origin attachment. See the current
+[terminal integration contract](terminal-integration.md). Generic login,
+terminal-created threads, and scaffolding below remain proposals.
 This document is not an installation guide for Tress v0.3.0. Existing
 Tress-host setup remains documented in [setup](setup.md). Implementation order
 and deferred managed authentication are in the [roadmap](roadmap.md).
@@ -70,19 +72,19 @@ device pairing is separate from terminal access to a conversation.
    each, disconnect/reconnect, and check that there is one conversation and one
    execution of each accepted prompt.
 
-The server integration's final export names, discovery route, and credential
-setup UX still need design and contract tests. These steps describe required
-behavior, not new SDK exports that already exist.
+The discovery route and credential options are now defined in the
+[terminal integration contract](terminal-integration.md). The remaining
+scaffolding and login UX in this design are proposals, not new SDK exports.
 
 ## 2. End user: start in the browser
 
 1. Sign into the application through its existing login flow.
 2. Open or create a conversation and use it normally.
 3. Choose "Open in terminal" and install Tress if necessary.
-4. Run the copied command. The intended shape is:
+4. Run the copied command. For a discoverable app with bearer authentication:
 
    ```sh
-   tress attach https://chat.example.com -s <thread-id>
+   tress attach https://chat.example.com --api-key-env MY_APP_API_KEY
    ```
 
 5. Complete the application's supported terminal credential setup if not
@@ -93,10 +95,11 @@ behavior, not new SDK exports that already exist.
    either client appears in both. The UI displays which app/thread is active
    and where the agent executes.
 
-The command syntax above already exists for Tress-specific hosts. Resolving
-generic Harness thread IDs, negotiating the protocol, and attaching with app
-credentials are proposed additions. It does not work on arbitrary websites
-today. Connection commands and URLs must not contain bearer credentials.
+This source-preview command lists the app's permitted threads for selection.
+The app must publish the discovery document and authorized Harness endpoints;
+arbitrary websites do not become thread hosts automatically. Existing demo
+`-s` commands still grant access to one session. Connection commands and URLs
+must not contain bearer credentials.
 
 Closing a terminal or browser detaches that client. The server owns the run
 and decides how execution, explicit cancellation, and interruption work.
@@ -115,10 +118,10 @@ and decides how execution, explicit cancellation, and interruption work.
    existing assistant-ui interface. A link selects a thread; it does not
    transfer ownership or bypass access checks.
 
-The first adapter milestone needs only a known thread endpoint/ID and app
-credential. Discovery, a thread picker, terminal-created threads, and a generic
-login experience follow once that basic connection works. Do not represent
-those follow-ups as available in the first PR.
+The source preview now supports automatic discovery and thread selection with
+app credentials. Thread creation, generic browser login, and automatic token
+refresh remain proposals. A first attachment must reuse an existing
+conversation rather than silently creating another one.
 
 ## 4. Application owner: promote to production
 

@@ -7,6 +7,9 @@ import { Readable } from "node:stream";
 import { createUIMessageStream, DirectChatTransport } from "ai";
 import { AISDKTransport } from "@harness-sdk/ai-sdk";
 import { statewireHost } from "statewire-node";
+import { resource } from "@assistant-ui/tap";
+import { useStatewireState, useStatewireCommands } from "statewire/host";
+import { HARNESS_THREADS_PROTOCOL } from "harness-sdk";
 import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
 import { createTressAccess } from "@tress/access";
 
@@ -71,20 +74,33 @@ function browserSession(request) {
   const session = token ? identities.sessions[hash(token)] : undefined;
   return session?.expiresAt > Date.now() ? session : undefined;
 }
-const access = createTressAccess({
-  origin, host: thread,
-  authorize({ request }) {
-    const auth = request.headers.get("authorization");
-    const grant = auth === null ? browserSession(request)
-      : auth.startsWith("Bearer ") ? identities.grants[hash(auth.slice(7))] : undefined;
-    if (!grant || grant.revoked || grant.expiresAt <= Date.now()) throw new Response("Sign in or renew your terminal grant", { status: 401 });
-    if (grant.subject !== "example-owner" || grant.threadId !== "main") throw new Response("Forbidden", { status: 403 });
-    return { subject: grant.subject, connectionId: grant.id, expiresAt: grant.expiresAt };
-  },
+function authorize({ request }) {
+  const auth = request.headers.get("authorization");
+  const grant = auth === null ? browserSession(request)
+    : auth.startsWith("Bearer ") ? identities.grants[hash(auth.slice(7))] : undefined;
+  if (!grant || grant.revoked || grant.expiresAt <= Date.now()) throw new Response("Sign in or renew your terminal grant", { status: 401 });
+  if (grant.subject !== "example-owner" || grant.threadId !== "main") throw new Response("Forbidden", { status: 403 });
+  return { subject: grant.subject, connectionId: grant.id, expiresAt: grant.expiresAt };
+}
+const access = createTressAccess({ origin, host: thread, authorize });
+// This app owns one conversation. Real apps project their existing, authorized
+// thread index into this protocol; never copy conversations into a second store.
+const ThreadList = resource(() => {
+  const [state] = useStatewireState(() => ({ threads: [{
+    id: "main", title: "Existing app conversation", status: "regular",
+    updatedAt: new Date().toISOString(),
+  }] }));
+  return { state, commands: useStatewireCommands({}) };
 });
+const listHost = statewireHost({ protocol: HARNESS_THREADS_PROTOCOL, transport: ThreadList() });
+const listAccess = createTressAccess({ origin, host: listHost, authorize });
 const json = (value, init = {}) => Response.json(value, { ...init, headers: { "cache-control": "no-store", ...init.headers } });
 async function handle(request) {
   const path = new URL(request.url).pathname;
+  if (path === "/.well-known/tress.json" && request.method === "GET") return json({
+    version: 1, threads: "/api/thread-list", thread: "/api/threads/{id}",
+  });
+  if (path.startsWith("/api/thread-list/")) return listAccess.fetch(request);
   if (path.startsWith("/api/threads/main/")) return access.fetch(request);
   if (request.method !== "GET" && request.headers.get("origin") !== origin) return new Response("Origin denied", { status: 403 });
   if (path === "/api/login" && request.method === "POST") {
@@ -100,7 +116,7 @@ async function handle(request) {
   }
   const session = browserSession(request);
   if (path === "/api/session" && request.method === "GET") return json(session ? {
-    authenticated: true, endpoint: `${origin}/api/threads/main`, browserUrl: origin,
+    authenticated: true, endpoint: `${origin}/api/threads/main`, application: origin, browserUrl: origin,
     connections: Object.values(identities.grants).filter((grant) => !grant.revoked && grant.expiresAt > Date.now()).map(({ id, expiresAt }) => ({ id, expiresAt })),
   } : { authenticated: false });
   if (!session) return new Response("Sign in", { status: 401 });
@@ -118,6 +134,7 @@ async function handle(request) {
     grant.revoked = true;
     await save("access.json", identities);
     access.revoke(id);
+    listAccess.revoke(id);
     return json({ ok: true });
   }
   if (path === "/api/metrics" && request.method === "GET") return json(metrics);
@@ -130,7 +147,7 @@ const dist = resolve("dist");
 const server = createServer(async (incoming, outgoing) => {
   try {
     const path = new URL(incoming.url, origin).pathname;
-    if (!path.startsWith("/api/")) {
+    if (!path.startsWith("/api/") && path !== "/.well-known/tress.json") {
       if (dev) { dev.middlewares(incoming, outgoing); return; }
       const file = path === "/" ? resolve(dist, "index.html") : resolve(dist, `.${decodeURIComponent(path)}`);
       if (!file.startsWith(dist + sep)) { outgoing.writeHead(404).end(); return; }
@@ -158,7 +175,7 @@ const server = createServer(async (incoming, outgoing) => {
 });
 server.listen(port, process.env.HOST ?? "127.0.0.1", () => console.log(`App listening at ${origin}`));
 async function shutdown() {
-  server.close(); await thread.close(); await writes; await dev?.close(); process.exit(0);
+  server.close(); await thread.close(); await listHost.close(); await writes; await dev?.close(); process.exit(0);
 }
 process.once("SIGTERM", shutdown);
 process.once("SIGINT", shutdown);
