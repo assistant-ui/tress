@@ -16,6 +16,12 @@ startup. Combined `attach` file sharing (`--root`, `--allow-write`, and
 `--chat-only`) is a **source preview**: build this checkout before using those
 options below. The installer currently downloads v0.3.0.
 
+**npm distribution (not published yet):** this repository includes
+[`@assistant-ui/tress`](packages/cli/README.md), which packages the native client
+for `npm install -g` and `npx`. Its first npm release still needs publication;
+use the existing installer or build from source in the meantime. The unscoped
+`tress` npm package is an unrelated project.
+
 **Existing assistant-ui applications:** the [source preview](examples/existing-app/README.md)
 connects the browser and terminal to your server-owned Harness thread, with
 your authentication and revocation. Build the CLI from this checkout; this
