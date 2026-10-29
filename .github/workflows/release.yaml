@@ -18,7 +18,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26.13.0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -76,7 +76,7 @@ jobs:
           key: ${{ matrix.target }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26.13.0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

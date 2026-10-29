@@ -27,7 +27,7 @@ project files. A VM needs a persistent disk if its files must survive VM deletio
 
 ## Build and start
 
-Prerequisites: Rust, the `wasm32-unknown-unknown` target, Node.js 22+, npm,
+Prerequisites: Rust, the `wasm32-unknown-unknown` target, Node.js 26 LTS (22+ works), npm,
 Python 3.11+, and the `wasm-bindgen` CLI version pinned in `Cargo.lock`.
 
 From the repository root:
