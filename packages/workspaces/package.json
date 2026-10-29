@@ -39,7 +39,7 @@
     "just-bash": "^3.4.2"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.6.6",
     "@vercel/sandbox": "^3.5.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
