@@ -13,12 +13,7 @@ use tungstenite::handshake::server::{Request, Response};
 use tungstenite::Message;
 
 fn binary() -> PathBuf {
-    let mut path = std::env::current_exe().expect("test binary path");
-    path.pop();
-    if path.ends_with("deps") {
-        path.pop();
-    }
-    path.join("tress")
+    PathBuf::from(env!("CARGO_BIN_EXE_tress"))
 }
 
 struct Attach {
