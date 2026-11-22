@@ -504,7 +504,7 @@ dependencies = [
 [[package]]
 name = "harness-threads"
 version = "0.2.0"
-source = "git+https://github.com/assistant-ui/statewire-rs?rev=4cdd9625e6af5c2b01e3d0493cdcf21c0468d3b0#4cdd9625e6af5c2b01e3d0493cdcf21c0468d3b0"
+source = "git+https://github.com/assistant-ui/statewire-rs?rev=b96b03019ec9d0753dc2cdee2e4d33d00a8ca499#b96b03019ec9d0753dc2cdee2e4d33d00a8ca499"
 dependencies = [
  "serde",
  "serde_json",
@@ -1597,7 +1597,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "statewire"
 version = "0.2.0"
-source = "git+https://github.com/assistant-ui/statewire-rs?rev=4cdd9625e6af5c2b01e3d0493cdcf21c0468d3b0#4cdd9625e6af5c2b01e3d0493cdcf21c0468d3b0"
+source = "git+https://github.com/assistant-ui/statewire-rs?rev=b96b03019ec9d0753dc2cdee2e4d33d00a8ca499#b96b03019ec9d0753dc2cdee2e4d33d00a8ca499"
 dependencies = [
  "futures-util",
  "rustls",
