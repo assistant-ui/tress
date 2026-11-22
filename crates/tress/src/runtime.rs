@@ -59,6 +59,9 @@ struct Connection {
     endpoint: String,
     browser_url: String,
     headers: PathBuf,
+    /// The host advertises a Statewire WebSocket endpoint in `/api/info`.
+    /// Hosts started by older releases serve only HTTP/SSE.
+    websocket: bool,
 }
 
 fn directory(root: &Path, managed: bool) -> Result<PathBuf, String> {
@@ -121,7 +124,50 @@ async fn existing(dir: &Path) -> Option<Connection> {
         endpoint: format!("{origin}/api/threads/main"),
         browser_url: format!("{origin}/#{}", saved["token"].as_str()?),
         headers: dir.join("headers.json"),
+        websocket: info["websocket"].is_string(),
     })
+}
+
+/// Asks a running host to save its thread and exit.
+async fn stop_host(connection: &Connection) -> Result<(), String> {
+    let headers: Value =
+        serde_json::from_slice(&fs::read(&connection.headers).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    http_client()?
+        .post(format!("{}/api/stop", connection.origin))
+        .header(
+            "Authorization",
+            headers["Authorization"]
+                .as_str()
+                .ok_or("Invalid host credential")?,
+        )
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// A running host this CLI can attach to. A host from an older release has
+/// no WebSocket endpoint, so it is stopped (its thread and files are saved)
+/// and `None` tells the caller to start a current one.
+async fn reusable(dir: &Path) -> Result<Option<Connection>, String> {
+    let Some(connection) = existing(dir).await else {
+        return Ok(None);
+    };
+    if connection.websocket {
+        return Ok(Some(connection));
+    }
+    eprintln!("Restarting this project's Harness host from an older tress release.");
+    stop_host(&connection).await?;
+    for _ in 0..100 {
+        if existing(dir).await.is_none() {
+            return Ok(None);
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    Err("The older Harness host did not stop. Run tress serve --stop, then try again.".into())
 }
 
 async fn start(
@@ -132,7 +178,7 @@ async fn start(
     exec: bool,
 ) -> Result<Connection, String> {
     let dir = directory(root, managed)?;
-    if let Some(connection) = existing(&dir).await {
+    if let Some(connection) = reusable(&dir).await? {
         return Ok(connection);
     }
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -288,22 +334,7 @@ pub async fn serve(args: &[String]) -> Result<(), String> {
         let connection = existing(&directory(&root, managed)?)
             .await
             .ok_or("No running Harness host for this workspace.")?;
-        let headers: Value =
-            serde_json::from_slice(&fs::read(connection.headers).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
-        http_client()?
-            .post(format!("{}/api/stop", connection.origin))
-            .header(
-                "Authorization",
-                headers["Authorization"]
-                    .as_str()
-                    .ok_or("Invalid host credential")?,
-            )
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
-            .map_err(|e| e.to_string())?;
+        stop_host(&connection).await?;
         println!("Harness host stopping; saved thread and files remain.");
         return Ok(());
     }
@@ -324,4 +355,68 @@ pub async fn serve(args: &[String]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A project host on loopback that answers `/api/info` and `/api/stop`,
+    /// and exits after a stop. Returns its state directory and whether a stop
+    /// arrived.
+    async fn host(info: Value) -> (PathBuf, tokio::task::JoinHandle<bool>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let dir = std::env::temp_dir().join(format!(
+            "tress-host-{}",
+            statewire::transport::ws::generate_client_id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let saved = serde_json::json!({"origin": origin, "token": "t", "binding": {"root": "/r"}});
+        fs::write(dir.join("host.json"), saved.to_string()).unwrap();
+        fs::write(dir.join("headers.json"), r#"{"Authorization":"Bearer t"}"#).unwrap();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = vec![0; 4096];
+                let read = socket.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]).to_string();
+                let stop = request.starts_with("POST /api/stop ");
+                assert!(stop || request.starts_with("GET /api/info "));
+                assert!(request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer t"));
+                let body = if stop {
+                    r#"{"stopping":true}"#.to_owned()
+                } else {
+                    info.to_string()
+                };
+                let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                socket.write_all(response.as_bytes()).await.unwrap();
+                if stop {
+                    return true;
+                }
+            }
+        });
+        (dir, server)
+    }
+
+    #[tokio::test]
+    async fn current_hosts_are_reused_and_older_ones_restarted() {
+        let (dir, server) =
+            host(serde_json::json!({"root": "/r", "websocket": "/api/threads/main/ws"})).await;
+        let connection = reusable(&dir)
+            .await
+            .unwrap()
+            .expect("a current host is reused");
+        assert!(connection.endpoint.ends_with("/api/threads/main"));
+        server.abort();
+        fs::remove_dir_all(&dir).unwrap();
+
+        let (dir, server) = host(serde_json::json!({"root": "/r"})).await;
+        assert!(reusable(&dir).await.unwrap().is_none());
+        assert!(server.await.unwrap(), "the older host was asked to stop");
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }

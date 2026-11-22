@@ -184,12 +184,13 @@ a convenience; it does not require an additional conversation implementation.
 
 1. **Statewire dependency update:** adopt 0.1.1's HTTP/SSE fixes in Tress. This
    does not add application authentication or generic Harness support.
-2. **Authenticated Rust transport:** upstream an additive credential/header
-   mechanism in `statewire-rs`. Its inspected 0.1.1 HTTP `connect(url, config)`
-   has no caller-supplied authentication option. Define refresh behavior,
-   protect protocol-managed headers, and apply credentials to both stream and
-   command requests with safe redirect handling. Test this at the transport
-   boundary rather than duplicating HTTP logic in Tress.
+2. **Authenticated Rust transport:** `statewire-rs`'s WebSocket transport takes
+   application headers (`ws::connect_with_headers`). It sends them on the
+   upgrade request and in the first message of every attach, never in the URL,
+   refuses protocol-managed header names, follows no redirects, and stops on an
+   authorization refusal so the CLI reconnects with fresh credentials. The CLI
+   no longer uses Statewire's HTTP/SSE transport. This is tested at the
+   transport boundary rather than duplicated in Tress.
 3. **Tress Harness adapter:** use the existing Harness protocol/types and add
    a shared browser/native-client fixture. Initially support history, text
    streaming, run status, and sending to a known authorized thread. Keep the

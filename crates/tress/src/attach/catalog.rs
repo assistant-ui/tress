@@ -5,7 +5,7 @@ use std::io::{IsTerminal, Write};
 use harness_threads::threads_list::{EntryStatus, ThreadsDocument};
 use serde::Deserialize;
 use statewire::session::{Config, Event};
-use statewire::transport::http::generate_client_id;
+use statewire::transport::ws::generate_client_id;
 use statewire::{VersionRange, WIRE_VERSION};
 
 use super::{connection::Connector, recent::RecentThread};

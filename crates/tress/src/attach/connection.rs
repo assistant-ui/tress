@@ -7,7 +7,7 @@ use harness_threads::{HARNESS_PROTOCOL, MAIN_NS};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
 use statewire::session::{Config, Event, Session};
-use statewire::transport::http::{connect_with_headers, generate_client_id};
+use statewire::transport::ws::{connect_with_headers, generate_client_id};
 
 #[derive(Clone)]
 pub struct Connector {
@@ -190,11 +190,30 @@ impl Connector {
         if !self.headers.is_empty() && destination.origin().ascii_serialization() != self.origin {
             return Err("These credentials belong to a different application. Attach explicitly with that app's credential file.".into());
         }
-        let (client, events) = connect_with_headers(url, config, self.headers.clone())
-            .await
-            .map_err(|error| error.to_string())?;
+        // Credentials ride in the socket's first message, never in this URL.
+        let (client, events) =
+            connect_with_headers(&websocket_url(&destination)?, config, self.headers.clone())
+                .await
+                .map_err(|error| error.to_string())?;
         Ok((Client(client), events))
     }
+}
+
+/// The Statewire WebSocket endpoint of a thread URL: `ws(s)://…/<thread>/ws`.
+fn websocket_url(thread: &reqwest::Url) -> Result<String, String> {
+    let scheme = match thread.scheme() {
+        "http" => "ws",
+        "https" => "wss",
+        _ => return Err("The thread URL must use http or https.".into()),
+    };
+    if thread.query().is_some() || thread.fragment().is_some() {
+        return Err("Thread URLs cannot carry a query or fragment.".into());
+    }
+    let mut url = thread.clone();
+    url.set_scheme(scheme)
+        .map_err(|()| "Invalid thread URL".to_owned())?;
+    url.set_path(&format!("{}/ws", thread.path().trim_end_matches('/')));
+    Ok(url.to_string())
 }
 
 pub struct Client(statewire::transport::Client);
@@ -226,7 +245,12 @@ impl Client {
         self.0.main_value(HARNESS_PROTOCOL).await.is_none()
     }
 
-    pub async fn command(&self, protocol: &str, method: &str, params: Vec<Value>) -> u64 {
+    pub async fn command(
+        &self,
+        protocol: &str,
+        method: &str,
+        params: Vec<Value>,
+    ) -> Result<u64, String> {
         if method == "send" {
             if let Some(state) = self.0.main_value(HARNESS_PROTOCOL).await {
                 let command = RunEnqueue {
@@ -244,10 +268,17 @@ impl Client {
                     placement: QueuePlacement::default(),
                 };
                 let (method, params) = command.statement();
-                return self.0.command(HARNESS_PROTOCOL, method, params).await;
+                return self
+                    .0
+                    .command(HARNESS_PROTOCOL, method, params)
+                    .await
+                    .map_err(|error| error.to_string());
             }
         }
-        self.0.command(protocol, method, params).await
+        self.0
+            .command(protocol, method, params)
+            .await
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -327,6 +358,25 @@ mod tests {
         assert!(denied.err().unwrap().contains("different application"));
         assert!(Connector::new("http://127.0.0.1:3000/thread", Some(path_str)).is_ok());
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn thread_urls_map_to_their_websocket_endpoint() {
+        let ws = |url: &str| websocket_url(&reqwest::Url::parse(url).unwrap());
+        assert_eq!(
+            ws("http://localhost:5311/api/thread").unwrap(),
+            "ws://localhost:5311/api/thread/ws"
+        );
+        assert_eq!(
+            ws("https://app.example/api/threads/main/").unwrap(),
+            "wss://app.example/api/threads/main/ws"
+        );
+        assert_eq!(
+            ws("https://app.example/api/sessions/abc").unwrap(),
+            "wss://app.example/api/sessions/abc/ws"
+        );
+        assert!(ws("https://app.example/api/thread?token=secret").is_err());
+        assert!(ws("ftp://app.example/thread").is_err());
     }
 
     #[test]

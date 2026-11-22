@@ -34,7 +34,9 @@ tress attach https://chat.example.com
 ```
 
 `MY_APP_API_KEY` is the name of an environment variable containing the user's
-app-issued credential. Tress sends it as `Authorization: Bearer …`. It is not a
+app-issued credential. Tress sends it as `Authorization: Bearer …` on the
+Statewire WebSocket upgrade and again in the socket's first message, never in
+the URL, and only to the application's origin. It is not a
 model-provider key or a project-wide Harness service key. The application
 chooses whether to accept API keys, anonymous access, or custom authentication.
 
@@ -65,8 +67,11 @@ Serve `GET /.well-known/tress.json` as `application/json`:
   protocol `harness-sdk` version `2026-09-13`. IDs must use letters, digits,
   `.`, `_`, `~`, or `-`, excluding `.` and `..` alone.
 - Both endpoints remain on the same application origin, without query strings,
-  fragments, or credentials in URLs. Each serves Statewire `/stream` and
-  `/frames` requests. The manifest contains no secrets or conversation data.
+  fragments, or credentials in URLs. The CLI attaches to each over a Statewire
+  WebSocket at the endpoint plus `/ws` (`https://app/api/threads/ID` is dialed
+  as `wss://app/api/threads/ID/ws`); keep serving `/stream` and `/frames` while
+  older `tress` releases still attach. The manifest contains no secrets or
+  conversation data.
 - Authenticate the list request, derive the user from the credential, and
   filter the index before returning it. Independently authorize every thread
   connection and command. A listed ID does not grant access by itself.
@@ -115,8 +120,8 @@ not need to run a separate listing command first.
 Browser and terminal see the same replies. `/exit` detaches the terminal;
 the host's run continues. Obtain a new credential after expiry or revocation.
 Generic browser login, automatic token refresh, and thread creation from the
-CLI remain future work. Older Tress hosts and session commands keep their
-existing connection path.
+CLI remain future work. Every attach, including Tress sessions, now uses a
+Statewire WebSocket, so the host must accept upgrades at `<thread URL>/ws`.
 
 ## If the current browser owns the conversation
 
