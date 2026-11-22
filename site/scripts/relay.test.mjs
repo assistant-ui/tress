@@ -306,10 +306,14 @@ test(
       "legacy client leaves presence",
     );
 
+    // A reattached socket reports "connected" only after the new invocation's
+    // snapshot; until then the state is the previous invocation's.
+    const ready = (client) =>
+      client.connection.status === "connected" &&
+      client.state?.harness?.connection === "connected";
     const before = attaches;
     await wait(
-      () =>
-        attaches > before && browser.state?.harness?.connection === "connected",
+      () => attaches > before && ready(browser),
       "automatic invocation renewal",
     );
     await browser.commands.send("second prompt after renewal");
@@ -342,7 +346,9 @@ test(
       "clear reaches both workers",
     );
     await wait(
-      () => browser.state?.harness?.connection === "connected",
+      () =>
+        ready(browser) &&
+        browser.state.harness.threadId === terminal.state?.harness?.threadId,
       "browser follows replacement thread",
     );
     const sending = browser.commands
