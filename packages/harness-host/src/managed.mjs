@@ -2,6 +2,7 @@ import { Harness, HarnessCloud } from "harness-sdk";
 import { WS_SUBPROTOCOL } from "./websocket.mjs";
 
 const MAX_QUEUED_FRAMES = 64;
+const FIRST_FRAME_TIMEOUT_MS = 10_000;
 
 /** Keep the managed credential and SDK's backend tunnel in the machine host. */
 export function createManagedHarnessHost(options) {
@@ -36,6 +37,7 @@ export function createManagedHarnessHost(options) {
     const close = (code, reason) => {
       if (closed) return;
       closed = true;
+      clearTimeout(timer);
       try {
         socket.close(code, reason);
       } catch {}
@@ -93,6 +95,11 @@ export function createManagedHarnessHost(options) {
       upstream.onclose = () => close(1000, "upstream closed");
       upstream.onerror = () => {};
     };
+    // A socket that never authorizes doesn't hold a slot.
+    const timer = setTimeout(() => {
+      if (state !== "open") refuse(new Response(null, { status: 401 }));
+    }, FIRST_FRAME_TIMEOUT_MS);
+    timer.unref?.();
     socket.onmessage = ({ data }) => {
       if (closed) return;
       if (typeof data !== "string") return close(1003, "text frames only");
