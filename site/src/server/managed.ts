@@ -95,6 +95,8 @@ export const createManagedGateway = async (
         workspaceId: config.workspaceId,
         threadId,
         url: backendUrl,
+        // An SSE stream would keep the cloud thread's Durable Object awake.
+        transport: "websocket",
         credential: () => {
           const key = process.env.HARNESS_API_KEY;
           if (!key) throw new Error("HARNESS_API_KEY is not configured.");

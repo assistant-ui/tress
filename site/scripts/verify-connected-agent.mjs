@@ -1,7 +1,7 @@
 // Exercise the built managed callback through the real native connector.
 // A scripted local model replaces Harness/model credentials; no cloud calls occur.
 import assert from "node:assert/strict";
-import { StatewireClient, StatewireHttp } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire";
 
 const local = process.argv.includes("--local");
 const attach = process.argv.includes("--attach");
@@ -126,7 +126,7 @@ try {
   }, "managed preview");
   assert.equal(mode.kind, local ? "local" : "cloud");
   if (local) {
-    browser = new StatewireClient({ transport: StatewireHttp({ url: `${origin}${mode.session.clientUrl}` }) });
+    browser = new StatewireClient({ transport: StatewireWebsocket({ url: `${origin}${mode.session.clientUrl}` }) });
     await waitFor(() => browser.connection.status === "connected", "browser thread attach");
     assert.deepEqual(browser.state.files, {}, "fresh threads have no example files");
   }

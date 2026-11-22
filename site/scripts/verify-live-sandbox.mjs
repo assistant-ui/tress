@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { Sandbox } from "@vercel/sandbox";
 import { createVercelWorkspace } from "@tress/workspaces/vercel";
-import { StatewireClient, StatewireHttp } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire";
 
 const waitFor = async (predicate, label) => {
   const until = Date.now() + 30_000;
@@ -88,7 +88,7 @@ try {
     if (host.exitCode !== null) throw new Error(logs);
     try { return (await fetch(`${origin}/api/mode`)).ok; } catch { return false; }
   }, "sandbox host");
-  browser = new StatewireClient({ transport: StatewireHttp({ url: `${origin}/api/thread` }) });
+  browser = new StatewireClient({ transport: StatewireWebsocket({ url: `${origin}/api/thread` }) });
   await waitFor(() => browser.connection.status === "connected" && browser.state, "browser protocol client");
   assert.equal(browser.state.workspace.details.environment, "sandbox");
   assert.equal(browser.state.workspace.details.shell, "native");

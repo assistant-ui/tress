@@ -6,7 +6,7 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { StatewireClient, StatewireHttp } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire";
 
 const probe = createServer();
 await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
@@ -62,7 +62,7 @@ try {
   assert.equal(mode.harness.threadId, "boot-test");
   assert(!JSON.stringify(mode).includes(secret));
   client = new StatewireClient({
-    transport: StatewireHttp({ url: `${url}/api/thread` }),
+    transport: StatewireWebsocket({ url: `${url}/api/thread` }),
   });
   await wait(() => client.state?.harness);
   assert.equal(client.state.harness.threadId, "boot-test");

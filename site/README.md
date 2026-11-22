@@ -4,7 +4,9 @@ A [Farm.js](https://farmjs.dev) site with a live coding-agent playground. Each
 visitor gets their own session; its browser and terminal clients share one thread.
 The Rust agent runs as WebAssembly **on the server**. Browsers and attached
 terminals subscribe to the same statewire thread, so closing a client does not
-stop the run.
+stop the run. Browsers connect over WebSockets at `/api/thread/ws` or
+`/api/sessions/<id>/ws`; the server also keeps the SSE routes that released
+`tress` binaries use.
 
 For the operator-to-visitor path—getting credentials, deploying the host,
 receiving a private session ID, and connecting a terminal or folder—start with
@@ -463,10 +465,14 @@ environment variables. Set `TRESS_SERVERLESS=1`, `TRESS_THREAD_MODE=cloud`, and
 `TRESS_WORKSPACE=memory`. Set `PUBLIC_BACKEND_URL` to the production `/api/chat`
 URL and allow that endpoint in your managed Harness settings.
 
-The serverless adapter keeps each SSE stream inside one invocation. PostgreSQL
-routes posted frames to that exact stream, persists command sequence records,
-and tracks live clients across instances. Streams renew after 210 seconds to
-stay below the 300-second function limit. A browser disconnect does not cancel
+Browsers attach over WebSockets, so Vercel must run the project on Fluid
+compute (the default for new projects), which serves WebSocket upgrades. Each
+socket stays on one function instance and carries its own commands. PostgreSQL
+persists command sequence records and tracks live clients and files across
+instances. Sockets renew after 210 seconds to stay below the 300-second
+function limit. Released `tress` binaries that still attach over SSE keep
+working: PostgreSQL routes their posted frames to the invocation holding their
+stream. A browser disconnect does not cancel
 the managed cloud run; `/api/chat` continues serving Harness independently.
 Each individual model run still has the function's 300-second execution limit.
 
@@ -513,6 +519,8 @@ to that artifact with Node's permission model, and requests the app and docs
 pages through its exported handler. It catches missing packages and source
 files that a local server can accidentally resolve from the checkout. The
 postbuild step stages docs beside Nitro's generated entry for Farm beta.106.
+It then upgrades a Statewire WebSocket through the function under an emulated
+Vercel upgrade context, which checks the bundle's wiring but not Vercel itself.
 
 The [Farm WASM plugin](https://farmjs.dev/docs/plugins/wasm) handles imports of
 the generated `src/wasm/pkg/tress_wasm.js` entry point. Both `dev` and `build`
@@ -528,6 +536,10 @@ Start the Node server with your environment set:
 ```sh
 PORT=5311 node --env-file=.env.local .farm/.output/server/index.mjs
 ```
+
+The server answers WebSocket upgrades on the same port. A reverse proxy in
+front of it must forward `Upgrade`/`Connection` headers for `/api/**/ws` and
+pass the original `Host`; the socket routes reject cross-site `Origin` headers.
 
 `npm run wasm` rebuilds the Farm bindings on demand. `npm run wasm:node`
 generates separate CommonJS bindings for standalone Node consumers and the

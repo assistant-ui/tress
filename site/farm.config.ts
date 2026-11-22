@@ -1,13 +1,14 @@
 import { defineConfig } from "@farm.js/core";
 import { wasm } from "@farm.js/wasm";
 import { withDocs } from "@farming-labs/farmjs/config";
+import { statewireSockets } from "./src/server/socket-plugin";
 
 export default withDocs(defineConfig({
   deploy:
     process.env.FARM_DEPLOY_TARGET === "vercel"
       ? { target: "vercel" }
       : undefined,
-  plugins: [wasm()],
+  plugins: [wasm(), statewireSockets()],
   images: { provider: "none" },
   // Browsers download text/markdown; source links should display as text.
   headers: () => [

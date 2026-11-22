@@ -30,10 +30,13 @@ const { HARNESS_HOST_PROTOCOL } = await import("harness-sdk/host");
 const { useUIMessageTransport } = await import("harness-sdk/ui-transport");
 const { resource, useResource } = await import("@assistant-ui/tap");
 const { StatewireSocketHost } = await import("statewire/host-internal");
-const { StatewireClient, StatewireHttp } = await import("statewire");
+const { StatewireClient, StatewireWebsocket } = await import("statewire");
+const { hostUpgrades, serveSocketHosts } = await import("./socket-hosts.mjs");
 const directory = await mkdtemp(join(tmpdir(), "tress-managed-test-"));
 process.env.HARNESS_STATE_DIR = directory;
+const sockets = await serveSocketHosts();
 after(async () => {
+  await sockets.close();
   await rm(directory, { recursive: true, force: true });
   await rm(output, { force: true });
 });
@@ -46,24 +49,7 @@ const wait = async (predicate, label) => {
   }
   throw new Error(`Timed out: ${label}`);
 };
-const transport = (host) =>
-  StatewireHttp({
-    url: "http://test.invalid/thread",
-    fetch: async (input, init) => {
-      const request = new Request(input, init);
-      if (request.url.endsWith("/frames")) return host.frames(request);
-      const response = await host.stream(request);
-      return new Response(
-        response.body.pipeThrough(new TransformStream(), {
-          signal: init.signal,
-        }),
-        {
-          status: response.status,
-          headers: response.headers,
-        },
-      );
-    },
-  });
+const transport = (host) => StatewireWebsocket({ url: sockets.url(host) });
 const config = {
   kind: "cloud",
   origin: "https://managed.example.com",
@@ -154,6 +140,9 @@ for (const fail of [false, true]) {
       response.on("close", () => stream.destroy());
       stream.pipe(response);
     });
+    // Released CLIs attach over SSE above; current ones over /api/thread/ws.
+    const upgrades = hostUpgrades(gateway.host);
+    server.on("upgrade", upgrades);
     let terminal;
     try {
       await wait(() => browser.state?.harness?.connection === "connected", "gateway ready");
@@ -202,6 +191,7 @@ for (const fail of [false, true]) {
       browser.dispose();
       gateway.dispose();
       hosts.forEach((host) => host.dispose());
+      upgrades.closeAll();
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
     }
@@ -288,9 +278,8 @@ test("managed authentication errors are visible and never fall back to a local r
     { ...config, initialThreadId: "bad-key" },
     () =>
       new Harness({
-        transport: StatewireHttp({
-          url: "http://test.invalid",
-          fetch: async () => new Response("unauthorized", { status: 401 }),
+        transport: StatewireWebsocket({
+          url: sockets.refusal({ reason: "unauthorized", message: "unauthorized" }),
         }),
       }),
   );
@@ -355,9 +344,8 @@ test("reattaching retries a stopped cloud connection once without rotating the c
   const gateway = await createManagedGateway(config, (id) => {
     attempts++;
     if (attempts === 1)
-      return new Harness({ transport: StatewireHttp({
-        url: "http://test.invalid",
-        fetch: async () => new Response("unavailable credential", { status: 401 }),
+      return new Harness({ transport: StatewireWebsocket({
+        url: sockets.refusal({ reason: "unauthorized", message: "unavailable credential" }),
       }) });
     return factory(id);
   }, session);

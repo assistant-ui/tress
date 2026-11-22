@@ -5,7 +5,7 @@ import { once } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { StatewireClient, StatewireHttp } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire";
 
 const root = await mkdtemp(join(tmpdir(), "tress-isolation-"));
 const model = createServer(async (request, response) => {
@@ -97,6 +97,19 @@ const start = async () => {
     }
   }, "server startup");
 };
+/** One raw Statewire socket: its first packet, or `refused` when the handshake fails. */
+const probeSocket = (path, headers = {}) =>
+  new Promise((resolve) => {
+    const socket = new WebSocket(
+      `${url.replace(/^http/, "ws")}${path}/ws?client=probe-${Date.now()}`,
+      { protocols: ["statewire.v1"], headers },
+    );
+    socket.onmessage = (event) => {
+      resolve(JSON.parse(String(event.data)));
+      socket.close();
+    };
+    socket.onerror = () => resolve({ refused: true });
+  });
 const bootstrap = async (cookie) => {
   const response = await fetch(`${url}/api/mode`, {
     headers: cookie ? { cookie } : {},
@@ -113,7 +126,7 @@ const bootstrap = async (cookie) => {
 };
 const attach = async (config) => {
   const client = new StatewireClient({
-    transport: StatewireHttp({ url: `${url}${config.session.clientUrl}` }),
+    transport: StatewireWebsocket({ url: `${url}${config.session.clientUrl}` }),
   });
   clients.push(client);
   await wait(() => client.state?.files["notes.md"], "scoped stream and files");
@@ -218,6 +231,35 @@ try {
   assert.equal(
     (await fetch(`${url}/api/sessions/${a.config.session.id}/stream`)).status,
     404,
+  );
+  // Sockets: session errors arrive as a terminal fin; the upgrade carries the
+  // cookie, so a cross-site page must never get a socket at all.
+  assert.equal((await probeSocket("/api/thread")).fin?.reason, "unauthorized");
+  assert.equal(
+    (await probeSocket(`/api/sessions/${a.config.session.id}`)).fin?.reason,
+    "protocol-error",
+  );
+  assert.deepEqual(
+    await probeSocket("/api/thread", {
+      cookie: a.cookie,
+      origin: "https://attacker.example",
+    }),
+    { refused: true },
+  );
+  const cookieClient = new StatewireClient({
+    transport: StatewireWebsocket({
+      url: `${url}/api/thread`,
+      webSocket: class extends WebSocket {
+        constructor(address, protocols) {
+          super(address, { protocols, headers: { cookie: a.cookie, origin: url } });
+        }
+      },
+    }),
+  });
+  clients.push(cookieClient);
+  await wait(
+    () => cookieClient.state?.entries.length === first.state.entries.length,
+    "same-origin cookie attach",
   );
   const token = a.config.session.clientUrl.split("/").at(-1);
   const forged = await fetch(`${url}/api/chat?session=${token}`, {
