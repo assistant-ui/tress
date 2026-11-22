@@ -14,7 +14,7 @@ use connection::Connector;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use statewire::session::{Config, Event};
-use statewire::transport::http::generate_client_id;
+use statewire::transport::ws::generate_client_id;
 use statewire::wire::Verdict;
 use statewire::{ProtocolOffer, VersionRange, WIRE_VERSION};
 
@@ -427,7 +427,7 @@ async fn run_inner(
                         .as_ref()
                         .unwrap()
                         .command(PROTOCOL, "send", vec![json!(prompt)])
-                        .await,
+                        .await?,
                 );
                 unsent = None;
             }
@@ -778,7 +778,7 @@ async fn run_inner(
                     } else {
                         ("send", vec![json!(prompt)])
                     };
-                    pending = Some(current.command(PROTOCOL, method, args).await);
+                    pending = Some(current.command(PROTOCOL, method, args).await?);
                     if let Some(screen) = &mut screen {
                         screen.notice("");
                     }

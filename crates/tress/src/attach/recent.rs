@@ -142,7 +142,7 @@ impl RecentThreads {
         // Attach IDs grant access to a thread, so keep this file private.
         let temporary = parent.join(format!(
             "threads.{}.tmp",
-            statewire::transport::http::generate_client_id()
+            statewire::transport::ws::generate_client_id()
         ));
         let mut options = fs::OpenOptions::new();
         options.write(true).create_new(true);
@@ -206,7 +206,7 @@ mod tests {
     fn private_recents_survive_reopening() {
         let root = std::env::temp_dir().join(format!(
             "tress-recents-{}",
-            statewire::transport::http::generate_client_id()
+            statewire::transport::ws::generate_client_id()
         ));
         let path = root.join("threads.json");
         let mut recent = RecentThreads::from_path(Some(path.clone()));
