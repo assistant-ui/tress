@@ -10,7 +10,8 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resource } from "@assistant-ui/tap";
 import { useStatewireState, useStatewireCommands } from "statewire/host";
-import { StatewireHttp } from "statewire";
+import { StatewireWebsocket } from "statewire";
+import { serveUpgrades, socketWith } from "./test-sockets.mjs";
 import { statewireHost } from "statewire-node";
 import { Harness, HARNESS_THREADS_PROTOCOL } from "harness-sdk";
 import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
@@ -106,6 +107,17 @@ test("ordinary attach discovers all allowed threads and continues existing brows
       if(response.body) Readable.fromWeb(response.body).on("error",()=>res.destroy()).pipe(res);else res.end();
     } catch(e){errors.push(e);if(!res.headersSent)res.writeHead(500);res.end();}
   });
+  // The same application authorization gates WebSocket upgrades.
+  serveUpgrades(server,()=>origin,async(request)=>{
+    const auth=request.headers.get("authorization"),cookie=request.headers.get("cookie");
+    const user=auth==="Bearer owner-key"||cookie==="app=owner"||request.headers.get("x-app-auth")==="custom-owner"?"owner":auth==="Bearer other-key"?"other":allowAnonymous&&!auth?"owner":null;
+    if(!user) return new Response(null,{status:401});
+    const path=new URL(request.url).pathname;
+    if(path==="/api/thread-list/ws") return lists[user].host.upgrade(request);
+    const id=path.match(/^\/api\/threads\/([^/]+)\/ws$/)?.[1];
+    if(!lists[user].state.threads.some(t=>t.id===id)||(denyBeta&&id==="thread-1")) return new Response(null,{status:403});
+    return threadHost(id).upgrade(request);
+  });
   await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));origin=`http://127.0.0.1:${server.address().port}`;
   function cli(args, key="owner-key", terminal=false) {
     const child=spawn(terminal?"python3":binary,terminal?["-u","-c",pty,binary,...args]:args,{env:{...process.env,TRESS_TEST_APP_KEY:key,XDG_CONFIG_HOME:dir,XDG_STATE_HOME:dir,NO_COLOR:"1",TERM:"xterm-256color"},stdio:["pipe","pipe","pipe"]});
@@ -113,7 +125,7 @@ test("ordinary attach discovers all allowed threads and continues existing brows
     return {child,output:()=>output,exited:once(child,"exit")};
   }
   for(const id of ["thread-0","thread-1"]) {
-    const browser=new Harness({transport:StatewireHttp({url:`${origin}/api/threads/${id}`,fetch:(url,init={})=>{const headers=new Headers(init.headers);headers.set("Cookie","app=owner");return fetch(url,{...init,headers});}})});browsers.push(browser);
+    const browser=new Harness({transport:StatewireWebsocket({url:`${origin}/api/threads/${id}`,webSocket:socketWith({Cookie:"app=owner"})})});browsers.push(browser);
     await until(()=>browser.transport.status==="connected","browser attached");await browser.sendMessage(`original browser history ${id}`);
     await until(()=>!browser.isBusy && JSON.stringify(browser.messages).includes(`${id} reply:`),"browser saved history");
   }
@@ -135,7 +147,7 @@ test("ordinary attach discovers all allowed threads and continues existing brows
   attached.child.stdin.write("/attach\n");await until(()=>attached.output().includes(`tress attach ${origin}/ --api-key-env TRESS_TEST_APP_KEY`),"reusable connection command");
   assert.doesNotMatch(attached.output(),/owner-key/);
   attached.child.stdin.write("/exit\n");assert.equal((await attached.exited)[0],0,attached.output());assert.equal(runs,4);
-  const lastBrowser=new Harness({transport:StatewireHttp({url:`${origin}/api/threads/new-browser-thread`,fetch:(url,init={})=>{const headers=new Headers(init.headers);headers.set("Cookie","app=owner");return fetch(url,{...init,headers});}})});browsers.push(lastBrowser);
+  const lastBrowser=new Harness({transport:StatewireWebsocket({url:`${origin}/api/threads/new-browser-thread`,webSocket:socketWith({Cookie:"app=owner"})})});browsers.push(lastBrowser);
   await until(()=>lastBrowser.transport.status==="connected","last browser attached");
   const ui=cli(["attach",origin,...auth,"--ui"],"owner-key",true);
   await until(()=>ui.output().includes("Open thread number"),"UI discovery");ui.child.stdin.write("1\n");

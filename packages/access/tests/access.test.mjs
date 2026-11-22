@@ -123,3 +123,57 @@ test("a cancelled browser request releases its host stream", async () => {
   assert.equal((await reader.read()).done, true);
   assert.equal(f.cancelled.length, 1);
 });
+
+test("a WebSocket is authorized by its first frame and closed on revocation", async () => {
+  const delivered = [];
+  let closedByHost = 0;
+  const grants = new Map([
+    ["Bearer terminal", { subject: "alice", connectionId: "terminal-alice", expiresAt: Date.now() + 60_000 }],
+    ["Bearer other", { subject: "bob", connectionId: "terminal-bob", expiresAt: Date.now() + 60_000 }],
+  ]);
+  const access = createTressAccess({
+    origin,
+    authorize({ request }) {
+      const grant = grants.get(request.headers.get("authorization"));
+      if (!grant) throw new Response("Sign in", { status: 401 });
+      if (grant.subject !== "alice") throw new Response("Private thread", { status: 403 });
+      return grant;
+    },
+    host: {
+      fetch: async () => new Response(null, { status: 404 }),
+      upgrade: async () => ({
+        protocol: "statewire.v1",
+        attach(socket) {
+          socket.onmessage = ({ data }) => delivered.push(data);
+          socket.onclose = () => closedByHost++;
+        },
+      }),
+    },
+  });
+  const upgrade = (headers = {}) => access.upgrade(new Request(`${origin}/threads/main/ws?client=c1`, { headers }));
+  assert.equal((await upgrade({ origin: "https://evil.example" })).status, 403);
+  assert.equal((await upgrade({ cookie: "app=1" })).status, 403);
+  const open = async (token) => {
+    const socket = { sent: [], closed: null, send(data) { this.sent.push(JSON.parse(data)); }, close(code) { this.closed = code; } };
+    (await upgrade({ origin })).attach(socket);
+    socket.onmessage({ data: JSON.stringify({ headers: { Authorization: token } }) });
+    socket.onmessage({ data: '{"queued":true}' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return socket;
+  };
+  const anonymous = await open("Bearer nobody");
+  assert.equal(anonymous.sent[0].fin.reason, "unauthorized");
+  assert.equal(anonymous.closed, 1008);
+  const bob = await open("Bearer other");
+  assert.equal(bob.sent[0].fin.reason, "forbidden");
+  assert.equal(delivered.length, 0);
+  const terminal = await open("Bearer terminal");
+  assert.equal(terminal.closed, null);
+  assert.deepEqual(delivered.map((data) => Object.keys(JSON.parse(data))), [["headers"], ["queued"]]);
+  access.revoke("terminal-alice");
+  assert.equal(terminal.sent.at(-1).fin.reason, "forbidden");
+  assert.equal(terminal.closed, 1008);
+  terminal.onmessage({ data: '{"late":true}' });
+  assert.equal(delivered.length, 2);
+  assert.equal(closedByHost, 3);
+});

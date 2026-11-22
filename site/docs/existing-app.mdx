@@ -21,22 +21,28 @@ No new Tress server or browser dependency is required. Otherwise, the
 ## 1. Reuse the thread host
 
 If your app already has a server-owned Harness thread, keep it and its existing
-session/access checks. Its fetch handler is the integration point.
+session/access checks. Its WebSocket upgrade handler is the integration point.
 **`createTressAccess` is optional.** Tress does not require another auth provider
 or a wrapper around an already authorized host.
 
 ```ts
-// Inside your existing authenticated route/middleware:
-// GET/POST /api/threads/:id/stream
-// POST     /api/threads/:id/frames
-export const GET = async (request: Request) => {
-  // Application code: validate the session/credential and this thread's
-  // permissions, including your existing Origin/CSRF checks for writes.
+// Inside your server's upgrade handler for GET /api/threads/:id/ws.
+// `sockets` is a `ws` WebSocketServer({ noServer: true }) that accepts the
+// `statewire.v1` subprotocol; `request` is a Request built from `incoming`.
+server.on("upgrade", async (incoming, socket, head) => {
+  // Application code: check Origin for cookie sessions, then this thread's
+  // permissions. Credentials sent in the first frame reach the host's
+  // `authorize({ headers })` (see the access guide).
   await app.requireThreadAccess(request, threadId);
-  return existingThreadHost.fetch(request);
-};
-export const POST = GET;
+  const accepted = await existingThreadHost.upgrade(request);
+  if (accepted instanceof Response) return refuse(socket, accepted);
+  sockets.handleUpgrade(incoming, socket, head, (ws) => accepted.attach(ws));
+});
 ```
+
+Keep serving `existingThreadHost.fetch` at `/stream` and `/frames` while older
+Tress CLI releases may still connect over HTTP. Current clients attach over the
+WebSocket only.
 
 `existingThreadHost`, `app`, and `threadId` come from your app.
 Resolve the thread and its owner before selecting the host. Do not create a
@@ -89,11 +95,11 @@ transport to the server in step 2, update only the runtime/provider wiring:
 ```tsx
 import { AuiConfig, AuiProvider } from "@assistant-ui/react";
 import { HarnessThread } from "@assistant-ui/react-harness-sdk";
-import { StatewireHttp } from "statewire";
+import { StatewireWebsocket } from "statewire";
 
 const config = AuiConfig({
   thread: HarnessThread({
-    transport: StatewireHttp({ url: "/api/threads/main" }),
+    transport: StatewireWebsocket({ url: "/api/threads/main" }),
   }),
 });
 
@@ -103,7 +109,8 @@ export function Assistant() {
 ```
 
 For dynamic conversations, scope the provider and endpoint to the selected
-thread. Browser requests use the application's existing same-origin session.
+thread. The browser dials `/api/threads/main/ws` and sends its same-origin
+session cookie on the upgrade.
 
 ## 4. Make the app discoverable and connect
 
@@ -121,7 +128,7 @@ Point `threads` at the app's authorized Harness thread-list transport
 (`harness-sdk-threads`, version `2026-09-13`). Return all conversations this
 credential permits, including archived ones. Reuse your existing index and
 storage. Point `thread` at the corresponding server-owned Harness hosts.
-Both endpoints serve Statewire `/stream` and `/frames` on the same app origin.
+Both endpoints serve Statewire's WebSocket at `/ws` on the same app origin.
 Filter the list by the authenticated user and check each thread independently.
 The [source integration guide](https://github.com/assistant-ui/tress/blob/main/docs/terminal-integration.md)
 specifies the manifest and ID constraints; the example server demonstrates it.
