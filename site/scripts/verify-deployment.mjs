@@ -52,6 +52,19 @@ try {
   assert.match(stdout, /200 \/docs\/production/);
   process.stdout.write(stdout);
   console.log("Isolated Vercel function serves the app and docs without checkout dependencies.");
+  // Sockets need network access and session storage, so this runs without the
+  // filesystem permission model, still from the isolated copy.
+  const sockets = await promisify(execFile)(process.execPath, [
+    resolve("scripts/verify-vercel-socket.mjs"), temporary,
+  ], {
+    cwd: temporary,
+    env: {
+      PATH: process.env.PATH, NODE_ENV: "production", NODE_PATH: "",
+      TRESS_WORKSPACE: "memory", TRESS_SESSION_DIR: join(temporary, ".sessions"),
+    },
+    timeout: 30_000,
+  });
+  process.stdout.write(sockets.stdout);
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

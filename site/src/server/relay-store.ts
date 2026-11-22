@@ -5,7 +5,8 @@ import type { ThreadState } from "../lib/thread";
 type ClientRecord = StatewireHostInternal.ClientRecord;
 type Client = ThreadState["clients"][number];
 
-/** Routes a frame to the function invocation holding its SSE connection. */
+/** Shares presence, files and reconnect journals across function instances,
+ * and routes a legacy SSE client's frames to the invocation holding its stream. */
 export const createRelayStore = (pool: Pool) => ({
   async files(scope: string) {
     const { rows } = await pool.query(

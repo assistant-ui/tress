@@ -8,8 +8,9 @@ import { resource, useResource } from "@assistant-ui/tap";
 import { Harness } from "harness-sdk";
 import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
 import { useUIMessageTransport } from "harness-sdk/ui-transport";
-import { StatewireSocketHost } from "statewire/host-internal";
-import { StatewireClient, StatewireHttp } from "statewire";
+import { clientIdFromUrl, StatewireSocketHost } from "statewire/host-internal";
+import { StatewireClient, StatewireWebsocket } from "statewire";
+import { serveSocketHosts } from "./socket-hosts.mjs";
 
 const database =
   process.env.TRESS_RELAY_TEST_DATABASE_URL ?? process.env.TRESS_DATABASE_URL;
@@ -23,7 +24,7 @@ const wait = async (predicate, label) => {
 };
 
 test(
-  "separate serverless workers share commands, presence, history and reconnect journals",
+  "separate serverless workers share commands, presence, history and reconnect journals; legacy SSE frames route to their stream",
   { skip: !database },
   async (t) => {
     process.env.NODE_ENV = "test";
@@ -53,8 +54,10 @@ test(
       createManagedGateway,
       workspaceFiles,
       relayStream,
+      relaySocket,
       relayFrames,
     } = await import(output.href);
+    const sockets = await serveSocketHosts();
     const { createBashWorkspace } = await import("@tress/workspaces/just-bash");
     const fullFiles = {
       ".hidden.md": "persist",
@@ -82,6 +85,7 @@ test(
     const calls = [];
     t.after(async () => {
       clients.forEach((client) => client.dispose());
+      await sockets.close();
       await Promise.all(gateways.map((gateway) => gateway.drain()));
       gateways.forEach((gateway) => gateway.dispose());
       cloudHosts.forEach((host) => host.dispose());
@@ -109,21 +113,7 @@ test(
     };
     const session = await newSession();
     const other = await newSession();
-    const cloudTransport = (host) =>
-      StatewireHttp({
-        url: "http://cloud.test/thread",
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-          if (request.url.endsWith("/frames")) return host.frames(request);
-          const response = await host.stream(request);
-          return new Response(
-            response.body.pipeThrough(new TransformStream(), {
-              signal: init.signal,
-            }),
-            { status: response.status, headers: response.headers },
-          );
-        },
-      });
+    const cloudTransport = (host) => StatewireWebsocket({ url: sockets.url(host) });
     const factory = (threadId) => {
       if (!cloudHosts.has(threadId)) {
         const open = async () => {
@@ -185,59 +175,49 @@ test(
         transport: cloudTransport(cloudHosts.get(threadId)),
       });
     };
+    const currentSession = async () => ({
+      ...session,
+      thread: await registry.get(session.thread.accessHash),
+    });
+    const openGateway = (current) => async (persistence) => {
+      const gateway = await createManagedGateway(
+        {
+          kind: "cloud",
+          origin: "https://cloud.test",
+          workspaceId: "test",
+          initialThreadId: current.thread.harnessThreadId,
+          backendUrl: "http://localhost/api/chat",
+        },
+        factory,
+        {
+          scope: current.thread.id,
+          threadId: current.thread.harnessThreadId,
+          selectThread: (id) => storeA.selectThread(current.thread.id, id),
+        },
+        persistence,
+      );
+      gateways.push(gateway);
+      return gateway;
+    };
     let attaches = 0;
-    let lease;
-    const transport = (lifetime = 60000) =>
-      StatewireHttp({
-        url: "http://two-workers.test/thread",
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-          const current = {
-            ...session,
-            thread: await registry.get(session.thread.accessHash),
-          };
-          // All POSTs go to worker B, even though worker A owns the live stream.
-          if (request.url.endsWith("/frames"))
-            return relayFrames(request, current, storeB);
+    // Each client's socket lives on its own worker; commands ride on it.
+    const transport = (store, lifetime = 60000) =>
+      StatewireWebsocket({
+        url: sockets.accept(async (request) => {
           attaches++;
-          const response = await relayStream(
+          const current = await currentSession();
+          return relaySocket(
             request,
+            clientIdFromUrl(request.url),
             current,
-            storeA,
-            async (persistence) => {
-              const gateway = await createManagedGateway(
-                {
-                  kind: "cloud",
-                  origin: "https://cloud.test",
-                  workspaceId: "test",
-                  initialThreadId: current.thread.harnessThreadId,
-                  backendUrl: "http://localhost/api/chat",
-                },
-                factory,
-                {
-                  scope: current.thread.id,
-                  threadId: current.thread.harnessThreadId,
-                  selectThread: (id) =>
-                    storeA.selectThread(current.thread.id, id),
-                },
-                persistence,
-              );
-              gateways.push(gateway);
-              return gateway;
-            },
+            store,
+            openGateway(current),
             lifetime,
           );
-          lease = response.headers.get("Statewire-Lease");
-          return new Response(
-            response.body.pipeThrough(new TransformStream(), {
-              signal: init.signal,
-            }),
-            { status: response.status, headers: response.headers },
-          );
-        },
+        }),
       });
-    const browser = new StatewireClient({ transport: transport(5500) });
-    const terminal = new StatewireClient({ transport: transport() });
+    const browser = new StatewireClient({ transport: transport(storeA, 5500) });
+    const terminal = new StatewireClient({ transport: transport(storeB) });
     clients.push(browser, terminal);
     await wait(
       () =>
@@ -268,6 +248,47 @@ test(
       "stored files are separate from visible previews",
     );
 
+    // Released `tress` binaries still attach over SSE, and their frames may
+    // reach any instance: worker B must route them to worker A's stream.
+    const legacyAbort = new AbortController();
+    const current = await currentSession();
+    const legacy = await relayStream(
+      new Request("http://two-workers.test/thread/stream", {
+        headers: {
+          Accept: "text/event-stream",
+          "Statewire-Client-Id": "legacy-cli",
+          "Statewire-Version": '"2026-09-13"',
+          "Statewire-Protocol": "*",
+        },
+        signal: legacyAbort.signal,
+      }),
+      current,
+      storeA,
+      openGateway(current),
+    );
+    if (legacy.status !== 200) assert.fail(await legacy.text());
+    const lease = legacy.headers.get("Statewire-Lease");
+    const reader = legacy.body.getReader();
+    void (async () => {
+      while (!(await reader.read()).done);
+    })().catch(() => {});
+    await wait(
+      () => browser.state?.clients.length === 3,
+      "legacy client presence",
+    );
+    const routed = await relayFrames(
+      new Request("http://test/frames", {
+        method: "POST",
+        headers: { "Statewire-Lease": lease },
+        // An empty prompt is admitted, then refused by the thread without a run.
+        body: JSON.stringify({
+          cmd: [{ seq: 1, protocol: "default", method: "send", params: [""] }],
+        }),
+      }),
+      current,
+      storeB,
+    );
+    assert.notEqual(routed.status, 423, "the owning stream answers the frame");
     const denied = await relayFrames(
       new Request("http://test/frames", {
         method: "POST",
@@ -278,6 +299,12 @@ test(
       storeB,
     );
     assert.equal(denied.status, 423, "another session cannot use this lease");
+    legacyAbort.abort();
+    await reader.cancel().catch(() => {});
+    await wait(
+      () => browser.state?.clients.length === 2,
+      "legacy client leaves presence",
+    );
 
     const before = attaches;
     await wait(

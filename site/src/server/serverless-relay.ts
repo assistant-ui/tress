@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { waitUntil } from "@vercel/functions";
+import { textFrameOrClose } from "statewire/host-internal";
 import type { StatewireHostInternal } from "statewire/host-internal";
 import {
   accessHash,
@@ -11,6 +12,7 @@ import { threadMode } from "./config";
 import { createManagedGateway } from "./managed";
 import { describeClient } from "./presence";
 import { relayStore, type RelayStore } from "./relay-store";
+import type { AttachSocket, ThreadSocket } from "./thread-socket";
 
 const LEASE = "Statewire-Lease";
 const stale = () => Response.json({ error: "stale-lease" }, { status: 423 });
@@ -19,7 +21,8 @@ type OpenGateway = (
   persistence: StatewireHostInternal.SocketHostPersistence,
 ) => Promise<Gateway>;
 
-/** Exported separately so two independent workers can be exercised in integration tests. */
+/** Legacy SSE attach (released `tress` binaries). Exported separately so two
+ * independent workers can be exercised in integration tests. */
 export async function relayStream(
   request: Request,
   session: DemoSession,
@@ -166,6 +169,138 @@ export async function relayStream(
   }
 }
 
+/**
+ * One WebSocket client on this invocation. Commands ride on the socket, so no
+ * frame routing is needed; Postgres still carries presence, files and the
+ * client's reconnect journal across instances. A `fin: reconnect` hands the
+ * client to a fresh invocation before the platform's 300 s limit.
+ */
+export async function relaySocket(
+  request: Request,
+  clientId: string,
+  session: DemoSession,
+  store: RelayStore,
+  open: OpenGateway,
+  lifetimeMs = 210_000,
+): Promise<AttachSocket> {
+  const lease = accessHash(randomBytes(24).toString("base64url"));
+  const scope = session.thread.id;
+  const client = describeClient(clientId, request);
+  const headers = Object.fromEntries(request.headers);
+  return (socket) => {
+    let saves = Promise.resolve();
+    let outgoing = Promise.resolve();
+    let gateway: Gateway | undefined;
+    let connection: StatewireHostInternal.SocketConnection | null = null;
+    let closed = false;
+    let cleanup: Promise<void> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cancelled = new AbortController();
+    const early: { data: unknown }[] = [];
+    // Persist admission watermarks before a packet can acknowledge a command.
+    const ordered: ThreadSocket = {
+      send(data) {
+        const persisted = saves;
+        outgoing = outgoing
+          .then(() => persisted)
+          .then(() => socket.send(data))
+          .catch(() => {});
+      },
+      close(code, reason) {
+        outgoing = outgoing.then(() => socket.close(code, reason));
+      },
+      onmessage: null,
+      onclose: null,
+    };
+    const ready = (async () => {
+      const record = await store.connect(scope, client, lease);
+      if (closed) return undefined;
+      return open({
+        clientRecords: record ? [record] : [],
+        onClientRecordsChange(records) {
+          const current = records.find((entry) => entry.id === clientId);
+          if (!current) return;
+          const snapshot = structuredClone(current);
+          saves = saves.then(() => store.save(scope, clientId, lease, snapshot));
+          void saves.catch(() => stop());
+        },
+      });
+    })();
+    const stop = () => {
+      if (cleanup) return cleanup;
+      closed = true;
+      clearTimeout(timer);
+      cancelled.abort();
+      if (connection) gateway?.host.finish({ reason: "reconnect" });
+      else ordered.close(1012, "reconnect");
+      cleanup = (async () => {
+        const opened = await ready.catch(() => undefined);
+        try {
+          await store.release(lease);
+          // A disconnected observer must not interrupt a submitted cloud run.
+          await opened?.drain();
+          await saves;
+        } finally {
+          opened?.dispose();
+        }
+      })().catch((error) => {
+        if (error.message !== "Connection superseded.")
+          console.error("Relay cleanup:", error.message);
+      });
+      if (process.env.VERCEL) waitUntil(cleanup);
+      return cleanup;
+    };
+    const deliver = ({ data }: { data: unknown }) => {
+      const text = textFrameOrClose(ordered, data);
+      if (text !== null) connection?.message(text);
+    };
+    socket.onmessage = (event) => {
+      if (connection) deliver(event);
+      else if (!closed) early.push(event);
+    };
+    socket.onclose = () => {
+      connection?.close();
+      void stop();
+    };
+    const heartbeat = async () => {
+      while (!closed) {
+        const presence = await store.heartbeat(scope, lease);
+        if (
+          !presence ||
+          presence.harness_thread_id !== gateway!.info().threadId
+        )
+          return void stop();
+        gateway!.presence.setRemote(presence.clients);
+        if (presence.files) gateway!.setFiles(presence.files);
+        await delay(3000, undefined, { signal: cancelled.signal });
+      }
+    };
+    ready.then(
+      (opened) => {
+        if (!opened || closed) return;
+        gateway = opened;
+        connection = opened.host.connect(clientId, ordered, { headers });
+        if (!connection) return void stop();
+        for (const event of early.splice(0)) deliver(event);
+        timer = setTimeout(stop, lifetimeMs);
+        void heartbeat().catch((error) => {
+          if (!closed) console.error("Relay connection:", error.message);
+          void stop();
+        });
+      },
+      (error) => {
+        console.error("Relay connection:", error.message);
+        ordered.send(
+          JSON.stringify({
+            fin: { reason: "error", message: "The thread host is unavailable." },
+          }),
+        );
+        void stop();
+      },
+    );
+  };
+}
+
 export async function relayFrames(
   request: Request,
   session: DemoSession,
@@ -202,7 +337,7 @@ export async function relayFrames(
   return stale();
 }
 
-export const serverlessStream = async (request: Request) => {
+const serverlessSession = async (request: Request) => {
   const session = await resolveDemoSession(request);
   const mode = threadMode(request.url);
   if (!session || mode.kind !== "cloud")
@@ -211,7 +346,7 @@ export const serverlessStream = async (request: Request) => {
     );
   const backendUrl = new URL(mode.backendUrl);
   backendUrl.searchParams.set("session", session.token);
-  return relayStream(request, session, relayStore(), (persistence) =>
+  const open: OpenGateway = (persistence) =>
     createManagedGateway(
       { ...mode, backendUrl: backendUrl.href },
       undefined,
@@ -221,8 +356,19 @@ export const serverlessStream = async (request: Request) => {
         selectThread: (id) => relayStore().selectThread(session.thread.id, id),
       },
       persistence,
-    ),
-  );
+    );
+  return { session, open };
+};
+
+/** Legacy SSE clients (released `tress` binaries); browsers use WebSockets. */
+export const serverlessStream = async (request: Request) => {
+  const { session, open } = await serverlessSession(request);
+  return relayStream(request, session, relayStore(), open);
+};
+
+export const serverlessSocket = async (request: Request, clientId: string) => {
+  const { session, open } = await serverlessSession(request);
+  return relaySocket(request, clientId, session, relayStore(), open);
 };
 
 export const serverlessFrames = async (request: Request) => {

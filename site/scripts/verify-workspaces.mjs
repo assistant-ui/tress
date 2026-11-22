@@ -8,7 +8,7 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { StatewireClient, StatewireHttp } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire";
 import { readUIMessageStream } from "ai";
 
 const development = process.argv.includes("--dev");
@@ -134,7 +134,7 @@ try {
     assert.equal(config.workspace.mode, mode);
     const attach = async () => {
       const client = new StatewireClient({
-        transport: StatewireHttp({ url: `${url}/api/thread` }),
+        transport: StatewireWebsocket({ url: `${url}/api/thread` }),
       });
       clients.push(client);
       await waitFor(

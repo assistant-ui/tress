@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { StatewireClient, StatewireHttp } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire";
 import type { ThreadCommands, ThreadState } from "../lib/thread";
 import { observeDemoConfig, type DemoConfig } from "../lib/demo-config";
 import { demoPage } from "../lib/demo-page";
@@ -193,7 +193,7 @@ export function Thread({
       ThreadState | undefined,
       ThreadCommands
     >({
-      transport: StatewireHttp({ url: clientUrl }),
+      transport: StatewireWebsocket({ url: clientUrl }),
     });
     client.current = current;
     const sync = () => {
