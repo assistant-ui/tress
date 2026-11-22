@@ -17,6 +17,7 @@ import { createLocalHarnessHost, createTressTransport } from "./index.mjs";
 import { createManagedHarnessHost } from "./managed.mjs";
 import { fileStorage } from "./storage.mjs";
 import { machineWorkspace } from "./workspace.mjs";
+import { serveWebSockets } from "./websocket.mjs";
 
 const equal = (a, b) =>
   typeof a === "string" &&
@@ -55,6 +56,12 @@ export async function startMachineHost(options) {
       binding,
       token: randomBytes(32).toString("hex"),
       backendToken: randomBytes(32).toString("hex"),
+    };
+    // Browsers can't set headers on a WebSocket: the token arrives in the
+    // socket's first frame, which Statewire hands to `authorize`.
+    const authorize = ({ headers }) => {
+      if (!equal(headers.authorization, `Bearer ${saved.token}`))
+        throw new Response("Unauthorized", { status: 401 });
     };
     const workspace = await machineWorkspace({
       root,
@@ -191,6 +198,16 @@ export async function startMachineHost(options) {
       }
       return new Response("Not found", { status: 404 });
     };
+    const upgrade = async (request) => {
+      if (request.headers.get("host") !== new URL(origin).host)
+        return new Response("Invalid host", { status: 403 });
+      const requestOrigin = request.headers.get("origin");
+      if (requestOrigin && requestOrigin !== origin)
+        return new Response("Origin denied", { status: 403 });
+      if (new URL(request.url).pathname !== "/api/threads/main/ws")
+        return new Response("Not found", { status: 404 });
+      return thread.upgrade(request);
+    };
     server = createServer(async (incoming, outgoing) => {
       const abort = new AbortController();
       outgoing.on("close", () => abort.abort());
@@ -247,13 +264,16 @@ export async function startMachineHost(options) {
       ? createManagedHarnessHost({
           ...options.cloud,
           url: `${origin}/agent/${saved.backendToken}`,
+          authorize,
         })
       : createLocalHarnessHost({
           threadId: "main",
           transport,
           storage: fileStorage(join(directory, "thread.json")),
+          authorize,
           onError: options.onError,
         });
+    const sockets = serveWebSockets(server, { origin, upgrade });
     await fileStorage(join(directory, "headers.json")).save({
       Authorization: `Bearer ${saved.token}`,
     });
@@ -265,6 +285,7 @@ export async function startMachineHost(options) {
         try {
           await thread.close();
         } finally {
+          sockets.close();
           server.closeAllConnections();
           await new Promise((resolve) => server.close(resolve));
           await release();

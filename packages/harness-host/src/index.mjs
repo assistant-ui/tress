@@ -9,6 +9,7 @@ export function createLocalHarnessHost({
   threadId,
   transport,
   storage,
+  authorize,
   onError = console.error,
 }) {
   let instance;
@@ -55,6 +56,7 @@ export function createLocalHarnessHost({
     transport: (restored) => Captured({ restored }),
     storage: { load: storage.load, save },
     persistDebounceMs: 0,
+    ...(authorize && { authorize }),
     onError: (error) => {
       storageError = error;
       onError(error);
@@ -68,6 +70,15 @@ export function createLocalHarnessHost({
           { status: 503 },
         );
       return host.fetch(request);
+    },
+    /** Accept `…/ws` upgrades; `authorize({ headers })` sees the first frame's headers. */
+    async upgrade(request) {
+      if (storageError)
+        return new Response(
+          "Harness storage unavailable; restart after repairing storage.",
+          { status: 503 },
+        );
+      return host.upgrade(request);
     },
     flush,
     async close() {
