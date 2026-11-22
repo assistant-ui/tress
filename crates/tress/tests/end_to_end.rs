@@ -94,12 +94,7 @@ fn tool_reply(name: &str, input: serde_json::Value) -> String {
 }
 
 fn binary() -> PathBuf {
-    let mut path = std::env::current_exe().expect("test binary path");
-    path.pop();
-    if path.ends_with("deps") {
-        path.pop();
-    }
-    path.join("tress")
+    PathBuf::from(env!("CARGO_BIN_EXE_tress"))
 }
 
 struct Scratch(PathBuf);
