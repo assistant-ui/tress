@@ -361,6 +361,10 @@ test("machine host stores real files and denies unauthenticated and escaped read
     const headers = JSON.parse(await readFile(host.headersFile, "utf8"));
     assert.equal((await fetch(`${host.origin}/api/info`)).status, 401);
     assert.equal(
+      (await (await fetch(`${host.origin}/api/info`, { headers })).json()).websocket,
+      "/api/threads/main/ws",
+    );
+    assert.equal(
       (
         await fetch(`${host.origin}/api/info`, {
           headers: { ...headers, Origin: "https://evil.example" },

@@ -136,6 +136,9 @@ export async function startMachineHost(options) {
         return json({
           ...binding,
           headersFile: join(directory, "headers.json"),
+          // Clients use this to tell a host that serves Statewire WebSockets
+          // from one started by an older release (HTTP/SSE only).
+          websocket: "/api/threads/main/ws",
           model: options.model,
           allowWrite: !!options.allowWrite,
           allowExec: !!options.allowExec,
