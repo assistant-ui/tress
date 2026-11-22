@@ -43,6 +43,7 @@ export type AccessOptions = {
 type Attachment = { grant: AccessGrant; stop(): void };
 const fin = (reason: "unauthorized" | "forbidden", message: string) =>
   JSON.stringify({ fin: { reason, message } });
+const MAX_QUEUED_FRAMES = 64;
 const denied = () => new Response("Connection is not authorized", { status: 403 });
 const encoder = new TextEncoder();
 const revokedFrame = encoder.encode(
@@ -70,11 +71,11 @@ export function createTressAccess(options: AccessOptions) {
     !revoked.has(grant.connectionId);
   const same = (a: AccessGrant, b: AccessGrant) =>
     a.subject === b.subject && a.connectionId === b.connectionId;
-  const authorize = async (request: Request) => {
-    const grant = await options.authorize({
-      request,
-      action: request.method === "GET" ? "read" : "write",
-    });
+  const authorize = async (
+    request: Request,
+    action: "read" | "write" = request.method === "GET" ? "read" : "write",
+  ) => {
+    const grant = await options.authorize({ request, action });
     if (!valid(grant)) throw denied();
     return grant;
   };
@@ -239,25 +240,15 @@ export function createTressAccess(options: AccessOptions) {
         const admit = async (data: unknown) => {
           let headers: Headers;
           try {
-            const first = JSON.parse(String(data)) as { headers?: unknown };
-            const offered = first.headers;
-            if (
-              typeof offered !== "object" || offered === null ||
-              Object.values(offered).some((value) => typeof value !== "string")
-            )
-              throw new TypeError("malformed headers");
-            headers = new Headers(offered as Record<string, string>);
+            const first = JSON.parse(String(data)) as { headers?: HeadersInit };
+            headers = new Headers(first.headers);
             request.headers.forEach((value, name) => headers.set(name, value));
           } catch {
             return end(1008);
           }
           let grant: AccessGrant;
           try {
-            grant = await options.authorize({
-              request: new Request(request.url, { headers }),
-              action: "write",
-            });
-            if (!valid(grant)) throw denied();
+            grant = await authorize(new Request(request.url, { headers }), "write");
           } catch (error) {
             const forbidden = error instanceof Response && error.status === 403;
             return end(1008, forbidden
@@ -285,7 +276,10 @@ export function createTressAccess(options: AccessOptions) {
           if (state === "waiting") {
             state = "authorizing";
             void admit(data);
-          } else if (state === "authorizing") queued.push(data);
+          } else if (state === "authorizing") {
+            if (queued.length >= MAX_QUEUED_FRAMES) return end(1013);
+            queued.push(data);
+          }
           else if (!valid(attachment!.grant)) attachment!.stop();
           else inner.onmessage?.({ data });
         };
