@@ -44,6 +44,7 @@ type Attachment = { grant: AccessGrant; stop(): void };
 const fin = (reason: "unauthorized" | "forbidden", message: string) =>
   JSON.stringify({ fin: { reason, message } });
 const MAX_QUEUED_FRAMES = 64;
+const AUTHORIZE_TIMEOUT_MS = 10_000;
 const denied = () => new Response("Connection is not authorized", { status: 403 });
 const encoder = new TextEncoder();
 const revokedFrame = encoder.encode(
@@ -256,6 +257,7 @@ export function createTressAccess(options: AccessOptions) {
               : fin("unauthorized", "unauthorized"));
           }
           if (state === "closed") return;
+          clearTimeout(timer);
           attachment = { grant, stop: () => end(1008, fin("forbidden", "Application access ended")) };
           attachments.add(attachment);
           const expire = () => {
@@ -275,6 +277,9 @@ export function createTressAccess(options: AccessOptions) {
             return end(1009);
           if (state === "waiting") {
             state = "authorizing";
+            // An application authorize that never settles must not hold the socket.
+            timer = setTimeout(() => end(1008, fin("unauthorized", "Authorization timed out")), AUTHORIZE_TIMEOUT_MS);
+            (timer as { unref?: () => void }).unref?.();
             void admit(data);
           } else if (state === "authorizing") {
             if (queued.length >= MAX_QUEUED_FRAMES) return end(1013);

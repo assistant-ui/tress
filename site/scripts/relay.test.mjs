@@ -364,3 +364,45 @@ test(
     assert.equal(calls.length, 3);
   },
 );
+
+test("a socket that floods frames before the thread host is ready is refused", async () => {
+  const output = new URL(
+    `../.tress/relay-cap-test-${process.pid}.mjs`,
+    import.meta.url,
+  );
+  await build({
+    entryPoints: [new URL("../src/server/serverless-relay.ts", import.meta.url).pathname],
+    outfile: output.pathname,
+    bundle: true,
+    packages: "external",
+    platform: "node",
+    format: "esm",
+  });
+  try {
+    const { relaySocket } = await import(output.href);
+    const store = { connect: () => new Promise(() => {}) };
+    const attach = await relaySocket(
+      new Request("http://test/thread/ws?client=c1"),
+      "c1",
+      { thread: { id: "thread-1" } },
+      store,
+      () => assert.fail("the gateway must not open"),
+    );
+    const sent = [];
+    const closes = [];
+    const socket = {
+      send: (data) => sent.push(JSON.parse(data)),
+      close: (code) => closes.push(code),
+      onmessage: null,
+      onclose: null,
+    };
+    attach(socket);
+    for (let i = 0; i <= 64; i++) socket.onmessage({ data: "{}" });
+    await wait(() => closes.length > 0, "the flooded socket closes");
+    assert.equal(sent[0].fin.code, "overloaded");
+    assert.equal(sent[0].fin.reason, "reconnect");
+    assert.deepEqual(closes, [1012]);
+  } finally {
+    await rm(output, { force: true });
+  }
+});
