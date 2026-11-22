@@ -8,13 +8,15 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { Harness } from "harness-sdk";
 import { createTressClient } from "@tress/client";
-import { StatewireHttp } from "statewire";
+import { StatewireWebsocket } from "statewire";
 import { DefaultChatTransport } from "ai";
 import { createBashWorkspace } from "@tress/workspaces/just-bash";
 import { createLocalHarnessHost, createTressTransport } from "../src/index.mjs";
 import { fileStorage } from "../src/storage.mjs";
 import { createManagedHarnessHost } from "../src/managed.mjs";
 import { startMachineHost } from "../src/server.mjs";
+import { serveWebSockets } from "../src/websocket.mjs";
+import { WebSocket as WsClient } from "ws";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -31,7 +33,7 @@ export async function until(check) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
-export async function http(handler) {
+export async function http(handler, upgrade) {
   const server = createServer(async (req, res) => {
     const abort = new AbortController();
     res.on("close", () => abort.abort());
@@ -57,9 +59,12 @@ export async function http(handler) {
     }
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const sockets = upgrade && serveWebSockets(server, { origin: url, upgrade });
   return {
-    url: `http://127.0.0.1:${server.address().port}`,
+    url,
     async close() {
+      sockets?.close();
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
     },
@@ -133,8 +138,8 @@ test("Harness owns the Rust/WASM conversation across clients and host restarts",
         tools: { include: ["read", "write"] },
       }),
     });
-    const server = await http((req) => host.fetch(req));
-    const a = new Harness({ transport: StatewireHttp({ url: server.url }) });
+    const server = await http(host.fetch, host.upgrade);
+    const a = new Harness({ transport: StatewireWebsocket({ url: server.url }) });
     const b = createTressClient({ url: server.url });
     await until(() => !a.isLoading && !b.isLoading);
     return {
@@ -199,8 +204,8 @@ test("a failed durable write prevents model execution", async () => {
       },
     },
   });
-  const server = await http((req) => host.fetch(req));
-  const client = new Harness({ transport: StatewireHttp({ url: server.url }) });
+  const server = await http(host.fetch, host.upgrade);
+  const client = new Harness({ transport: StatewireWebsocket({ url: server.url }) });
   try {
     await until(() => !client.isLoading);
     await client.sendMessage("write").catch(() => {});
@@ -213,7 +218,25 @@ test("a failed durable write prevents model execution", async () => {
   }
 });
 
-test("managed Harness uses the SDK and forwards only host credentials", async (t) => {
+// Sends cloud thread sockets (wss://fixture.harness.test/threads/…/ws) to a
+// local fixture host; other URLs dial normally.
+const NativeWebSocket = globalThis.WebSocket;
+function fixtureCloud(url) {
+  return class FixtureSocket extends NativeWebSocket {
+    constructor(target, protocols) {
+      const parsed = new URL(target);
+      if (parsed.host !== "fixture.harness.test") {
+        super(target, protocols);
+        return;
+      }
+      assert.equal(parsed.protocol, "wss:");
+      assert.match(parsed.pathname, /^\/threads\/fixture~managed-thread\/ws$/);
+      super(`${url.replace(/^http/, "ws")}${parsed.pathname}${parsed.search}`, protocols);
+    }
+  };
+}
+
+test("managed Harness reaches the cloud over WebSockets with only host credentials", async (t) => {
   const model = await http(
     async () =>
       new Response(sse({ type: "text", text: "Managed reply" }), {
@@ -222,6 +245,7 @@ test("managed Harness uses the SDK and forwards only host credentials", async (t
   );
   t.after(model.close);
   let saved;
+  const seen = [];
   const remote = createLocalHarnessHost({
     threadId: "managed-thread",
     storage: {
@@ -230,6 +254,11 @@ test("managed Harness uses the SDK and forwards only host credentials", async (t
         saved = value;
       },
     },
+    authorize: ({ headers }) => {
+      seen.push(headers);
+      if (headers.authorization !== "Bearer server-only-key")
+        throw new Response(null, { status: 401 });
+    },
     transport: createTressTransport({
       Session: TressHostSession,
       workspace: createBashWorkspace(),
@@ -237,31 +266,25 @@ test("managed Harness uses the SDK and forwards only host credentials", async (t
       model: "fixture",
     }),
   });
-  let requests = 0;
+  const cloud = await http(remote.fetch, remote.upgrade);
+  // HarnessCloud dials the global constructor; the relay takes its own.
+  const FixtureSocket = fixtureCloud(cloud.url);
+  globalThis.WebSocket = FixtureSocket;
   const managed = createManagedHarnessHost({
     origin: "https://fixture.harness.test",
     workspaceId: "workspace",
     threadId: "managed-thread",
     credential: async () => "server-only-key",
-    fetch: async (input, init) => {
-      const request = new Request(input, init);
-      assert.match(
-        request.url,
-        /^https:\/\/fixture.harness.test\/threads\/fixture~managed-thread\//,
-      );
-      assert.equal(
-        request.headers.get("authorization"),
-        "Bearer server-only-key",
-      );
-      assert.equal(request.headers.get("aui-workspace-id"), "workspace");
-      assert.equal(request.headers.get("cookie"), null);
-      requests++;
-      return remote.fetch(request);
+    webSocket: FixtureSocket,
+    authorize: ({ headers }) => {
+      if (headers.authorization !== "Bearer browser-key")
+        throw new Response(null, { status: 401 });
     },
+    fetch: async () => assert.fail("the managed host must not use HTTP"),
   });
-  const server = await http((req) => managed.fetch(req));
+  const server = await http(managed.fetch, managed.upgrade);
   const browser = new Harness({
-    transport: StatewireHttp({
+    transport: StatewireWebsocket({
       url: server.url,
       headers: {
         Authorization: "Bearer browser-key",
@@ -269,15 +292,27 @@ test("managed Harness uses the SDK and forwards only host credentials", async (t
       },
     }),
   });
+  const intruder = new Harness({
+    transport: StatewireWebsocket({
+      url: server.url,
+      headers: { Authorization: "Bearer wrong-key" },
+    }),
+  });
   try {
     await until(() => !managed.client.isLoading && !browser.isLoading).catch(
       (error) => {
         throw new Error(
-          `${error.message}: managed=${managed.client.transport.status}/${managed.client.transport.error?.message}, browser=${browser.transport.status}/${browser.transport.error?.message}, requests=${requests}`,
+          `${error.message}: managed=${managed.client.transport.status}/${managed.client.transport.error?.message}, browser=${browser.transport.status}/${browser.transport.error?.message}, attaches=${seen.length}`,
         );
       },
     );
-    assert.ok(requests >= 2);
+    await until(() => intruder.transport.error);
+    assert.ok(seen.length >= 2);
+    for (const headers of seen) {
+      assert.equal(headers.authorization, "Bearer server-only-key");
+      assert.equal(headers["aui-workspace-id"], "workspace");
+      assert.equal(headers.cookie, undefined);
+    }
     assert.equal(browser.messages.length, 0);
     await browser.sendMessage("Hello from the interface");
     await until(
@@ -296,9 +331,12 @@ test("managed Harness uses the SDK and forwards only host credentials", async (t
     );
   } finally {
     browser.dispose();
+    intruder.dispose();
     await managed.close();
     await server.close();
     await remote.close();
+    await cloud.close();
+    globalThis.WebSocket = NativeWebSocket;
   }
 });
 
@@ -322,6 +360,10 @@ test("machine host stores real files and denies unauthenticated and escaped read
   try {
     const headers = JSON.parse(await readFile(host.headersFile, "utf8"));
     assert.equal((await fetch(`${host.origin}/api/info`)).status, 401);
+    assert.equal(
+      (await (await fetch(`${host.origin}/api/info`, { headers })).json()).websocket,
+      "/api/threads/main/ws",
+    );
     assert.equal(
       (
         await fetch(`${host.origin}/api/info`, {
@@ -354,6 +396,33 @@ test("machine host stores real files and denies unauthenticated and escaped read
       files.map((file) => file.name),
       ["artifact.bin"],
     );
+    // The token travels in a socket's first frame: a cross-origin upgrade is
+    // refused outright, and a wrong token is told it is unauthorized.
+    const dial = (headers) =>
+      new Promise((resolve, reject) => {
+        const ws = new WsClient(
+          `${host.origin.replace(/^http/, "ws")}/api/threads/main/ws?client=${"a".repeat(32)}`,
+          "statewire.v1",
+          { headers },
+        );
+        ws.on("unexpected-response", (_req, res) => resolve({ status: res.statusCode }));
+        ws.on("open", () =>
+          ws.send(JSON.stringify({ headers: { Authorization: "Bearer wrong" } })),
+        );
+        ws.on("message", (data) => {
+          resolve({ message: JSON.parse(String(data)) });
+          ws.close();
+        });
+        ws.on("error", reject);
+      });
+    assert.equal((await dial({ Origin: "https://evil.example" })).status, 403);
+    assert.equal((await dial({})).message.fin.reason, "unauthorized");
+    const browser = createTressClient({ url: host.endpoint, headers });
+    try {
+      await until(() => browser.transport.status === "connected");
+    } finally {
+      browser.dispose();
+    }
   } finally {
     await host.close();
   }
@@ -373,10 +442,14 @@ test(
     let controller;
     // Only the cloud socket is simulated: HarnessCloud's real tunnel code
     // fetches the real machine endpoint and returns its streamed response.
+    let FixtureSocket;
     class CloudSocket {
       OPEN = 1;
       readyState = 1;
-      constructor(url) {
+      constructor(url, protocols) {
+        // The thread's own socket reaches the real fixture host.
+        if (!String(url).endsWith("/tunnel"))
+          return new FixtureSocket(url, protocols);
         assert.equal(
           url,
           "wss://fixture.harness.test/threads/fixture~managed-thread/tunnel",
@@ -460,6 +533,8 @@ test(
         },
       }),
     });
+    const cloud = await http(remote.fetch, remote.upgrade);
+    FixtureSocket = fixtureCloud(cloud.url);
     let host;
     let browser;
     try {
@@ -476,7 +551,6 @@ test(
           workspaceId: "workspace",
           threadId: "managed-thread",
           credential: "server-only-key",
-          fetch: (url, init) => remote.fetch(new Request(url, init)),
         },
       });
       const headers = JSON.parse(await readFile(host.headersFile, "utf8"));
@@ -499,6 +573,7 @@ test(
       browser?.dispose();
       await host?.close();
       await remote.close();
+      await cloud.close();
       await model.close();
       globalThis.WebSocket = originalWebSocket;
       await rm(directory, { recursive: true, force: true });

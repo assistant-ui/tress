@@ -1,5 +1,5 @@
 import { Harness } from "harness-sdk";
-import { StatewireHttp } from "statewire";
+import { StatewireWebsocket } from "statewire";
 
 /** Structural types also accept an application's existing Harness instance. */
 export interface TressMessage {
@@ -30,17 +30,26 @@ export interface TressClient {
   dispose(): void;
 }
 export interface TressConnectionOptions {
-  /** Absolute URL in Node; same-origin relative paths also work in browsers. */
+  /** HTTP(S) thread endpoint; the client dials its `/ws` WebSocket. Absolute URL in Node; same-origin relative paths also work in browsers. */
   url: string;
-  /** Application-issued user credentials. Never put provider or Harness admin keys here. */
-  headers?: HeadersInit | (() => HeadersInit | Promise<HeadersInit>);
-  fetch?: typeof globalThis.fetch;
+  /**
+   * Application-issued user credentials. Never put provider or Harness admin keys here.
+   * They travel in the first WebSocket message of every attach, never in the URL.
+   * A function runs on every attach; `staleAuth` is true after the host refused the last ones.
+   */
+  headers?:
+    | HeadersInit
+    | ((context: {
+        staleAuth: boolean;
+      }) => HeadersInit | Promise<HeadersInit>);
+  /** WebSocket constructor; defaults to the global one (browsers, Node 22+). */
+  webSocket?: new (url: string, protocols?: string | string[]) => WebSocket;
 }
 
-/** Authenticate both the stream and command requests, including lease frames. */
-export function createTressFetch(
+/** Connect an interface to its existing host; this creates no agent or thread store. */
+export function createTressClient(
   options: TressConnectionOptions,
-): typeof globalThis.fetch {
+): TressClient {
   const endpoint = new URL(options.url, globalThis.location?.href);
   if (
     !["http:", "https:"].includes(endpoint.protocol) ||
@@ -52,49 +61,12 @@ export function createTressFetch(
     throw new Error(
       "Use an HTTP(S) thread endpoint without credentials, query, or fragment.",
     );
-  const root = endpoint.href.replace(/\/$/, "");
-  return async (input, init = {}) => {
-    const url = new URL(
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url,
-      globalThis.location?.href,
-    );
-    if (!url.href.startsWith(root + "/"))
-      throw new Error(
-        "Tress credentials are restricted to the configured thread endpoint.",
-      );
-    const headers = new Headers(
-      input instanceof Request ? input.headers : undefined,
-    );
-    new Headers(init.headers).forEach((value, name) =>
-      headers.set(name, value),
-    );
-    const configured =
-      typeof options.headers === "function"
-        ? await options.headers()
-        : options.headers;
-    new Headers(configured).forEach((value, name) => headers.set(name, value));
-    return (options.fetch ?? globalThis.fetch)(input, {
-      ...init,
-      headers,
-      credentials: "same-origin",
-      redirect: "error",
-    });
-  };
-}
-
-/** Connect an interface to its existing host; this creates no agent or thread store. */
-export function createTressClient(
-  options: TressConnectionOptions,
-): TressClient {
-  const url = new URL(options.url, globalThis.location?.href).href.replace(
-    /\/$/,
-    "",
-  );
+  const { headers, webSocket } = options;
   return new Harness({
-    transport: StatewireHttp({ url, fetch: createTressFetch(options) }),
+    transport: StatewireWebsocket({
+      url: endpoint.href.replace(/\/$/, ""),
+      ...(headers !== undefined && { headers }),
+      ...(webSocket !== undefined && { webSocket }),
+    }),
   });
 }

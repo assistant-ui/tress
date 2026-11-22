@@ -30,7 +30,7 @@ export interface TressThreadProps {
   client?: TressClient;
   url?: string;
   headers?: TressConnectionOptions["headers"];
-  fetch?: TressConnectionOptions["fetch"];
+  webSocket?: TressConnectionOptions["webSocket"];
   title?: string;
   model?: string;
   /** Safe command supplied by the app. Credentials belong in a private file. */
@@ -65,7 +65,7 @@ export function TressThread({
   client: supplied,
   url,
   headers,
-  fetch: fetcher,
+  webSocket,
   title,
   model,
   attachCommand,
@@ -87,7 +87,7 @@ export function TressThread({
     }
     setConnectionError("");
     try {
-      const current = createTressClient({ url, headers, fetch: fetcher });
+      const current = createTressClient({ url, headers, webSocket });
       setOwned(current);
       return () => {
         current.dispose();
@@ -98,7 +98,7 @@ export function TressThread({
         error instanceof Error ? error.message : String(error),
       );
     }
-  }, [supplied, url, headers, fetcher, generation]);
+  }, [supplied, url, headers, webSocket, generation]);
   const client = supplied ?? owned;
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY);
   useEffect(() => {

@@ -6,73 +6,62 @@ import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import postcss from "postcss";
-import { createTressFetch } from "../dist/index.js";
+import { createServer } from "node:http";
+import { WebSocketServer } from "ws";
+import { createTressClient } from "../dist/index.js";
 
-test("refreshes application credentials on stream and command/frame requests", async () => {
-  const requests = [];
-  let token = "first";
-  const fetcher = createTressFetch({
-    url: "https://app.example/api/threads/main",
-    headers: () => ({ Authorization: `Bearer ${token}` }),
-    fetch: async (url, init) => {
-      requests.push({ url, init });
-      return new Response();
+test("sends credentials in the first WebSocket frame and refreshes them after a refusal", async (t) => {
+  const attaches = [];
+  const server = createServer();
+  const sockets = new WebSocketServer({
+    server,
+    handleProtocols: (offered) => (offered.has("statewire.v1") ? "statewire.v1" : false),
+  });
+  sockets.on("connection", (socket, request) => {
+    socket.once("message", (data) => {
+      attaches.push({ url: request.url, auth: request.headers.authorization, frame: JSON.parse(String(data)) });
+      if (attaches.length === 1)
+        socket.send(JSON.stringify({ fin: { reason: "unauthorized", message: "unauthorized" } }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const calls = [];
+  const client = createTressClient({
+    url: `http://127.0.0.1:${server.address().port}/api/threads/main/`,
+    headers: ({ staleAuth }) => {
+      calls.push(staleAuth);
+      return { Authorization: `Bearer ${staleAuth ? "refreshed" : "first"}` };
     },
   });
-  await fetcher("https://app.example/api/threads/main/stream", {
-    headers: { Accept: "text/event-stream" },
+  t.after(async () => {
+    client.dispose();
+    for (const socket of sockets.clients) socket.terminate();
+    await new Promise((resolve) => server.close(resolve));
   });
-  token = "refreshed";
-  await fetcher(
-    new Request("https://app.example/api/threads/main/frames", {
-      headers: { "X-Request-ID": "request-1" },
-    }),
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    },
-  );
-  assert.equal(requests[0].init.headers.get("Authorization"), "Bearer first");
-  assert.equal(requests[0].init.headers.get("Accept"), "text/event-stream");
-  assert.equal(
-    requests[1].init.headers.get("Authorization"),
-    "Bearer refreshed",
-  );
-  assert.equal(requests[1].init.headers.get("X-Request-ID"), "request-1");
-  assert.equal(
-    requests[1].init.headers.get("Content-Type"),
-    "application/json",
-  );
-  assert.equal(requests[1].init.credentials, "same-origin");
-  assert.equal(requests[1].init.redirect, "error");
+  const deadline = Date.now() + 8000;
+  while (attaches.length < 2 && Date.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(attaches.length, 2);
+  assert.deepEqual(calls.slice(0, 2), [false, true]);
+  for (const attach of attaches) {
+    const url = new URL(attach.url, "http://host");
+    assert.equal(url.pathname, "/api/threads/main/ws");
+    assert.deepEqual([...url.searchParams.keys()], ["client"]);
+    assert.equal(attach.auth, undefined);
+  }
+  assert.equal(attaches[0].frame.headers.authorization, "Bearer first");
+  assert.equal(attaches[1].frame.headers.authorization, "Bearer refreshed");
 });
 
-test("does not forward credentials to other origins, threads, or redirects", async () => {
-  let fetched = false;
-  const fetcher = createTressFetch({
-    url: "https://app.example/api/threads/main/",
-    headers: { Authorization: "private" },
-    fetch: async () => {
-      fetched = true;
-      return new Response();
-    },
-  });
-  for (const url of [
-    "https://other.example/api/threads/main/stream",
-    "https://app.example/api/threads/main-other/stream",
-    "https://app.example/api/threads/main/../other/stream",
-    "http://app.example/api/threads/main/stream",
-  ])
-    await assert.rejects(fetcher(url), /restricted/);
-  assert.equal(fetched, false);
+test("rejects endpoints that would carry credentials or a query", () => {
   for (const url of [
     "file:///thread",
+    "ws://app.example/thread",
     "https://user:pass@app.example/thread",
     "https://app.example/thread?secret=key",
     "https://app.example/thread#key",
   ])
-    assert.throws(() => createTressFetch({ url }), /HTTP/);
+    assert.throws(() => createTressClient({ url }), /HTTP/);
 });
 
 test("embedded stylesheet is scoped and needs no external fonts or theme requests", async () => {
@@ -100,7 +89,7 @@ test("headless bundle imports in an isolated directory without React", async (t)
     [
       "--input-type=module",
       "-e",
-      'import { createTressClient, createTressFetch } from "./dist/index.js"; if (typeof createTressClient !== "function" || typeof createTressFetch !== "function") throw new Error("Missing exports");',
+      'import { createTressClient } from "./dist/index.js"; if (typeof createTressClient !== "function") throw new Error("Missing exports");',
     ],
     { cwd: directory },
   );
