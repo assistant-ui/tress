@@ -25,13 +25,12 @@ const refusalRoute = (fin) => async () => (socket) => {
   socket.close(1008, fin.reason);
 };
 
-export const serveSocketHosts = async () => {
-  const routes = new Map();
-  let next = 0;
+/** A Node `upgrade` listener: `accept(request)` returns a refusal Response,
+ * `attach(socket)`, or nothing (404). */
+export const socketUpgrades = (accept) => {
   const adapter = nodeAdapter({
     resolve: async (request) => {
-      const route = routes.get(new URL(request.url).pathname.split("/")[2]);
-      const attach = await route?.(request);
+      const attach = await accept(request);
       if (typeof attach !== "function")
         return { upgrade: () => attach ?? new Response(null, { status: 404 }) };
       let socket;
@@ -51,12 +50,25 @@ export const serveSocketHosts = async () => {
       };
     },
   });
+  const listener = (request, socket, head) =>
+    adapter.handleUpgrade(request, socket, head);
+  listener.closeAll = () => adapter.closeAll(1001, "shutdown", true);
+  return listener;
+};
+
+/** Serves `host` to every upgrade an existing server receives. */
+export const hostUpgrades = (host) => socketUpgrades(hostRoute(host));
+
+export const serveSocketHosts = async () => {
+  const routes = new Map();
+  let next = 0;
+  const upgrades = socketUpgrades((request) =>
+    routes.get(new URL(request.url).pathname.split("/")[2])?.(request),
+  );
   const server = createServer((_request, response) =>
     response.writeHead(404).end(),
   );
-  server.on("upgrade", (request, socket, head) =>
-    adapter.handleUpgrade(request, socket, head),
-  );
+  server.on("upgrade", upgrades);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const add = (route) => {
@@ -72,7 +84,7 @@ export const serveSocketHosts = async () => {
     /** A URL served by `accept(request)`: a refusal Response or `attach(socket)`. */
     accept: (accept) => add(accept),
     close: async () => {
-      adapter.closeAll(1001, "shutdown", true);
+      upgrades.closeAll();
       server.closeAllConnections();
       server.close();
       await once(server, "close");

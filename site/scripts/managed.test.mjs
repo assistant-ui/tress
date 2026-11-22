@@ -31,7 +31,7 @@ const { useUIMessageTransport } = await import("harness-sdk/ui-transport");
 const { resource, useResource } = await import("@assistant-ui/tap");
 const { StatewireSocketHost } = await import("statewire/host-internal");
 const { StatewireClient, StatewireWebsocket } = await import("statewire");
-const { serveSocketHosts } = await import("./socket-hosts.mjs");
+const { hostUpgrades, serveSocketHosts } = await import("./socket-hosts.mjs");
 const directory = await mkdtemp(join(tmpdir(), "tress-managed-test-"));
 process.env.HARNESS_STATE_DIR = directory;
 const sockets = await serveSocketHosts();
@@ -140,6 +140,9 @@ for (const fail of [false, true]) {
       response.on("close", () => stream.destroy());
       stream.pipe(response);
     });
+    // Released CLIs attach over SSE above; current ones over /api/thread/ws.
+    const upgrades = hostUpgrades(gateway.host);
+    server.on("upgrade", upgrades);
     let terminal;
     try {
       await wait(() => browser.state?.harness?.connection === "connected", "gateway ready");
@@ -188,6 +191,7 @@ for (const fail of [false, true]) {
       browser.dispose();
       gateway.dispose();
       hosts.forEach((host) => host.dispose());
+      upgrades.closeAll();
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
     }
