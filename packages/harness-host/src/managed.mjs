@@ -59,12 +59,6 @@ export function createManagedHarnessHost(options) {
         first = JSON.parse(String(data));
       } catch {}
       const { headers: offered, ...lanes } = first ?? {};
-      if (
-        !offered ||
-        typeof offered !== "object" ||
-        Object.values(offered).some((value) => typeof value !== "string")
-      )
-        return close(1008, "malformed headers");
       const headers = Object.fromEntries(new Headers(offered));
       try {
         await authorize?.({ headers: { ...headers, ...upgradeHeaders } });
@@ -114,19 +108,11 @@ export function createManagedHarnessHost(options) {
   };
   return {
     client,
-    /** Accept `…/ws` upgrades and relay them to the cloud thread. */
+    /** Relay a `…/ws` upgrade the caller routed here to the cloud thread. */
     async upgrade(request) {
-      const incoming = new URL(request.url);
-      if (incoming.pathname.split("/").at(-1) !== "ws")
-        return new Response("Not found", { status: 404 });
-      const protocols = (request.headers.get("sec-websocket-protocol") ?? "")
-        .split(",")
-        .map((token) => token.trim());
-      if (!protocols.includes(WS_SUBPROTOCOL))
-        return new Response(`${WS_SUBPROTOCOL} is required`, { status: 400 });
       const target = new URL(`${threadUrl.pathname}/ws`, origin);
       target.protocol = origin.protocol === "http:" ? "ws:" : "wss:";
-      target.search = incoming.search;
+      target.search = new URL(request.url).search;
       const upgradeHeaders = Object.fromEntries(request.headers);
       return {
         protocol: WS_SUBPROTOCOL,
