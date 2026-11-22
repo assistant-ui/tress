@@ -84,9 +84,10 @@ give the agent access to the terminal machine's files or shell.
 - `server.mjs` composes the Harness host, persistent snapshots, discovery
   document, authorized thread list, and access adapter. Reuse an existing server-owned host when you have one.
 - `src/main.jsx` uses assistant-ui components with `HarnessThread` and
-  `StatewireHttp`, then adds credential download and revocation controls.
-- `../../packages/access` authorizes streams and commands with your callback.
-  It binds commands to their authorized stream and closes revoked or expired
+  `StatewireWebsocket`, then adds credential download and revocation controls.
+  The browser's session cookie rides on the WebSocket upgrade.
+- `../../packages/access` authorizes each WebSocket (and older CLIs' HTTP
+  streams and commands) with your callback, and closes revoked or expired
   connections. Your app owns grant issuance, storage, and cross-worker fanout.
 
 The password login is a **single-owner demonstration**, not a production
@@ -98,7 +99,8 @@ process; use your durable storage and owner routing for larger deployments.
 ## Production configuration
 
 Build the frontend, run the Node host under your process supervisor, and route
-your HTTPS domain to it with stream buffering disabled. Configure:
+your HTTPS domain to it with WebSocket upgrades forwarded and stream buffering
+disabled. Configure:
 
 | Variable | Purpose |
 | --- | --- |

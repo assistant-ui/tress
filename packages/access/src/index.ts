@@ -7,12 +7,32 @@ export type AccessGrant = {
   expiresAt: number;
 };
 
+/** One accepted WebSocket, as `ws` and statewire-node expose it. */
+export type AccessSocket = {
+  send(data: string): void;
+  close(code?: number, reason?: string): void;
+  onmessage: ((event: { data: unknown }) => void) | null;
+  onclose: (() => void) | null;
+};
+/** statewire-node's `host.upgrade` result: a refusal, or the accept. */
+export type AccessUpgrade = {
+  protocol: string;
+  attach(socket: AccessSocket): void;
+};
+
 export type AccessOptions = {
   /** Reuse the application's thread host. Its lifetime remains app-owned. */
-  host: { fetch(request: Request): Promise<Response> };
+  host: {
+    fetch(request: Request): Promise<Response>;
+    upgrade?(request: Request): Promise<Response | AccessUpgrade>;
+  };
   /** Canonical app origin; do not derive this from an untrusted Host header. */
   origin: string;
-  /** Authenticate and authorize THIS thread. Throw a 401/403 Response to deny. */
+  /**
+   * Authenticate and authorize THIS thread. Throw a 401/403 Response to deny.
+   * For a WebSocket, `request` carries the upgrade's headers over the headers
+   * the client sent in its first frame (where browsers put credentials).
+   */
   authorize(context: {
     request: Request;
     action: "read" | "write";
@@ -21,6 +41,9 @@ export type AccessOptions = {
 };
 
 type Attachment = { grant: AccessGrant; stop(): void };
+const fin = (reason: "unauthorized" | "forbidden", message: string) =>
+  JSON.stringify({ fin: { reason, message } });
+const MAX_QUEUED_FRAMES = 64;
 const denied = () => new Response("Connection is not authorized", { status: 403 });
 const encoder = new TextEncoder();
 const revokedFrame = encoder.encode(
@@ -48,11 +71,11 @@ export function createTressAccess(options: AccessOptions) {
     !revoked.has(grant.connectionId);
   const same = (a: AccessGrant, b: AccessGrant) =>
     a.subject === b.subject && a.connectionId === b.connectionId;
-  const authorize = async (request: Request) => {
-    const grant = await options.authorize({
-      request,
-      action: request.method === "GET" ? "read" : "write",
-    });
+  const authorize = async (
+    request: Request,
+    action: "read" | "write" = request.method === "GET" ? "read" : "write",
+  ) => {
+    const grant = await options.authorize({ request, action });
     if (!valid(grant)) throw denied();
     return grant;
   };
@@ -177,8 +200,98 @@ export function createTressAccess(options: AccessOptions) {
     }
   };
 
+  // A socket is one attachment: its first frame authorizes it, and every later
+  // frame (each one a command) rechecks the grant's expiry and revocation.
+  const upgrade = async (request: Request): Promise<Response | AccessUpgrade> => {
+    if (!options.host.upgrade)
+      return new Response("WebSocket upgrades are not served", { status: 426 });
+    // Browsers send Origin and cookies on every upgrade; only the app may use them.
+    const requestOrigin = request.headers.get("origin");
+    if (requestOrigin !== null && requestOrigin !== origin) return denied();
+    if (requestOrigin === null && request.headers.has("cookie")) return denied();
+    const accepted = await options.host.upgrade(request);
+    if (accepted instanceof Response) return accepted;
+    return {
+      protocol: accepted.protocol,
+      attach(socket) {
+        const inner: AccessSocket = {
+          send: (data) => socket.send(data),
+          close: (code, reason) => socket.close(code, reason),
+          onmessage: null,
+          onclose: null,
+        };
+        accepted.attach(inner);
+        let state: "waiting" | "authorizing" | "open" | "closed" = "waiting";
+        let queued: unknown[] = [];
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let attachment: Attachment | undefined;
+        const end = (code: number, frame?: string) => {
+          if (state === "closed") return;
+          state = "closed";
+          queued = [];
+          clearTimeout(timer);
+          if (attachment) attachments.delete(attachment);
+          try {
+            if (frame !== undefined) socket.send(frame);
+            socket.close(code, "access");
+          } catch {}
+          inner.onclose?.();
+        };
+        const admit = async (data: unknown) => {
+          let headers: Headers;
+          try {
+            const first = JSON.parse(String(data)) as { headers?: HeadersInit };
+            headers = new Headers(first.headers);
+            request.headers.forEach((value, name) => headers.set(name, value));
+          } catch {
+            return end(1008);
+          }
+          let grant: AccessGrant;
+          try {
+            grant = await authorize(new Request(request.url, { headers }), "write");
+          } catch (error) {
+            const forbidden = error instanceof Response && error.status === 403;
+            return end(1008, forbidden
+              ? fin("forbidden", "Connection is not authorized")
+              : fin("unauthorized", "unauthorized"));
+          }
+          if (state === "closed") return;
+          attachment = { grant, stop: () => end(1008, fin("forbidden", "Application access ended")) };
+          attachments.add(attachment);
+          const expire = () => {
+            if (!valid(grant)) return attachment!.stop();
+            timer = setTimeout(expire, Math.min(grant.expiresAt - Date.now(), 2 ** 31 - 1));
+            (timer as { unref?: () => void }).unref?.();
+          };
+          expire();
+          if (state === "closed") return;
+          state = "open";
+          for (const frame of [data, ...queued]) inner.onmessage?.({ data: frame });
+          queued = [];
+        };
+        socket.onmessage = ({ data }) => {
+          if (state === "closed") return;
+          if (typeof data === "string" && encoder.encode(data).byteLength > maxFrameBytes)
+            return end(1009);
+          if (state === "waiting") {
+            state = "authorizing";
+            void admit(data);
+          } else if (state === "authorizing") {
+            if (queued.length >= MAX_QUEUED_FRAMES) return end(1013);
+            queued.push(data);
+          }
+          else if (!valid(attachment!.grant)) attachment!.stop();
+          else inner.onmessage?.({ data });
+        };
+        socket.onclose = () => end(1000);
+      },
+    };
+  };
+
   return {
     fetch,
+    /** Accept a WebSocket for the host; pass the result to your WebSocket server. */
+    upgrade,
     /** Revoke this grant on this worker; app storage must deny it after restart. */
     revoke(connectionId: string) {
       revoked.add(connectionId);

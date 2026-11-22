@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuiConfig, AuiProvider, ThreadPrimitive, MessagePrimitive, ComposerPrimitive } from "@assistant-ui/react";
 import { HarnessThread } from "@assistant-ui/react-harness-sdk";
-import { StatewireHttp } from "statewire";
+import { StatewireWebsocket } from "statewire";
 import "./style.css";
 
 function Message() {
@@ -11,7 +11,7 @@ function Message() {
 
 function Chat() {
   const config = useMemo(() => AuiConfig({ thread: HarnessThread({
-    transport: StatewireHttp({ url: new URL("/api/threads/main", window.location.origin).href }),
+    transport: StatewireWebsocket({ url: new URL("/api/threads/main", window.location.origin).href }),
   }) }), []);
   return <AuiProvider config={config}><ThreadPrimitive.Root className="thread">
     <ThreadPrimitive.Viewport className="messages">

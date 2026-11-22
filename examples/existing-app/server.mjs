@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, STATUS_CODES } from "node:http";
 import { randomBytes, randomUUID, createHash, timingSafeEqual } from "node:crypto";
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
@@ -12,6 +12,7 @@ import { useStatewireState, useStatewireCommands } from "statewire/host";
 import { HARNESS_THREADS_PROTOCOL } from "harness-sdk";
 import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
 import { createTressAccess } from "@tress/access";
+import { WebSocketServer } from "ws";
 
 const password = process.env.APP_PASSWORD;
 if (!password || password.length < 12) throw new Error("Set APP_PASSWORD to at least 12 characters.");
@@ -173,8 +174,28 @@ const server = createServer(async (incoming, outgoing) => {
     outgoing.end("Request failed");
   }
 });
+// Statewire clients attach over WebSockets (`…/ws`). Browsers can't set headers
+// on a socket: the app cookie rides on the upgrade, terminal grants arrive in
+// the first frame, and @tress/access authorizes both before the host sees a frame.
+const sockets = new WebSocketServer({ noServer: true, handleProtocols: (offered) => offered.has("statewire.v1") && "statewire.v1" });
+server.on("upgrade", async (incoming, socket, head) => {
+  socket.on("error", () => socket.destroy());
+  const refuse = (status) => socket.end(`HTTP/1.1 ${status} ${STATUS_CODES[status]}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  try {
+    const request = new Request(new URL(incoming.url, origin), { headers: incoming.headers });
+    const path = new URL(request.url).pathname;
+    const gate = path === "/api/threads/main/ws" ? access : path === "/api/thread-list/ws" ? listAccess : null;
+    const accepted = gate ? await gate.upgrade(request) : new Response(null, { status: 404 });
+    if (accepted instanceof Response) return refuse(accepted.status);
+    sockets.handleUpgrade(incoming, socket, head, (ws) => accepted.attach(ws));
+  } catch (error) {
+    console.error("Upgrade failed", error);
+    refuse(500);
+  }
+});
 server.listen(port, process.env.HOST ?? "127.0.0.1", () => console.log(`App listening at ${origin}`));
 async function shutdown() {
+  for (const ws of sockets.clients) ws.terminate();
   server.close(); await thread.close(); await listHost.close(); await writes; await dev?.close(); process.exit(0);
 }
 process.once("SIGTERM", shutdown);

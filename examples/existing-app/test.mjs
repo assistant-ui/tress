@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
 import { once } from "node:events";
+import { connect } from "node:net";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { Harness } from "harness-sdk";
-import { StatewireHttp } from "statewire";
+import { StatewireWebsocket } from "statewire";
+import { socketWith } from "./test-sockets.mjs";
 
 const binary = resolve(process.env.TRESS_BIN ?? "../../target/debug/tress");
 async function freePort() {
@@ -59,6 +61,18 @@ test("existing Harness app: browser, native CLI, revocation, restart, streaming 
     outgoing.on("close", () => upstream.destroy());
     incoming.pipe(upstream);
   });
+  // Like a production reverse proxy, forward WebSocket upgrades untouched.
+  proxy.on("upgrade", (incoming, socket, head) => {
+    const upstream = connect(hostPort, "127.0.0.1", () => {
+      const lines = [`${incoming.method} ${incoming.url} HTTP/1.1`];
+      for (let i = 0; i < incoming.rawHeaders.length; i += 2) lines.push(`${incoming.rawHeaders[i]}: ${incoming.rawHeaders[i + 1]}`);
+      upstream.write(`${lines.join("\r\n")}\r\n\r\n`);
+      upstream.write(head);
+      socket.pipe(upstream).pipe(socket);
+    });
+    upstream.on("error", () => socket.destroy());
+    socket.on("error", () => upstream.destroy());
+  });
   await new Promise((done) => proxy.listen(publicPort, "127.0.0.1", done));
   const start = async () => {
     host = spawn(process.execPath, ["--experimental-strip-types", "server.mjs"], {
@@ -84,11 +98,7 @@ test("existing Harness app: browser, native CLI, revocation, restart, streaming 
   };
   const text = () => browser.messages.flatMap((m) => m.parts.filter((p) => p.type === "text").map((p) => p.text)).join("\n");
   const attachBrowser = async () => {
-    browser = new Harness({ transport: StatewireHttp({ url: endpoint, fetch: (url, init = {}) => {
-      const headers = new Headers(init.headers);
-      headers.set("cookie", cookie); headers.set("origin", origin);
-      return fetch(url, { ...init, headers });
-    } }) });
+    browser = new Harness({ transport: StatewireWebsocket({ url: endpoint, webSocket: socketWith({ cookie, origin }) }) });
     await until(() => browser.transport.status === "connected", `browser attach\n${logs}`);
   };
   const terminal = (args) => { const process = cli(args, { XDG_CONFIG_HOME: data }); terminals.push(process); return process; };

@@ -12,7 +12,8 @@ import { createUIMessageStream } from "ai";
 import { AISDKTransport } from "@harness-sdk/ai-sdk";
 import { Harness } from "harness-sdk";
 import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
-import { StatewireHttp } from "statewire";
+import { StatewireWebsocket } from "statewire";
+import { serveUpgrades, socketWith } from "./test-sockets.mjs";
 import { statewireHost } from "statewire-node";
 
 const binary = process.env.TRESS_BIN
@@ -148,17 +149,23 @@ test(
         outgoing.end(String(error));
       }
     });
+    // The same application authorization gates WebSocket upgrades.
+    serveUpgrades(server, () => origin, async (request) => {
+      if (new URL(request.url).pathname !== "/api/threads/existing/ws")
+        return new Response(null, { status: 404 });
+      const allowed =
+        request.headers.get("cookie") === "app_session=fixture-browser" ||
+        request.headers.get("authorization") === "Bearer fixture-terminal";
+      if (!allowed) return new Response(null, { status: 401 });
+      return host.upgrade(request);
+    });
     await new Promise((done) => server.listen(0, "127.0.0.1", done));
     origin = `http://127.0.0.1:${server.address().port}`;
     const endpoint = `${origin}/api/threads/existing`;
     browser = new Harness({
-      transport: StatewireHttp({
+      transport: StatewireWebsocket({
         url: endpoint,
-        fetch: (url, init = {}) => {
-          const headers = new Headers(init.headers);
-          headers.set("Cookie", "app_session=fixture-browser");
-          return fetch(url, { ...init, headers });
-        },
+        webSocket: socketWith({ Cookie: "app_session=fixture-browser" }),
       }),
     });
     const transcript = () => JSON.stringify(browser.messages);
