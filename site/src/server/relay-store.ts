@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import type { StatewireHostInternal } from "statewire/host-internal";
+import type { StatewireHostInternal } from "statewire-legacy/host-internal";
 import type { ThreadState } from "../lib/thread";
 
 type ClientRecord = StatewireHostInternal.ClientRecord;

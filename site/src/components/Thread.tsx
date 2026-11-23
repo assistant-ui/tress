@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { StatewireClient, StatewireWebsocket } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire-legacy";
 import type { ThreadCommands, ThreadState } from "../lib/thread";
 import { observeDemoConfig, type DemoConfig } from "../lib/demo-config";
 import { demoPage } from "../lib/demo-page";

@@ -1,7 +1,7 @@
 // Exercise the built managed callback through the real native connector.
 // A scripted local model replaces Harness/model credentials; no cloud calls occur.
 import assert from "node:assert/strict";
-import { StatewireClient, StatewireWebsocket } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire-legacy";
 
 const local = process.argv.includes("--local");
 const attach = process.argv.includes("--attach");

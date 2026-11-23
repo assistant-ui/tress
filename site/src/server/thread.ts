@@ -7,8 +7,8 @@
 
 import { resource } from "@assistant-ui/tap";
 import { useEffect } from "@assistant-ui/tap/react-shim";
-import { useStatewireCommands, useStatewireState } from "statewire/host";
-import { StatewireSocketHost } from "statewire/host-internal";
+import { useStatewireCommands, useStatewireState } from "statewire-legacy/host";
+import { StatewireSocketHost } from "statewire-legacy/host-internal";
 import {
   snapshotWorkspace,
   type Agent,

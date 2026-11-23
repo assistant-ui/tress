@@ -4,9 +4,12 @@ import { join, resolve } from "node:path";
 import { resource } from "@assistant-ui/tap";
 import { Harness, HarnessCloud } from "harness-sdk";
 import { useEffect } from "@assistant-ui/tap/react-shim";
-import { useStatewireCommands, useStatewireState } from "statewire/host";
-import { StatewireSocketHost } from "statewire/host-internal";
-import type { StatewireHostInternal } from "statewire/host-internal";
+// Two Statewire versions meet here. HarnessCloud (harness-sdk 0.6) attaches to
+// the cloud thread with Statewire 0.28. The host below serves browsers and the
+// `tress` CLI, which still speak wire 2026-09-13, so it stays on Statewire 0.19.
+import { useStatewireCommands, useStatewireState } from "statewire-legacy/host";
+import { StatewireSocketHost } from "statewire-legacy/host-internal";
+import type { StatewireHostInternal } from "statewire-legacy/host-internal";
 import type { Entry, ThreadState } from "../lib/thread";
 import type { ThreadMode } from "./config";
 import { workspaceConfig, workspaceInfo } from "./workspace";

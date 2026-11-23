@@ -15,6 +15,25 @@ npm pack ../../harness-sdk/packages/harness-sdk/core --pack-destination vendor
 The site depends on this archive so a clean checkout does not need the sibling
 repository. Replace it with the published SDK when its managed transport is released.
 
+## Managed cloud client
+
+`harness-sdk-0.6.0.tgz` is the same package at upstream commit
+`b49366450c98baa83bc94238f57393ba114894be`, the last `main` commit before
+harness-sdk required the unpublished Statewire 0.29. It speaks Harness protocol
+`2026-11-04` (minimum `2026-09-30`) over Statewire 0.28, which the Harness cloud
+requires. The site uses it for `HarnessCloud` in managed mode and keeps
+Statewire 0.19.4 (`statewire-legacy`) for its own thread host, because the
+`tress` CLI and the browser UI still speak wire `2026-09-13`. The 0.3.0 archive
+stays for the local machine host, `@tress/client` and the reference app.
+
+Built and packed from a clean worktree of that commit:
+
+```sh
+pnpm install --frozen-lockfile --filter "harness-sdk..."
+pnpm --filter statewire build && pnpm --filter harness-sdk build
+npm pack --ignore-scripts packages/harness-sdk/core --pack-destination <tress>/site/vendor
+```
+
 ## Existing-app adapter previews
 
 These additional archives use clean source from the same pinned commit:

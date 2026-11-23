@@ -9,7 +9,10 @@ import { Harness } from "harness-sdk";
 import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
 import { useUIMessageTransport } from "harness-sdk/ui-transport";
 import { clientIdFromUrl, StatewireSocketHost } from "statewire/host-internal";
-import { StatewireClient, StatewireWebsocket } from "statewire";
+// The fake cloud runs the current Statewire host; clients reach the relay over
+// the 2026-09-13 wire the site's own host serves.
+import { StatewireWebsocket as CloudWebsocket } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire-legacy";
 import { serveSocketHosts } from "./socket-hosts.mjs";
 
 const database =
@@ -113,7 +116,7 @@ test(
     };
     const session = await newSession();
     const other = await newSession();
-    const cloudTransport = (host) => StatewireWebsocket({ url: sockets.url(host) });
+    const cloudTransport = (host) => CloudWebsocket({ url: sockets.url(host) });
     const factory = (threadId) => {
       if (!cloudHosts.has(threadId)) {
         const open = async () => {
