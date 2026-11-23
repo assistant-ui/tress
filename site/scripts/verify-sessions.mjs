@@ -5,7 +5,7 @@ import { once } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { StatewireClient, StatewireWebsocket } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire-legacy";
 
 const root = await mkdtemp(join(tmpdir(), "tress-isolation-"));
 const model = createServer(async (request, response) => {

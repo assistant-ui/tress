@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { Sandbox } from "@vercel/sandbox";
 import { createVercelWorkspace } from "@tress/workspaces/vercel";
-import { StatewireClient, StatewireWebsocket } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire-legacy";
 
 const waitFor = async (predicate, label) => {
   const until = Date.now() + 30_000;

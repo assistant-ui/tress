@@ -29,8 +29,11 @@ const { Harness } = await import("harness-sdk");
 const { HARNESS_HOST_PROTOCOL } = await import("harness-sdk/host");
 const { useUIMessageTransport } = await import("harness-sdk/ui-transport");
 const { resource, useResource } = await import("@assistant-ui/tap");
+// The fake cloud runs the current Statewire host, like the Harness cloud proxy;
+// browsers and the CLI reach the gateway over the 2026-09-13 wire.
 const { StatewireSocketHost } = await import("statewire/host-internal");
-const { StatewireClient, StatewireWebsocket } = await import("statewire");
+const { StatewireWebsocket: CloudWebsocket } = await import("statewire");
+const { StatewireClient, StatewireWebsocket } = await import("statewire-legacy");
 const { hostUpgrades, serveSocketHosts } = await import("./socket-hosts.mjs");
 const directory = await mkdtemp(join(tmpdir(), "tress-managed-test-"));
 process.env.HARNESS_STATE_DIR = directory;
@@ -50,6 +53,7 @@ const wait = async (predicate, label) => {
   throw new Error(`Timed out: ${label}`);
 };
 const transport = (host) => StatewireWebsocket({ url: sockets.url(host) });
+const cloudTransport = (host) => CloudWebsocket({ url: sockets.url(host) });
 const config = {
   kind: "cloud",
   origin: "https://managed.example.com",
@@ -101,7 +105,7 @@ const scriptedFactory = (hosts, histories, beforeReply = async () => {}) => {
         }),
       );
     }
-    return new Harness({ transport: transport(hosts.get(threadId)) });
+    return new Harness({ transport: cloudTransport(hosts.get(threadId)) });
   };
   return factory;
 };
@@ -278,7 +282,7 @@ test("managed authentication errors are visible and never fall back to a local r
     { ...config, initialThreadId: "bad-key" },
     () =>
       new Harness({
-        transport: StatewireWebsocket({
+        transport: CloudWebsocket({
           url: sockets.refusal({ reason: "unauthorized", message: "unauthorized" }),
         }),
       }),
@@ -344,7 +348,7 @@ test("reattaching retries a stopped cloud connection once without rotating the c
   const gateway = await createManagedGateway(config, (id) => {
     attempts++;
     if (attempts === 1)
-      return new Harness({ transport: StatewireWebsocket({
+      return new Harness({ transport: CloudWebsocket({
         url: sockets.refusal({ reason: "unauthorized", message: "unavailable credential" }),
       }) });
     return factory(id);

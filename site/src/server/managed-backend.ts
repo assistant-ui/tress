@@ -13,8 +13,9 @@ export const managedStreamHeaders = (
   "Aui-Workspace-Id": config.workspaceId,
   "Aui-Backend-Url": backendUrl,
   "Statewire-Client-Id": `tress-probe-${randomUUID()}`,
-  // Statewire 0.19's wire version; a real host contract test catches drift.
-  "Statewire-Version": '"2026-09-13"',
+  // The wire range the SDK's Statewire 0.28 client offers (CLIENT_WIRE); the
+  // host contract test in health-policy.test.mjs catches drift.
+  "Statewire-Version": '"2026-11-02"; min-version="2026-11-01"',
   "Statewire-Protocol": `${HARNESS_PROTOCOL.name}; version="${HARNESS_PROTOCOL.version}"; min-version="${HARNESS_PROTOCOL.minVersion}"`,
   Accept: "text/event-stream",
 });

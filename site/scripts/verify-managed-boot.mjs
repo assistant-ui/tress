@@ -6,7 +6,7 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { StatewireClient, StatewireWebsocket } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire-legacy";
 
 const probe = createServer();
 await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));

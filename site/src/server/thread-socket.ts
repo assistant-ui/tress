@@ -6,8 +6,8 @@ import {
   clientIdFromUrl,
   textFrameOrClose,
   WS_SUBPROTOCOL,
-} from "statewire/host-internal";
-import type { StatewireHostInternal } from "statewire/host-internal";
+} from "statewire-legacy/host-internal";
+import type { StatewireHostInternal } from "statewire-legacy/host-internal";
 import { getThreadBackend } from "./thread-backend";
 import { sessionResponse } from "./demo-session";
 

@@ -1,8 +1,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { waitUntil } from "@vercel/functions";
-import { textFrameOrClose } from "statewire/host-internal";
-import type { StatewireHostInternal } from "statewire/host-internal";
+import { textFrameOrClose } from "statewire-legacy/host-internal";
+import type { StatewireHostInternal } from "statewire-legacy/host-internal";
 import {
   accessHash,
   resolveDemoSession,

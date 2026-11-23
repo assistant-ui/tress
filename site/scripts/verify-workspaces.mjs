@@ -8,7 +8,7 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { StatewireClient, StatewireWebsocket } from "statewire";
+import { StatewireClient, StatewireWebsocket } from "statewire-legacy";
 import { readUIMessageStream } from "ai";
 
 const development = process.argv.includes("--dev");
