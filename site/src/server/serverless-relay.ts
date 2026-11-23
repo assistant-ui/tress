@@ -169,6 +169,13 @@ export async function relayStream(
   }
 }
 
+const MAX_EARLY_FRAMES = 64;
+const OVERLOADED = {
+  reason: "reconnect",
+  code: "overloaded",
+  message: "Too many frames before the thread host was ready.",
+};
+
 /**
  * One WebSocket client on this invocation. Commands ride on the socket, so no
  * frame routing is needed; Postgres still carries presence, files and the
@@ -256,7 +263,13 @@ export async function relaySocket(
     };
     socket.onmessage = (event) => {
       if (connection) deliver(event);
-      else if (!closed) early.push(event);
+      else if (closed) return;
+      else if (early.length < MAX_EARLY_FRAMES) early.push(event);
+      else {
+        // A gateway that is slow to open must not buffer a client without bound.
+        ordered.send(JSON.stringify({ fin: OVERLOADED }));
+        void stop();
+      }
     };
     socket.onclose = () => {
       connection?.close();

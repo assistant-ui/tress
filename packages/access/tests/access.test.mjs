@@ -177,3 +177,28 @@ test("a WebSocket is authorized by its first frame and closed on revocation", as
   assert.equal(delivered.length, 2);
   assert.equal(closedByHost, 3);
 });
+
+test("a WebSocket whose authorization never settles closes after 10 s", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let closedByHost = 0;
+  const access = createTressAccess({
+    origin,
+    authorize: () => new Promise(() => {}),
+    host: {
+      fetch: async () => new Response(null, { status: 404 }),
+      upgrade: async () => ({
+        protocol: "statewire.v1",
+        attach(socket) { socket.onclose = () => closedByHost++; },
+      }),
+    },
+  });
+  const socket = { sent: [], closed: null, send(data) { this.sent.push(JSON.parse(data)); }, close(code) { this.closed = code; } };
+  (await access.upgrade(new Request(`${origin}/threads/main/ws?client=c1`, { headers: { origin } }))).attach(socket);
+  socket.onmessage({ data: JSON.stringify({ headers: { Authorization: "Bearer slow" } }) });
+  t.mock.timers.tick(9_999);
+  assert.equal(socket.closed, null);
+  t.mock.timers.tick(1);
+  assert.deepEqual(socket.sent, [{ fin: { reason: "unauthorized", message: "Authorization timed out" } }]);
+  assert.equal(socket.closed, 1008);
+  assert.equal(closedByHost, 1);
+});
