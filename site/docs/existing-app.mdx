@@ -26,18 +26,17 @@ session/access checks. Its WebSocket upgrade handler is the integration point.
 or a wrapper around an already authorized host.
 
 ```ts
-// Inside your server's upgrade handler for GET /api/threads/:id/ws.
-// `sockets` is a `ws` WebSocketServer({ noServer: true }) that accepts the
-// `statewire.v1` subprotocol; `request` is a Request built from `incoming`.
-server.on("upgrade", async (incoming, socket, head) => {
+// Your upgrade handler for GET /api/threads/:id/ws. It returns a refusal
+// Response or the host's accept; Pinboard's `listenFetch({ fetch, upgrade })`
+// (or `appFetch` inside a Hono route) completes the handshake. Another
+// WebSocket server accepts `statewire.v1` and calls `accepted.attach(socket)`.
+const upgrade = async (request: Request) => {
   // Application code: check Origin for cookie sessions, then this thread's
   // permissions. Credentials sent in the first frame reach the host's
   // `authorize({ headers })` (see the access guide).
   await app.requireThreadAccess(request, threadId);
-  const accepted = await existingThreadHost.upgrade(request);
-  if (accepted instanceof Response) return refuse(socket, accepted);
-  sockets.handleUpgrade(incoming, socket, head, (ws) => accepted.attach(ws));
-});
+  return existingThreadHost.upgrade(request);
+};
 ```
 
 Keep serving `existingThreadHost.fetch` at `/stream` and `/frames` while older

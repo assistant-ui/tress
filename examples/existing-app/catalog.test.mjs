@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { createServer } from "node:http";
-import { Readable } from "node:stream";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { resource } from "@assistant-ui/tap";
 import { useStatewireState, useStatewireCommands } from "statewire/host";
 import { StatewireWebsocket } from "statewire";
-import { serveUpgrades, socketWith } from "./test-sockets.mjs";
+import { listenFetch } from "@assistant-ui/pinboard/node";
+import { socketWith } from "./test-sockets.mjs";
 import { statewireHost } from "statewire-node";
 import { Harness, HARNESS_THREADS_PROTOCOL } from "harness-sdk";
 import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
@@ -85,40 +84,38 @@ test("ordinary attach discovers all allowed threads and continues existing brows
     for (const browser of browsers) browser.dispose();
     if(server?.listening) server.closeAllConnections();
     for (const host of [...hosts.values(),...Object.values(lists).map(x=>x.host)]) await host.close();
-    if(server?.listening){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+    if(server){server.server.closeAllConnections();await server.close();}
     await rm(dir,{recursive:true,force:true});
   });
-  server=createServer(async(req,res)=>{
-    try {
-      const url=new URL(req.url,origin);
-      const user=req.headers.authorization==="Bearer owner-key" || req.headers.cookie==="app=owner" || req.headers["x-app-auth"]==="custom-owner" ? "owner" : req.headers.authorization==="Bearer other-key" ? "other" : allowAnonymous && !req.headers.authorization ? "owner" : null;
-      if(!user){res.writeHead(401).end("App credential required");return;}
-      if(url.pathname==="/.well-known/tress.json") {res.writeHead(200,{"content-type":"application/json"}).end(JSON.stringify({version:1,threads:"/api/thread-list",thread:"/api/threads/{id}"}));return;}
-      let host;
-      if(url.pathname.startsWith("/api/thread-list/")) host=lists[user].host;
-      else {
-        const id=url.pathname.match(/^\/api\/threads\/([^/]+)\/(stream|frames)$/)?.[1];
-        if(!lists[user].state.threads.some(t=>t.id===id) || (denyBeta && id==="thread-1")){res.writeHead(403).end("Thread denied");return;}
-        host=threadHost(id);
-      }
-      const abort=new AbortController();res.on("close",()=>abort.abort());
-      const request=new Request(url,{method:req.method,headers:req.headers,signal:abort.signal,...(req.method==="POST"?{body:Readable.toWeb(req),duplex:"half"}:{})});
-      const response=await host.fetch(request);res.writeHead(response.status,Object.fromEntries(response.headers));
-      if(response.body) Readable.fromWeb(response.body).on("error",()=>res.destroy()).pipe(res);else res.end();
-    } catch(e){errors.push(e);if(!res.headersSent)res.writeHead(500);res.end();}
-  });
-  // The same application authorization gates WebSocket upgrades.
-  serveUpgrades(server,()=>origin,async(request)=>{
+  // The app's own authorization gates every route, WebSocket upgrades included.
+  const userOf=(request)=>{
     const auth=request.headers.get("authorization"),cookie=request.headers.get("cookie");
-    const user=auth==="Bearer owner-key"||cookie==="app=owner"||request.headers.get("x-app-auth")==="custom-owner"?"owner":auth==="Bearer other-key"?"other":allowAnonymous&&!auth?"owner":null;
-    if(!user) return new Response(null,{status:401});
-    const path=new URL(request.url).pathname;
-    if(path==="/api/thread-list/ws") return lists[user].host.upgrade(request);
-    const id=path.match(/^\/api\/threads\/([^/]+)\/ws$/)?.[1];
-    if(!lists[user].state.threads.some(t=>t.id===id)||(denyBeta&&id==="thread-1")) return new Response(null,{status:403});
-    return threadHost(id).upgrade(request);
-  });
-  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));origin=`http://127.0.0.1:${server.address().port}`;
+    return auth==="Bearer owner-key"||cookie==="app=owner"||request.headers.get("x-app-auth")==="custom-owner"?"owner":auth==="Bearer other-key"?"other":allowAnonymous&&!auth?"owner":null;
+  };
+  server=await listenFetch({
+    fetch:async(request)=>{
+      try {
+        const url=new URL(request.url);
+        const user=userOf(request);
+        if(!user) return new Response("App credential required",{status:401});
+        if(url.pathname==="/.well-known/tress.json") return Response.json({version:1,threads:"/api/thread-list",thread:"/api/threads/{id}"});
+        if(url.pathname.startsWith("/api/thread-list/")) return lists[user].host.fetch(request);
+        const id=url.pathname.match(/^\/api\/threads\/([^/]+)\/(stream|frames)$/)?.[1];
+        if(!lists[user].state.threads.some(t=>t.id===id) || (denyBeta && id==="thread-1")) return new Response("Thread denied",{status:403});
+        return await threadHost(id).fetch(request);
+      } catch(e){errors.push(e);return new Response(null,{status:500});}
+    },
+    upgrade:(request)=>{
+      const user=userOf(request);
+      if(!user) return new Response(null,{status:401});
+      const path=new URL(request.url).pathname;
+      if(path==="/api/thread-list/ws") return lists[user].host.upgrade(request);
+      const id=path.match(/^\/api\/threads\/([^/]+)\/ws$/)?.[1];
+      if(!lists[user].state.threads.some(t=>t.id===id)||(denyBeta&&id==="thread-1")) return new Response(null,{status:403});
+      return threadHost(id).upgrade(request);
+    },
+  },{host:"127.0.0.1"});
+  origin=`http://127.0.0.1:${server.port}`;
   function cli(args, key="owner-key", terminal=false) {
     const child=spawn(terminal?"python3":binary,terminal?["-u","-c",pty,binary,...args]:args,{env:{...process.env,TRESS_TEST_APP_KEY:key,XDG_CONFIG_HOME:dir,XDG_STATE_HOME:dir,NO_COLOR:"1",TERM:"xterm-256color"},stdio:["pipe","pipe","pipe"]});
     children.push(child);let output="";child.stdout.on("data",b=>output+=b);child.stderr.on("data",b=>output+=b);

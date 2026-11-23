@@ -196,17 +196,18 @@ const access = createTressAccess({
 
 // Hand each `/api/threads/:id/ws` upgrade to this same long-lived instance.
 // `existingThreadHost.upgrade` comes from statewire-node.
-server.on("upgrade", async (incoming, socket, head) => {
-  const accepted = await access.upgrade(toRequest(incoming));
-  if (accepted instanceof Response) return refuse(socket, accepted);
-  sockets.handleUpgrade(incoming, socket, head, (ws) => accepted.attach(ws));
-});
+await listenFetch({
+  fetch: (request) => access.fetch(request),
+  upgrade: (request) => access.upgrade(request),
+}, { port: 3000 });
 ```
 
-`server`, `toRequest`, `refuse`, and `sockets` (a `ws` `WebSocketServer` with
-`noServer: true` that accepts the `statewire.v1` subprotocol) are your server
-code; the [reference app](https://github.com/assistant-ui/tress/blob/main/examples/existing-app/server.mjs)
-shows them in full. `authorize` receives a `request` whose headers combine the
+`listenFetch` comes from `@assistant-ui/pinboard/node`; `access.upgrade`
+returns a refusal Response or a Pinboard `Accept`, which it completes. With
+another server, accept the `statewire.v1` subprotocol and call
+`accepted.attach(socket)`. The
+[reference app](https://github.com/assistant-ui/tress/blob/main/examples/existing-app/server.mjs)
+shows a full server. `authorize` receives a `request` whose headers combine the
 upgrade's headers with the socket's first-message headers, and the adapter
 authorizes the socket before the host sees any frame. `access.fetch` still
 serves `/stream` and `/frames` for older Tress CLI releases.

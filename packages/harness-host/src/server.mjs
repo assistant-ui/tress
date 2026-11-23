@@ -1,5 +1,3 @@
-import { createServer } from "node:http";
-import { Readable } from "node:stream";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import {
   readFile,
@@ -17,7 +15,31 @@ import { createLocalHarnessHost, createTressTransport } from "./index.mjs";
 import { createManagedHarnessHost } from "./managed.mjs";
 import { fileStorage } from "./storage.mjs";
 import { machineWorkspace } from "./workspace.mjs";
-import { serveWebSockets } from "./websocket.mjs";
+import { listenFetch } from "@assistant-ui/pinboard/node";
+
+// A socket's first frame carries its credentials (and any commands queued while
+// it was offline). Until the host answers it, a bigger message closes the socket
+// with 1009 before it is buffered; the hello lifts the cap to Pinboard's default.
+const UNAUTHENTICATED_MAX_PAYLOAD = 1024 * 1024;
+const capUntilHello = (accepted) =>
+  accepted instanceof Response
+    ? accepted
+    : {
+        ...accepted,
+        maxPayload: UNAUTHENTICATED_MAX_PAYLOAD,
+        attach(socket, limits) {
+          const send = socket.send;
+          socket.send = (data) => {
+            // Statewire sends `syn` only to an authorized attach.
+            if (socket.send !== send && JSON.parse(data).syn) {
+              socket.send = send;
+              limits.lift();
+            }
+            send(data);
+          };
+          accepted.attach(socket, limits);
+        },
+      };
 
 const equal = (a, b) =>
   typeof a === "string" &&
@@ -121,10 +143,25 @@ export async function startMachineHost(options) {
         const managedId = `${new URL(options.cloud.origin).hostname.split(".")[0]}~${binding.threadId}`;
         if (body.id !== binding.threadId && body.id !== managedId)
           return new Response("Wrong managed thread", { status: 403 });
+        // The run stops when the caller stops reading. (Pinboard aborts
+        // `request.signal` once a body has been read, not on disconnect.)
+        const run = new AbortController();
+        const stream = await transport.sendMessages({
+          messages: body.messages,
+          abortSignal: run.signal,
+        });
+        const reader = stream.getReader();
         return createUIMessageStreamResponse({
-          stream: await transport.sendMessages({
-            messages: body.messages,
-            abortSignal: request.signal,
+          stream: new ReadableStream({
+            async pull(controller) {
+              const { done, value } = await reader.read();
+              if (done) controller.close();
+              else controller.enqueue(value);
+            },
+            cancel(reason) {
+              run.abort(reason);
+              return reader.cancel(reason);
+            },
           }),
         });
       }
@@ -202,67 +239,26 @@ export async function startMachineHost(options) {
       return new Response("Not found", { status: 404 });
     };
     const upgrade = async (request) => {
-      if (request.headers.get("host") !== new URL(origin).host)
+      const url = new URL(request.url);
+      if (url.origin !== origin)
         return new Response("Invalid host", { status: 403 });
       const requestOrigin = request.headers.get("origin");
       if (requestOrigin && requestOrigin !== origin)
         return new Response("Origin denied", { status: 403 });
-      if (new URL(request.url).pathname !== "/api/threads/main/ws")
+      if (url.pathname !== "/api/threads/main/ws")
         return new Response("Not found", { status: 404 });
-      return thread.upgrade(request);
+      return capUntilHello(await thread.upgrade(request));
     };
-    server = createServer(async (incoming, outgoing) => {
-      const abort = new AbortController();
-      outgoing.on("close", () => abort.abort());
-      try {
-        if (incoming.headers.host !== new URL(origin).host) {
-          outgoing.writeHead(403).end();
-          return;
-        }
-        let body;
-        if (!["GET", "HEAD"].includes(incoming.method)) {
-          const chunks = [];
-          let bytes = 0;
-          for await (const chunk of incoming) {
-            bytes += chunk.length;
-            if (bytes > 8 * 1024 * 1024) {
-              outgoing.writeHead(413).end();
-              return;
-            }
-            chunks.push(chunk);
-          }
-          body = Buffer.concat(chunks);
-        }
-        const request = new Request(new URL(incoming.url, origin), {
-          method: incoming.method,
-          headers: incoming.headers,
-          signal: abort.signal,
-          ...(body && { body }),
-        });
-        const response = await handler(request);
-        outgoing.writeHead(
-          response.status,
-          Object.fromEntries(response.headers),
-        );
-        if (response.body)
-          Readable.fromWeb(response.body)
-            .on("error", () => outgoing.destroy())
-            .pipe(outgoing);
-        else outgoing.end();
-      } catch (error) {
-        if (!outgoing.headersSent)
-          outgoing
-            .writeHead(500, { "content-type": "text/plain" })
-            .end("Host request failed");
-        else outgoing.destroy();
-        options.onError?.(error);
-      }
-    });
-    await new Promise((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(options.port ?? 0, "127.0.0.1", resolve);
-    });
-    origin = `http://127.0.0.1:${server.address().port}`;
+    // Pinboard serves the app: HTTP through `fetch`, `…/ws` through `upgrade`.
+    server = await listenFetch(
+      { fetch: handler, upgrade },
+      {
+        host: "127.0.0.1",
+        port: options.port ?? 0,
+        log: { error: (_message, error) => (options.onError ?? console.error)(error) },
+      },
+    );
+    origin = `http://127.0.0.1:${server.port}`;
     thread = options.cloud
       ? createManagedHarnessHost({
           ...options.cloud,
@@ -276,7 +272,6 @@ export async function startMachineHost(options) {
           authorize,
           onError: options.onError,
         });
-    const sockets = serveWebSockets(server, { origin, upgrade });
     await fileStorage(join(directory, "headers.json")).save({
       Authorization: `Bearer ${saved.token}`,
     });
@@ -288,9 +283,8 @@ export async function startMachineHost(options) {
         try {
           await thread.close();
         } finally {
-          sockets.close();
-          server.closeAllConnections();
-          await new Promise((resolve) => server.close(resolve));
+          server.server.closeAllConnections();
+          await server.close();
           await release();
         }
       })());
@@ -303,8 +297,7 @@ export async function startMachineHost(options) {
     };
   } catch (error) {
     await thread?.close().catch(() => {});
-    server?.closeAllConnections();
-    server?.close();
+    await server?.close();
     await release();
     throw error;
   }

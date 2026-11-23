@@ -28,11 +28,11 @@ const access = createTressAccess({
   },
 });
 
-// Statewire clients attach over WebSockets at `…/ws`: hand each upgrade to
-// the adapter, then let your WebSocket server (e.g. `ws`) accept it.
-const accepted = await access.upgrade(request);
-if (accepted instanceof Response) return refuse(accepted);
-sockets.handleUpgrade(incoming, socket, head, (ws) => accepted.attach(ws));
+// Statewire clients attach over WebSockets at `…/ws`. `access.upgrade` returns
+// a refusal Response or a Pinboard `Accept`, so `listenFetch({ fetch, upgrade })`
+// from @assistant-ui/pinboard/node serves it as is. Another WebSocket server
+// accepts the `statewire.v1` subprotocol and calls `accepted.attach(socket)`.
+const upgrade = (request: Request) => access.upgrade(request);
 
 // Older Tress CLI releases still use /stream and /frames over HTTP.
 const response = await access.fetch(request);
@@ -55,7 +55,10 @@ can't set headers on a WebSocket). Every later frame rechecks the grant's
 expiry and revocation. Over HTTP, the adapter authenticates streams and
 commands, binds frame requests to the grant that opened their stream, and
 rechecks authorization after a bounded POST upload. The default maximum frame
-is 1 MiB (`maxFrameBytes` overrides it). Cookie sessions require the canonical
+is 1 MiB (`maxFrameBytes` overrides it). The upgrade result carries it as
+`maxPayload`, so a server that honours it (Pinboard's `listenFetch`) closes an
+oversized message, an unauthenticated first frame included, before buffering
+it. Cookie sessions require the canonical
 same-origin `Origin`; non-browser header authentication can omit `Origin`.
 
 Revocation and expiration close existing sockets and streams, including quiet
