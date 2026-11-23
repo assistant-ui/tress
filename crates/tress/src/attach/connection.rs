@@ -191,29 +191,15 @@ impl Connector {
             return Err("These credentials belong to a different application. Attach explicitly with that app's credential file.".into());
         }
         // Credentials ride in the socket's first message, never in this URL.
+        if destination.query().is_some() || destination.fragment().is_some() {
+            return Err("Thread URLs cannot carry a query or fragment.".into());
+        }
         let (client, events) =
-            connect_with_headers(&websocket_url(&destination)?, config, self.headers.clone())
+            connect_with_headers(destination.as_str(), config, self.headers.clone())
                 .await
                 .map_err(|error| error.to_string())?;
         Ok((Client(client), events))
     }
-}
-
-/// The Statewire WebSocket endpoint of a thread URL: `ws(s)://…/<thread>/ws`.
-fn websocket_url(thread: &reqwest::Url) -> Result<String, String> {
-    let scheme = match thread.scheme() {
-        "http" => "ws",
-        "https" => "wss",
-        _ => return Err("The thread URL must use http or https.".into()),
-    };
-    if thread.query().is_some() || thread.fragment().is_some() {
-        return Err("Thread URLs cannot carry a query or fragment.".into());
-    }
-    let mut url = thread.clone();
-    url.set_scheme(scheme)
-        .map_err(|()| "Invalid thread URL".to_owned())?;
-    url.set_path(&format!("{}/ws", thread.path().trim_end_matches('/')));
-    Ok(url.to_string())
 }
 
 pub struct Client(statewire::transport::Client);
@@ -360,23 +346,18 @@ mod tests {
         std::fs::remove_file(path).unwrap();
     }
 
-    #[test]
-    fn thread_urls_map_to_their_websocket_endpoint() {
-        let ws = |url: &str| websocket_url(&reqwest::Url::parse(url).unwrap());
-        assert_eq!(
-            ws("http://localhost:5311/api/thread").unwrap(),
-            "ws://localhost:5311/api/thread/ws"
-        );
-        assert_eq!(
-            ws("https://app.example/api/threads/main/").unwrap(),
-            "wss://app.example/api/threads/main/ws"
-        );
-        assert_eq!(
-            ws("https://app.example/api/sessions/abc").unwrap(),
-            "wss://app.example/api/sessions/abc/ws"
-        );
-        assert!(ws("https://app.example/api/thread?token=secret").is_err());
-        assert!(ws("ftp://app.example/thread").is_err());
+    #[tokio::test]
+    async fn thread_urls_cannot_carry_a_query_or_fragment() {
+        let connector = Connector::new("https://app.example/thread", None).unwrap();
+        for url in [
+            "https://app.example/thread?token=secret",
+            "https://app.example/thread#token",
+        ] {
+            let refused = connector
+                .connect(url, super::super::connection_config())
+                .await;
+            assert!(refused.err().unwrap().contains("query or fragment"));
+        }
     }
 
     #[test]

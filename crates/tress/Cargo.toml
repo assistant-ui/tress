@@ -18,8 +18,8 @@ thiserror = "2"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 sha2 = "0.10"
 cap-std = "4"
-statewire = { git = "https://github.com/assistant-ui/statewire-rs", rev = "4cdd9625e6af5c2b01e3d0493cdcf21c0468d3b0", features = ["ws"] }
-harness-threads = { git = "https://github.com/assistant-ui/statewire-rs", rev = "4cdd9625e6af5c2b01e3d0493cdcf21c0468d3b0" }
+statewire = { git = "https://github.com/assistant-ui/statewire-rs", rev = "b96b03019ec9d0753dc2cdee2e4d33d00a8ca499", features = ["ws"] }
+harness-threads = { git = "https://github.com/assistant-ui/statewire-rs", rev = "b96b03019ec9d0753dc2cdee2e4d33d00a8ca499" }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-util", "io-std", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["stream", "json", "rustls-tls"] }
