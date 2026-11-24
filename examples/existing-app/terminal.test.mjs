@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { createServer } from "node:http";
-import { Readable } from "node:stream";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -13,7 +11,8 @@ import { AISDKTransport } from "@harness-sdk/ai-sdk";
 import { Harness } from "harness-sdk";
 import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
 import { StatewireWebsocket } from "statewire";
-import { serveUpgrades, socketWith } from "./test-sockets.mjs";
+import { listenFetch } from "@assistant-ui/pinboard/node";
+import { socketWith } from "./test-sockets.mjs";
 import { statewireHost } from "statewire-node";
 
 const binary = process.env.TRESS_BIN
@@ -39,9 +38,9 @@ test(
         if (child.exitCode === null) child.kill("SIGTERM");
       browser?.dispose();
       await host?.close();
-      if (server?.listening) {
-        server.closeAllConnections();
-        await new Promise((done) => server.close(done));
+      if (server) {
+        server.server.closeAllConnections();
+        await server.close();
       }
       await rm(directory, { recursive: true, force: true });
     });
@@ -103,64 +102,38 @@ test(
         }),
     });
     let origin;
-    server = createServer(async (incoming, outgoing) => {
-      try {
-        const url = new URL(incoming.url, origin);
-        if (
-          ![
-            "/api/threads/existing/stream",
-            "/api/threads/existing/frames",
-          ].includes(url.pathname)
-        ) {
-          outgoing.writeHead(404).end();
-          return;
-        }
-        // The application's normal request authorization protects every route.
-        const allowed =
-          incoming.headers.cookie === "app_session=fixture-browser" ||
-          incoming.headers.authorization === "Bearer fixture-terminal";
-        if (!allowed) {
-          outgoing.writeHead(401).end("Application credential required");
-          return;
-        }
-        const abort = new AbortController();
-        outgoing.on("close", () => abort.abort());
-        const request = new Request(url, {
-          method: incoming.method,
-          headers: incoming.headers,
-          signal: abort.signal,
-          ...(!["GET", "HEAD"].includes(incoming.method) && {
-            body: Readable.toWeb(incoming),
-            duplex: "half",
-          }),
-        });
-        const response = await host.fetch(request);
-        outgoing.writeHead(
-          response.status,
-          Object.fromEntries(response.headers),
-        );
-        if (response.body)
-          Readable.fromWeb(response.body)
-            .on("error", () => outgoing.destroy())
-            .pipe(outgoing);
-        else outgoing.end();
-      } catch (error) {
-        if (!outgoing.headersSent) outgoing.writeHead(500);
-        outgoing.end(String(error));
-      }
-    });
-    // The same application authorization gates WebSocket upgrades.
-    serveUpgrades(server, () => origin, async (request) => {
-      if (new URL(request.url).pathname !== "/api/threads/existing/ws")
-        return new Response(null, { status: 404 });
-      const allowed =
-        request.headers.get("cookie") === "app_session=fixture-browser" ||
-        request.headers.get("authorization") === "Bearer fixture-terminal";
-      if (!allowed) return new Response(null, { status: 401 });
-      return host.upgrade(request);
-    });
-    await new Promise((done) => server.listen(0, "127.0.0.1", done));
-    origin = `http://127.0.0.1:${server.address().port}`;
+    // The application's normal request authorization protects every route,
+    // and the same authorization gates WebSocket upgrades.
+    const allowed = (request) =>
+      request.headers.get("cookie") === "app_session=fixture-browser" ||
+      request.headers.get("authorization") === "Bearer fixture-terminal";
+    server = await listenFetch(
+      {
+        fetch: (request) => {
+          const { pathname } = new URL(request.url);
+          if (
+            ![
+              "/api/threads/existing/stream",
+              "/api/threads/existing/frames",
+            ].includes(pathname)
+          )
+            return new Response(null, { status: 404 });
+          if (!allowed(request))
+            return new Response("Application credential required", {
+              status: 401,
+            });
+          return host.fetch(request);
+        },
+        upgrade: (request) => {
+          if (new URL(request.url).pathname !== "/api/threads/existing/ws")
+            return new Response(null, { status: 404 });
+          if (!allowed(request)) return new Response(null, { status: 401 });
+          return host.upgrade(request);
+        },
+      },
+      { host: "127.0.0.1" },
+    );
+    origin = `http://127.0.0.1:${server.port}`;
     const endpoint = `${origin}/api/threads/existing`;
     browser = new Harness({
       transport: StatewireWebsocket({

@@ -1,9 +1,7 @@
-import { createServer, STATUS_CODES } from "node:http";
 import { randomBytes, randomUUID, createHash, timingSafeEqual } from "node:crypto";
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Readable } from "node:stream";
 import { createUIMessageStream, DirectChatTransport } from "ai";
 import { AISDKTransport } from "@harness-sdk/ai-sdk";
 import { statewireHost } from "statewire-node";
@@ -12,7 +10,7 @@ import { useStatewireState, useStatewireCommands } from "statewire/host";
 import { HARNESS_THREADS_PROTOCOL } from "harness-sdk";
 import { HARNESS_HOST_PROTOCOL } from "harness-sdk/host";
 import { createTressAccess } from "@tress/access";
-import { WebSocketServer } from "ws";
+import { listenFetch } from "@assistant-ui/pinboard/node";
 
 const password = process.env.APP_PASSWORD;
 if (!password || password.length < 12) throw new Error("Set APP_PASSWORD to at least 12 characters.");
@@ -141,62 +139,41 @@ async function handle(request) {
   if (path === "/api/metrics" && request.method === "GET") return json(metrics);
   return new Response("Not found", { status: 404 });
 }
-const dev = process.argv.includes("--dev")
-  ? await (await import("vite")).createServer({ server: { middlewareMode: true }, appType: "spa" })
-  : null;
 const dist = resolve("dist");
-const server = createServer(async (incoming, outgoing) => {
-  try {
-    const path = new URL(incoming.url, origin).pathname;
-    if (!path.startsWith("/api/") && path !== "/.well-known/tress.json") {
-      if (dev) { dev.middlewares(incoming, outgoing); return; }
-      const file = path === "/" ? resolve(dist, "index.html") : resolve(dist, `.${decodeURIComponent(path)}`);
-      if (!file.startsWith(dist + sep)) { outgoing.writeHead(404).end(); return; }
-      const content = await readFile(file).catch(() => null);
-      if (content === null) { outgoing.writeHead(404).end(); return; }
-      outgoing.setHeader("content-type", ({ ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" })[extname(file)] ?? "application/octet-stream");
-      outgoing.end(content); return;
-    }
-    const abort = new AbortController();
-    incoming.on("aborted", () => abort.abort());
-    outgoing.on("close", () => abort.abort());
-    const request = new Request(new URL(incoming.url, origin), {
-      method: incoming.method, headers: incoming.headers, signal: abort.signal,
-      ...(!["GET", "HEAD"].includes(incoming.method) && { body: Readable.toWeb(incoming), duplex: "half" }),
-    });
-    const response = await handle(request);
-    outgoing.writeHead(response.status, Object.fromEntries(response.headers));
-    if (response.body) Readable.fromWeb(response.body).on("error", () => outgoing.destroy()).pipe(outgoing);
-    else outgoing.end();
-  } catch (error) {
-    console.error("Request failed", error);
-    if (!outgoing.headersSent) outgoing.writeHead(500);
-    outgoing.end("Request failed");
-  }
-});
-// Statewire clients attach over WebSockets (`…/ws`). Browsers can't set headers
-// on a socket: the app cookie rides on the upgrade, terminal grants arrive in
-// the first frame, and @tress/access authorizes both before the host sees a frame.
-const sockets = new WebSocketServer({ noServer: true, handleProtocols: (offered) => offered.has("statewire.v1") && "statewire.v1" });
-server.on("upgrade", async (incoming, socket, head) => {
-  socket.on("error", () => socket.destroy());
-  const refuse = (status) => socket.end(`HTTP/1.1 ${status} ${STATUS_CODES[status]}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
-  try {
-    const request = new Request(new URL(incoming.url, origin), { headers: incoming.headers });
+async function serveFile(path) {
+  const file = path === "/" ? resolve(dist, "index.html") : resolve(dist, `.${decodeURIComponent(path)}`);
+  if (!file.startsWith(dist + sep)) return new Response(null, { status: 404 });
+  const content = await readFile(file).catch(() => null);
+  if (content === null) return new Response(null, { status: 404 });
+  return new Response(content, { headers: { "content-type": ({ ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" })[extname(file)] ?? "application/octet-stream" } });
+}
+const api = (path) => path.startsWith("/api/") || path === "/.well-known/tress.json";
+// Pinboard serves the app: HTTP through `fetch`, and Statewire's `…/ws` upgrades
+// through `upgrade`. Browsers can't set headers on a socket: the app cookie rides
+// on the upgrade, terminal grants arrive in the first frame, and @tress/access
+// authorizes both before the host sees a frame.
+const app = {
+  fetch: (request) => {
+    const path = new URL(request.url).pathname;
+    return api(path) ? handle(request) : serveFile(path);
+  },
+  upgrade: (request) => {
     const path = new URL(request.url).pathname;
     const gate = path === "/api/threads/main/ws" ? access : path === "/api/thread-list/ws" ? listAccess : null;
-    const accepted = gate ? await gate.upgrade(request) : new Response(null, { status: 404 });
-    if (accepted instanceof Response) return refuse(accepted.status);
-    sockets.handleUpgrade(incoming, socket, head, (ws) => accepted.attach(ws));
-  } catch (error) {
-    console.error("Upgrade failed", error);
-    refuse(500);
-  }
-});
-server.listen(port, process.env.HOST ?? "127.0.0.1", () => console.log(`App listening at ${origin}`));
+    return gate ? gate.upgrade(request) : new Response(null, { status: 404 });
+  },
+};
+const host = process.env.HOST ?? "127.0.0.1";
+// `--dev`: Vite serves the frontend on the app's port and forwards the API, sockets included.
+const dev = process.argv.includes("--dev");
+const server = await listenFetch(app, { host, port: dev ? 0 : port });
+const vite = dev
+  ? await (await import("vite")).createServer({ server: { host, port, strictPort: true, proxy: Object.fromEntries(["/api", "/.well-known"].map((prefix) => [prefix, { target: `http://127.0.0.1:${server.port}`, ws: true }])) } })
+  : null;
+await vite?.listen();
+console.log(`App listening at ${origin}`);
 async function shutdown() {
-  for (const ws of sockets.clients) ws.terminate();
-  server.close(); await thread.close(); await listHost.close(); await writes; await dev?.close(); process.exit(0);
+  await vite?.close(); await server.close(); await thread.close(); await listHost.close(); await writes; process.exit(0);
 }
 process.once("SIGTERM", shutdown);
 process.once("SIGINT", shutdown);

@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createServer } from "node:http";
-import { Readable } from "node:stream";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +13,7 @@ import { createLocalHarnessHost, createTressTransport } from "../src/index.mjs";
 import { fileStorage } from "../src/storage.mjs";
 import { createManagedHarnessHost } from "../src/managed.mjs";
 import { startMachineHost } from "../src/server.mjs";
-import { serveWebSockets } from "../src/websocket.mjs";
+import { listenFetch } from "@assistant-ui/pinboard/node";
 import { WebSocket as WsClient } from "ws";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -33,40 +31,16 @@ export async function until(check) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
-export async function http(handler, upgrade) {
-  const server = createServer(async (req, res) => {
-    const abort = new AbortController();
-    res.on("close", () => abort.abort());
-    try {
-      const request = new Request(`http://127.0.0.1${req.url}`, {
-        method: req.method,
-        headers: req.headers,
-        signal: abort.signal,
-        ...(!["GET", "HEAD"].includes(req.method) && {
-          body: Readable.toWeb(req),
-          duplex: "half",
-        }),
-      });
-      const response = await handler(request);
-      res.writeHead(response.status, Object.fromEntries(response.headers));
-      if (response.body)
-        Readable.fromWeb(response.body)
-          .on("error", () => res.destroy())
-          .pipe(res);
-      else res.end();
-    } catch (error) {
-      res.writeHead(500).end(String(error));
-    }
-  });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const url = `http://127.0.0.1:${server.address().port}`;
-  const sockets = upgrade && serveWebSockets(server, { origin: url, upgrade });
+export async function http(fetch, upgrade) {
+  const server = await listenFetch(
+    { fetch, ...(upgrade && { upgrade }) },
+    { host: "127.0.0.1" },
+  );
   return {
-    url,
+    url: `http://127.0.0.1:${server.port}`,
     async close() {
-      sockets?.close();
-      server.closeAllConnections();
-      await new Promise((resolve) => server.close(resolve));
+      server.server.closeAllConnections();
+      await server.close();
     },
   };
 }
@@ -417,6 +391,35 @@ test("machine host stores real files and denies unauthenticated and escaped read
       });
     assert.equal((await dial({ Origin: "https://evil.example" })).status, 403);
     assert.equal((await dial({})).message.fin.reason, "unauthorized");
+    // Until the hello, a message over 1 MiB closes the socket before it is
+    // buffered; an authorized socket takes the full size.
+    const big = "x".repeat(2 * 1024 * 1024);
+    const closeCode = (first, afterHello) =>
+      new Promise((resolve, reject) => {
+        const ws = new WsClient(
+          `${host.origin.replace(/^http/, "ws")}/api/threads/main/ws?client=${"b".repeat(32)}`,
+          "statewire.v1",
+        );
+        ws.on("open", () => ws.send(first));
+        ws.on("message", (data) => {
+          if (!JSON.parse(String(data)).syn) return;
+          ws.send(afterHello);
+          setTimeout(() => ws.close(1000), 500);
+        });
+        ws.on("close", (code) => resolve(code));
+        ws.on("error", reject);
+      });
+    assert.equal(
+      await closeCode(JSON.stringify({ headers: { Authorization: big } })),
+      1009,
+    );
+    assert.notEqual(
+      await closeCode(
+        JSON.stringify({ headers }),
+        JSON.stringify({ cmd: [], pad: big }),
+      ),
+      1009,
+    );
     const browser = createTressClient({ url: host.endpoint, headers });
     try {
       await until(() => browser.transport.status === "connected");

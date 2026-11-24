@@ -14,9 +14,11 @@ export type AccessSocket = {
   onmessage: ((event: { data: unknown }) => void) | null;
   onclose: (() => void) | null;
 };
-/** statewire-node's `host.upgrade` result: a refusal, or the accept. */
+/** statewire-node's `host.upgrade` result: a refusal, or the accept. Also a
+ * Pinboard `Accept`: `maxPayload` caps every message before it is buffered. */
 export type AccessUpgrade = {
   protocol: string;
+  maxPayload?: number;
   attach(socket: AccessSocket): void;
 };
 
@@ -214,6 +216,7 @@ export function createTressAccess(options: AccessOptions) {
     if (accepted instanceof Response) return accepted;
     return {
       protocol: accepted.protocol,
+      maxPayload: maxFrameBytes,
       attach(socket) {
         const inner: AccessSocket = {
           send: (data) => socket.send(data),

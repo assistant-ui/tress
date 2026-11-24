@@ -1,5 +1,5 @@
 import { Harness, HarnessCloud } from "harness-sdk";
-import { WS_SUBPROTOCOL } from "./websocket.mjs";
+import { WS_SUBPROTOCOL } from "statewire/host-internal";
 
 const MAX_QUEUED_FRAMES = 64;
 const FIRST_FRAME_TIMEOUT_MS = 10_000;
